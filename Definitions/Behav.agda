@@ -1,5 +1,5 @@
 {-# OPTIONS --guardedness #-}
-open import Data.Empty using (⊥-elim)
+open import Data.Empty using (⊥; ⊥-elim)
 open import Data.Unit using (⊤ ; tt)
 open import Data.Fin using (Fin; zero; suc)
   renaming (_≟_ to _≟f_)
@@ -92,11 +92,27 @@ module Definitions.Behav where
     until ■ φ ψ = ψ
     until (_►_ {G = G} {α = α} x tr) φ ψ = φ G α × until tr φ ψ
 
+    until₁ : ∀ {G G′} → G ~~> G′
+      → (φ : (G : Behav) → (α : Action) → Set)
+      → (ψ : Behav → Action → Set) →  Set
+    until₁ ■ φ ψ = ⊥
+    until₁ (_►_ {G = G} {α = α} x ■) φ ψ = ψ G α
+    until₁ (_►_ {G = G} {α = α} x tr) φ ψ = φ G α × until₁ tr φ ψ
+
     _=[_]=>_ : ∀ (G : Behav) (φ : Action → Set) (G′ : Behav) → Set
     G =[ φ ]=> G′ = Σ[ tr ∈ G ~~> G′ ] until tr (λ _ α → φ α) ⊤
 
+    -- skippable : ∀{G G'} → Part -> G ~~> G' → Set
+    -- skippable P
+
     skippable : ∀ {G G'} → Part → G ~~> G' → Set
     skippable {G' = G} P tr = until tr (λ G _ → P ∉tr G) (P ∈tr G)
+
+    tr-indep : ∀ {G G'} → Action → G ~~> G' → Set
+    tr-indep {G' = G} α tr = until₁ tr (λ _ α' → α ∥ α') (λ _ α' → α ≡ α')
+
+    tr-indep₁ : ∀ {G G'} → Action → G ~~> G' → Set
+    tr-indep₁ {G' = G} α tr = until tr (λ _ α' → α ∥ α') ⊤
 
     _~<_>~>_ : Behav → Part → Behav → Set
     G ~< P >~> G' = Σ[ tr ∈ G ~~> G' ] skippable P tr --  × causal tr
@@ -253,11 +269,20 @@ module Definitions.Behav where
       _ , (~L→ b x ► ~~>~ (~L→~ b x) tr .proj₂ .proj₁)
         , ~~>~ (~L→~ b x) tr .proj₂ .proj₂
 
+    ~~>~G : ∀ {Gi Gi' Go} → Gi ~ Gi' → Gi ~~> Go → Behav
+    ~~>~G b tr = ~~>~ b tr .proj₁
+
+    ~~>~→ : ∀ {Gi Gi' Go} (b : Gi ~ Gi') (tr : Gi ~~> Go) → Gi' ~~> ~~>~G b tr
+    ~~>~→ b tr = ~~>~ b tr .proj₂ .proj₁
+
+    ~~>~~ : ∀ {Gi Gi' Go} (b : Gi ~ Gi') (tr : Gi ~~> Go) → Go ~ ~~>~G b tr
+    ~~>~~ b tr = ~~>~ b tr .proj₂ .proj₂
+
     ∈tr~ : ∀ {Gi Gi' P} (b : Gi ~ Gi') (x : P ∈tr Gi) → P ∈tr Gi'
     ∈tr~ b (∈-tr ∈-step ∈-prf) = ∈-tr (~L→ b ∈-step) ∈-prf
 
     skippable~ : ∀ {Gi Gi' Go P} (b : Gi ~ Gi') (tr : Gi ~~> Go)
-      → skippable P tr → skippable P (~~>~ b tr .proj₂ .proj₁)
+      → skippable P tr → skippable P (~~>~→ b tr)
     skippable~ b ■ P∈x = ∈tr~ b P∈x
     skippable~ b (x₁ ► tr) (x , y) = ∉tr~ b x , skippable~ (~L→~ b x₁) tr y
 
@@ -359,6 +384,23 @@ module Definitions.Behav where
         → G -< α' >-> G' → G -< hα , i >-> Gᵢ → G' -< hα , j >-> Gⱼ'
         → ∃[ Gⱼ ] G -< hα , j >-> Gⱼ
 
+      full-comm : ∀ {α G α′ G′} -- TODO: no longer sure about this one ... double-check
+        → G -< α′ >-> G′
+        → (∀{G′} (tr : G ~~> G′) → tr-indep₁ α tr
+                 → ∃[ G″ ] Σ[ tr ∈ G′ ~~> G″ ] tr-indep α tr)
+        → ∃[ G′ ] G -< α >-> G′
+
+    --   full-comm1 : ∀ {α G α′ G′}
+    --     → G -< α′ >-> G′
+    --     → (∀{α′ G′} (tr : G -< α′ >-> G′) → α ∥ α′ → ∃[ G″ ] G′ -< α >-> G″)
+    --     → ∃[ G′ ] G -< α >-> G′
+
+    -- full-comm* : ∀ {α G α' G'}
+    --     → G -< α' >-> G'
+    --     → (∀{G'} → (tr : G ~~> G') → tr-indep₁ α tr → ∃[ G″ ] Σ[ tr ∈ G' ~~> G″ ] tr-indep α tr)
+    --     → ∃[ G' ] G -< α >-> G'
+    -- full-comm* gr f = full-comm1 gr λ x x₁ → f ? ?
+
     send-act-indep : {G : Behav} {α α' : Action} {G' G'' : Behav} →
              G -< α >-> G' → G -< α' >-> G'' → sender α' ∉α α → α ∥ α'
     send-act-indep {_}{α}{α'} gr1 gr2 f with receiver α' ∈α? α
@@ -401,6 +443,11 @@ module Definitions.Behav where
         → (ii : α ∥ α') → G₂ -< α >-> ◇-join gr gr' ii
     ◇-r gr gr′ ii = proj₂ (proj₂ (diamond gr gr′ ii))
 
+    diamond* : ∀{G G′ G″ α} → G -< α >-> G′ → (tr : G ~~> G″) → tr-indep₁ α tr →
+      ∃[ G‴ ] Σ[ tr ∈ G″ ~~> G‴ ] tr-indep α tr
+    diamond* gr ■ tt = _ , gr ► ■ , refl
+    diamond* gr (x ► tr) (ix , ii) = diamond* (◇-r gr x ix) tr ii
+
     ∉B-step : ∀ {G α G' P} → G -< α >-> G' → ¬ P ∈T G → ¬ P ∈T G'
     ∉B-step st = contraposition (in/later st)
 
@@ -412,6 +459,17 @@ module Definitions.Behav where
             Gi' , bR , gr' = ~traceback bG gr
         in _ , bR , rt/trans gr' (y , nP)
 
+    ~tbG : ∀ {P G G' Gi} → G ~ G' → Gi =<¬ P >=>ᵣ G → Behav
+    ~tbG b gr = ~traceback b gr .proj₁
+
+    ~tb~ : ∀ {P G G' Gi} → (b : G ~ G') → (gr : Gi =<¬ P >=>ᵣ G)
+      → Gi ~ ~tbG b gr
+    ~tb~ b gr = ~traceback b gr .proj₂ .proj₁
+
+    ~tb→ : ∀ {P G G' Gi} → (b : G ~ G') → (gr : Gi =<¬ P >=>ᵣ G)
+      → ~tbG b gr =<¬ P >=>ᵣ G'
+    ~tb→ b gr = ~traceback b gr .proj₂ .proj₂
+
     ~traceback/l : ∀ {P G G' Gi} → G ~ G' → Gi =<¬ P >=> G
       → ∃[ Gi' ] (Gi ~ Gi') × Gi' =<¬ P >=> G'
     ~traceback/l b (■ , tt) = _ , b , (■ , tt)
@@ -419,6 +477,17 @@ module Definitions.Behav where
       = let Gii , bG , tr' , P∉tr'  = ~traceback/l b (tr , P∉tr)
             Gi' , bR , x' = ~stepback bG x
         in _ , bR , (x' ► tr') , P∉x ,  P∉tr'
+
+    ~tblG : ∀ {P G G' Gi} → G ~ G' → Gi =<¬ P >=> G → Behav
+    ~tblG b gr = ~traceback/l b gr .proj₁
+
+    ~tbl~ : ∀ {P G G' Gi} → (b : G ~ G') → (gr : Gi =<¬ P >=> G)
+      → Gi ~ ~tblG b gr
+    ~tbl~ b gr = ~traceback/l b gr .proj₂ .proj₁
+
+    ~tbl→ : ∀ {P G G' Gi} → (b : G ~ G') → (gr : Gi =<¬ P >=> G)
+      → ~tblG b gr =<¬ P >=> G'
+    ~tbl→ b gr = ~traceback/l b gr .proj₂ .proj₂
 
 
   record BT-Extra {N : ℕ}(B : BTheory N) : Set₁ where

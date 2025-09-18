@@ -150,8 +150,10 @@ module Definitions.Actions (N : ℕ) where
   _∦_ : Action → Action → Set
   α ∦ α' = ¬ (α .proj₁) ∥ₕ (α' .proj₁)
 
-  -- Indep/gen : ∀{P Q I i α}{S : Vec Sort (suc I)} → (P ⟶ Q # S , i) ∥ α
-  --     → ∀ I (i : Fin (suc I)) S → (P ⟶ Q # S , i) ∥ α
+  Indep/gen : ∀{P Q I α}{S : Vec Sort (suc I)} → (P ⟶ Q # S) ∥ₕ α
+      → ∀{I}{S : Vec Sort (suc I)} → (P ⟶ Q # S) ∥ₕ α
+  Indep/gen (ii-≡snd x y) = ii-≡snd x y
+  Indep/gen (ii-disj x) = ii-disj x
 
   -- Indep/in : ∀{P Q α α'} → P ∈pr α → Q ∈pr α → α ∥ₕ α'
   --   → ∀ I (i : Fin (suc I)) (S : Vec Sort (suc I)) → (P ⟶ Q # S) ∥ₕ α'
