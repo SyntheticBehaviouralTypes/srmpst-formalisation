@@ -1,6 +1,6 @@
 # SRMPST: Formalisation of A Synthetic Reconstruction of Multiparty Session Types
 
-**Abstract:** This repository contains a complete Agda formalisation of Session-typed Recursive Multiparty Session Types (SRMPST). The formalisation provides mechanized proofs of fundamental safety and liveness properties for concurrent communicating systems, including type safety, progress, and deadlock freedom.
+**Abstract:** This repository contains a complete Agda formalisation of the Synthetic Reconstruction of Multiparty Session Types (SRMPST). The formalisation provides mechanized proofs of fundamental safety and liveness properties for concurrent communicating systems, including type safety, progress, and deadlock freedom.
 
 ## Repository Structure
 
