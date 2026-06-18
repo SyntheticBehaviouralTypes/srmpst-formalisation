@@ -16,18 +16,26 @@ module Definitions.Proc (N : ℕ) where
 
   open import Definitions.Actions(N)
   open import Definitions.Common(N)
+  open Comm
+  open Choice
+  open Action
 
   data Proc (γ δ : ℕ) :  Set where -- γ δ are the number of binders for expressions and recursion resp.
-    _!_<_>∙_ : Part -> Label -> Exp γ -> Proc γ δ -> Proc γ δ
+    _!_<_>∙_ : Part -> {I : ℕ} -> Fin (suc I) -> Exp γ -> Proc γ δ -> Proc γ δ
     Σ_？[_]·_ : Part -> {I : ℕ} -> Vec Sort (suc I) → Vec (Proc (suc γ) δ) (suc I) -> Proc γ δ
     ifp_then_else_ : Exp γ -> Proc γ δ -> Proc γ δ -> Proc γ δ
     rec : Proc γ (suc δ) -> Proc γ δ
     v : Fin δ -> Proc γ δ
     ∅ : Proc γ δ
 
+  infixr 8 _!_<_>∙_
+  infixr 8 Σ_？[_]·_
+  infix  6 ifp_then_else_
 
-  infixr 20 _!_<_>∙_
-  infixr 20 Σ_？[_]·_
+  data NProc (γ δ : ℕ) : Set where
+    _◂_ : Part → Proc γ δ → NProc γ δ
+
+  infix 5 _◂_
 
   data done/proc {γ δ} : Proc γ δ -> Set where
     done-∅ : done/proc ∅
@@ -122,10 +130,10 @@ module Definitions.Proc (N : ℕ) where
   -- Operational semantics of sessions
 
   data _[_]⇒_ (M : Session) : (α : Maybe Action) → (M' : Session) -> Set where
-   s/comm : ∀{I S i E V Pr Br} -> (P Q : Part) ->
-     M [ P ]= (Q ! I , i < E >∙ Pr) -> E ⇓ V ->
+   s/comm : ∀{I S}{i : Fin (suc I)}{E V Pr Br} -> (P Q : Part) ->
+     M [ P ]= (Q ! i < E >∙ Pr) -> E ⇓ V ->
      M [ Q ]= (Σ P ？[ S ]· Br) ->
-     M [ just (P ⟶ Q # S , i) ]⇒ (M [ P ]≔ Pr [ Q ]≔ (Subst.[ val V / zero ]e ((lu Br i)) ))
+     M [ just (P ⟶ Q # i < sort/value V >) ]⇒ (M [ P ]≔ Pr [ Q ]≔ (Subst.[ val V / zero ]e (lu Br i) ))
 
    s/if/true : ∀{E Pr Pr'} -> (P : Part) ->
      M [ P ]= ifp E then Pr else Pr' -> E ⇓ v/bool true ->

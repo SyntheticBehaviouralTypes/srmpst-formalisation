@@ -619,7 +619,7 @@ module Definitions.Types (N : ℕ) where
 
   private
     global/steps : ∀{α G G'} → G -< α >-> G' → G ===> G'
-    global/steps gr = [ gr , tt ]► (■ , tt) -- tr/trans gr tt tr/refl
+    global/steps gr = [ gr , tt ]◄ (■ , tt) -- tr/trans gr tt tr/refl
 
   private
     open Choice
@@ -754,13 +754,13 @@ module Definitions.Types (N : ℕ) where
 
     ∈-trace/skip : ∀ {P G G''} → (inN : P ∈G G'') → (st : G ===> G'') → P ∈G G
     ∈-trace/skip i (■ , snd) = i
-    ∈-trace/skip i ((x ► fst) , _ , snd)
+    ∈-trace/skip i ((x ◄ fst) , _ , snd)
       = in/action/skip (∈-trace/skip i (fst , snd)) x
 
     ∈T-∈G/aux : ∀ {P} {G : Global 0 ng} → P ∈T G → P ∈G G
     ∈T-∈G/aux (in/α x x₁) = ∈α-∈G (x , x₁)
     ∈T-∈G/aux (in/later x tr)
-      = ∈-trace/skip (∈T-∈G/aux tr) ([ x , tt ]► (■ , tt)) -- (tr/trans x tt tr/refl)
+      = ∈-trace/skip (∈T-∈G/aux tr) ([ x , tt ]◄ (■ , tt)) -- (tr/trans x tt tr/refl)
 
   ∈T-∈G : ∀ {P} {G : Global 0 ng} → P ∈T G → P ∈G G
   ∈T-∈G inA = ∈T-∈G/aux inA

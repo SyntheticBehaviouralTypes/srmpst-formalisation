@@ -21,6 +21,11 @@ data Value : Set where
   v/nat : ℕ -> Value
   v/unit : Value
 
+sort/value : Value → Sort
+sort/value (v/bool _) = s/bool
+sort/value (v/nat _) = s/nat
+sort/value v/unit = s/unit
+
 data Exp (γ : ℕ) : Set where
   val : Value -> Exp γ
   minus1 : Exp γ -> Exp γ
@@ -65,6 +70,11 @@ data ⊢v_∶_ : Value -> Sort -> Set where
   tv/bool : {b : Bool} -> ⊢v (v/bool b) ∶ s/bool
   tv/nat : {n : ℕ} -> ⊢v (v/nat n) ∶ s/nat
   tv/unit : ⊢v (v/unit) ∶ s/unit
+
+sort/value-typed : ∀ {V S} → ⊢v V ∶ S → S ≡ sort/value V
+sort/value-typed tv/bool = refl
+sort/value-typed tv/nat = refl
+sort/value-typed tv/unit = refl
 
 data _⊢e_∶_ {γ : ℕ} (Γ : Vec Sort γ) : Exp γ -> Sort -> Set where
   te/val : ∀{V S} -> ⊢v V ∶ S -> Γ ⊢e val V ∶ S
