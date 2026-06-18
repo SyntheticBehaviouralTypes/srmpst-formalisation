@@ -1,309 +1,183 @@
 {-# OPTIONS --guardedness #-}
-open import Data.Empty using (⊥ ; ⊥-elim)
-open import Data.Unit using (⊤ ; tt)
-open import Data.Sum using (_⊎_ ; inj₁ ; inj₂)
-open import Data.Bool
-open import Data.Nat
-open import Data.Fin hiding (_+_ ; _-_)
-open import Data.Vec hiding (_++_)
-open import Data.Product
-open import Relation.Nullary using (¬_)
-open import Relation.Nullary.Decidable
-  using (Dec; True ; False ; toWitnessFalse ; fromWitnessFalse; fromWitness;
-        toWitness; yes; no)
-open import Relation.Binary.PropositionalEquality hiding ( [_] )
 
-open import Utils
-open import Definitions
+-- Server `S` offers `login`/`cancel` to client `C`; on `login`, `C`
+-- forwards a password to the auth service `A`, which reports to `S`; on
+-- `cancel`, `C` tells `A` to quit.  All five partitions are accepted.
 
 module Examples.OAuth2 where
 
-  module Behaviours where
-    open import Definitions.Expr
-    open import Definitions.Common(3)
-    open import Definitions.Actions(3)
+open import Data.Fin using (Fin; zero; suc)
+open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
+open import Data.List using ([]; _∷_)
+open import Data.Sum using (_⊎_)
+open import Data.Product using (_,_; proj₁; ∃-syntax; _×_)
+open import Data.List using (length)
+open import Relation.Binary.PropositionalEquality using (_≡_)
+open import Data.Unit using (tt)
+open import Data.Bool using (true)
+open import Relation.Nullary.Decidable using (toWitness)
 
-    -- Protocol states
-    OAuth2-States = Fin 5
+open import Definitions.Expr using (s/bool; s/nat; val; v/bool; v/nat)
+open import Check
 
-    initial-state : OAuth2-States
-    initial-state = zero
+open import Definitions.Graph.Algebra 3
+open import Data.Fin.Subset using (⁅_⁆)
+open import Definitions.Actions 3 renaming (_<_> to mkChoice)
+open import Definitions.Proc 3
 
-    pattern sx = suc _
-    pattern ssx = suc (suc _)
-    pattern sssx = suc (suc (suc _))
+S C A : Fin 3
+S = zero
+C = suc zero
+A = suc (suc zero)
 
-    pattern f0 = zero
-    pattern f1 = suc zero
-    pattern f2 = suc (suc zero)
-    pattern f3 = suc (suc (suc zero))
-    pattern f4 = suc (suc (suc (suc zero)))
+here : Fin 1
+here = zero
 
-    s0 : OAuth2-States
-    s0 = f0
-    s1 : OAuth2-States
-    s1 = f1
-    s2 : OAuth2-States
-    s2 = f2
-    s3 : OAuth2-States
-    s3 = f3
-    s4 : OAuth2-States
-    s4 = f4
+-- the S→C choice: login/cancel (both carry a nat)
+login cancel : Fin 2
+login  = zero
+cancel = suc zero
 
-    S : Part
-    S = zero
+-- the C→A choice: passwd (nat) / quit (bool)
+passwd quit : Fin 2
+passwd = zero
+quit   = suc zero
 
-    C : Part
-    C = suc zero
+-- s0 --S→C[login]--> s1 --C→A[passwd]--> s2 --A→S[auth]--> ended
+-- s0 --S→C[cancel]--> s3 --C→A[quit]----------------------> ended
+oauth : OpenGraph 0
+oauth = openGraph 4 (node zero)
+  ( ( ((S ⟶ ⁅ C ⁆ # mkChoice login s/nat) , node (suc zero))
+    ∷ ((S ⟶ ⁅ C ⁆ # mkChoice cancel s/nat) , node (suc (suc (suc zero))))
+    ∷ [] )                                                            -- s0
+  v∷ ( ((C ⟶ ⁅ A ⁆ # mkChoice passwd s/nat) , node (suc (suc zero)))
+     ∷ [] )                                                           -- s1
+  v∷ ( ((A ⟶ ⁅ S ⁆ # mkChoice here s/bool) , ended) ∷ [] )             -- s2
+  v∷ ( ((C ⟶ ⁅ A ⁆ # mkChoice quit s/bool) , ended) ∷ [] )             -- s3
+  v∷ v[]
+  )
 
-    A : Part
-    A = suc (suc zero)
+wbg : WBGraph {N = 3}
+wbg = buildG oauth {p = tt}
 
-    login : Fin 2
-    login = zero
+s₀ = initial (proj₁ wbg)
 
-    passwd : Fin 2
-    passwd = zero
+open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module Global)
 
-    quit : Fin 2
-    quit = suc zero
+-- the server picks `cancel`
+p/S : Proc 0 0
+p/S = S ⇒ ⁅ C ⁆ ! cancel < val (v/nat 0) >∙ ∅
 
-    cancel : Fin 2
-    cancel = suc zero
+-- the client covers both offers: forward the password, or tell `A` to quit
+p/C : Proc 0 0
+p/C = C ⇐ S ？·
+        (  (C ⇒ ⁅ A ⁆ ! passwd < val (v/nat 0) >∙ ∅)
+        v∷ (C ⇒ ⁅ A ⁆ ! quit < val (v/bool true) >∙ ∅)
+        v∷ v[])
 
-    open HeadAct
+-- the auth service: authorize towards `S`, or stop
+p/A : Proc 0 0
+p/A = A ⇐ C ？·
+        (  (A ⇒ ⁅ S ⁆ ! here < val (v/bool true) >∙ ∅)
+        v∷ ∅
+        v∷ v[])
 
-    data LTS : OAuth2-States → Part → Part → {I : ℕ} → Vec Sort (suc I)
-         → Fin (suc I) → OAuth2-States → Set where
-      s→c/login : LTS s0 S C (s/nat ∷ s/nat ∷ []) login s1
-      c→a/pwd : LTS s1 C A (s/nat ∷ s/bool ∷ []) passwd s2
-      a→s/auth : LTS s2 A S (s/bool ∷ []) zero s3
+-- {S} {C} {A}: one process per role.
+module S∣C∣A where
+  Ρ = singletons
+  open Over Ρ
+  open Global Ρ using (_-[_]->ᵍ_)
 
-      s→c/cancel : LTS s0 S C (s/nat ∷ s/nat ∷ []) cancel s4
-      c→a/quit : LTS s4 C A (s/nat ∷ s/bool ∷ []) quit s3
+  M : Session
+  M = p/S v∷ p/C v∷ p/A v∷ v[]
 
-    TheLTS : OAuth2-States → Action → OAuth2-States → Set
-    TheLTS si (P ⟶ Q # S , i) so = LTS si P Q S i so
+  M-typed : ⊢s[ Ρ ] M ∶ s₀
+  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
 
-    OAuth2Theory : BTheory 3
-    OAuth2Theory .BTheory.Behav = OAuth2-States
-    OAuth2Theory .BTheory._-<_>->_ = TheLTS
+  M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
+         → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
+                   × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
+  M-safe = safety Ρ M-typed
 
-    open BTheory OAuth2Theory
+-- ── Every other partition: each process against its block's view ───────
 
-    pattern ≢S = (∈S ())
-    pattern ≢R = (∈R ())
+own/SC∣A own/SA∣C own/S∣CA : Fin 3 → Fin 2
+own/SC∣A zero             = zero
+own/SC∣A (suc zero)       = zero
+own/SC∣A (suc (suc zero)) = suc zero
+own/SA∣C zero             = zero
+own/SA∣C (suc zero)       = suc zero
+own/SA∣C (suc (suc zero)) = zero
+own/S∣CA zero             = zero
+own/S∣CA (suc zero)       = suc zero
+own/S∣CA (suc (suc zero)) = suc zero
 
-    can-step? : ∀ P G → Dec (P ∈tr G)
-    can-step? f0 f0 = yes (∈-tr s→c/login (∈S refl))
-    can-step? f0 f1 = no λ{ (BTheory.∈-tr c→a/pwd (∈S ())) ; (BTheory.∈-tr c→a/pwd (∈R ())) }
-    can-step? f0 f2 = yes (∈-tr a→s/auth (∈R refl))
-    can-step? f0 f3 = no (λ{ ()})
-    can-step? f0 f4 = no λ{ (BTheory.∈-tr c→a/quit (∈S ())) ; (BTheory.∈-tr c→a/quit (∈R ())) }
-    can-step? f1 f0 = true Relation.Nullary.because
-                       Relation.Nullary.ofʸ (∈-tr s→c/login (∈R refl))
-    can-step? f1 f1 = true Relation.Nullary.because
-                       Relation.Nullary.ofʸ (∈-tr c→a/pwd (∈S refl))
-    can-step? f1 f2 = no (λ{ (BTheory.∈-tr a→s/auth ≢S) ; (BTheory.∈-tr a→s/auth ≢R) })
-    can-step? f1 f3 = no (λ ())
-    can-step? f1 f4 = true Relation.Nullary.because
-                       Relation.Nullary.ofʸ (∈-tr c→a/quit (∈S refl))
-    can-step? f2 f0 = no λ{ (BTheory.∈-tr s→c/cancel (∈S ())) ; (BTheory.∈-tr s→c/cancel (∈R ())); (BTheory.∈-tr s→c/login (∈S ())) ; (BTheory.∈-tr s→c/login (∈R ())) }
-    can-step? f2 f1 = true Relation.Nullary.because
-                       Relation.Nullary.ofʸ (∈-tr c→a/pwd (∈R refl))
-    can-step? f2 f2 = true Relation.Nullary.because
-                       Relation.Nullary.ofʸ (∈-tr a→s/auth (∈S refl))
-    can-step? f2 f3 = no (λ ())
-    can-step? f2 f4 = true Relation.Nullary.because
-                       Relation.Nullary.ofʸ (∈-tr c→a/quit (∈R refl))
+-- {S,C} {A}: the server's choice is internal; the client's forward to `A`
+-- makes it (here: `login`, then `A`'s report reaches `S`).
+module SC∣A where
+  Ρ = byOwner own/SC∣A
+  open Over Ρ
+  open Global Ρ using (_-[_]->ᵍ_)
 
-    o-indep? : ∀ {G α α' G' G''} →
-      G -< α >-> G' → G -< α' >-> G'' → (proj₁ α) ⋔ (proj₁ α') ⊎ proj₁ α ≡ proj₁ α'
-    o-indep? s→c/login s→c/login = inj₂ refl
-    o-indep? s→c/login s→c/cancel = inj₂ refl
-    o-indep? c→a/pwd c→a/pwd = inj₂ refl
-    o-indep? a→s/auth a→s/auth = inj₂ refl
-    o-indep? s→c/cancel s→c/login = inj₂ refl
-    o-indep? s→c/cancel s→c/cancel = inj₂ refl
-    o-indep? c→a/quit c→a/quit = inj₂ refl
+  M : Session
+  M = (C ⇒ ⁅ A ⁆ ! passwd < val (v/nat 0) >∙ (S ⇐ A ？· (∅ v∷ v[]))) v∷ p/A v∷ v[]
 
-    o-snd≢rcv : ∀ {G G' α} → G -< α >-> G' → sender α ≢ receiver α
-    o-snd≢rcv () refl
+  M-typed : ⊢s[ Ρ ] M ∶ s₀
+  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
 
-    o-step-det : ∀ {G α G' G''} → TheLTS G α G' → TheLTS G α G'' → G' ≡ G''
-    o-step-det s→c/login s→c/login = refl
-    o-step-det c→a/pwd c→a/pwd = refl
-    o-step-det a→s/auth a→s/auth = refl
-    o-step-det s→c/cancel s→c/cancel = refl
-    o-step-det c→a/quit c→a/quit = refl
+  M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
+         → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
+                   × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
+  M-safe = safety Ρ M-typed
 
-    open _~_
-    ~≡ : ∀ G G' → G ~ G' → G ≡ G'
-    ~≡ f0 f0 b = refl
-    ~≡ f0 sx b with ~L b s→c/login
-    ... | _ , () , next-R
+-- {S,A} {C}: `A→S` is internal.  The server cancels; `A` hears `quit`.
+module SA∣C where
+  Ρ = byOwner own/SA∣C
+  open Over Ρ
+  open Global Ρ using (_-[_]->ᵍ_)
 
-    ~≡ f1 f0 b with ~L b c→a/pwd
-    ... | _ , () , next-R
-    ~≡ f1 f1 b = refl
-    ~≡ f1 ssx b with ~L b c→a/pwd
-    ... | _ , () , next-R
+  M : Session
+  M = (S ⇒ ⁅ C ⁆ ! cancel < val (v/nat 0) >∙ (A ⇐ C ？· (∅ v∷ ∅ v∷ v[]))) v∷ p/C v∷ v[]
 
-    ~≡ f2 f0 b with ~L b a→s/auth
-    ... | _ , () , next-R
-    ~≡ f2 f1 b with ~L b a→s/auth
-    ... | _ , () , next-R
-    ~≡ f2 f2 b = refl
-    ~≡ f2 sssx b with ~L b a→s/auth
-    ... | _ , () , next-R
+  M-typed : ⊢s[ Ρ ] M ∶ s₀
+  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
 
-    ~≡ f3 f0 b with ~R b s→c/login
-    ... | _ , () , next-R
-    ~≡ f3 f1 b with ~R b c→a/pwd
-    ... | _ , () , next-R
-    ~≡ f3 f2 b with ~R b a→s/auth
-    ... | _ , () , next-R
-    ~≡ f3 f3 b = refl
-    ~≡ f3 f4 b with ~R b c→a/quit
-    ... | _ , () , _
+  M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
+         → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
+                   × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
+  M-safe = safety Ρ M-typed
 
-    ~≡ f4 f0  b with ~R b s→c/login
-    ... | _ , () , next-R
-    ~≡ f4 f1  b with ~R b c→a/pwd
-    ... | _ , () , next-R
-    ~≡ f4 f2  b with ~R b a→s/auth
-    ... | _ ,  () , next-R
-    ~≡ f4 f3  b with ~L b c→a/quit
-    ... | _ , () , _
-    ~≡ f4 f4 b = refl
+-- {S} {C,A}: `C→A` is internal; on `login` the block reports to `S`.
+module S∣CA where
+  Ρ = byOwner own/S∣CA
+  open Over Ρ
+  open Global Ρ using (_-[_]->ᵍ_)
 
-    o-~stepback : ∀ {α} {G0} {G1} {G1'} →
-                G1 ~ G1' →
-                G0 -< α >-> G1 → ∃-syntax (λ G0' → (G0 ~ G0') × (G0' -< α >-> G1'))
-    o-~stepback {G0 = G0} b st with ~≡ _ _ b
-    ... | refl = G0 , ~refl , st
+  M : Session
+  M = p/S v∷ (C ⇐ S ？· ((A ⇒ ⁅ S ⁆ ! here < val (v/bool true) >∙ ∅) v∷ ∅ v∷ v[])) v∷ v[]
 
-    o-diamond : ∀ {G} {α} {G₁} {α'} {G₂} →
-              G -< α >-> G₁ → G -< α' >-> G₂ →
-              ((proj₁ α) ⋔ (proj₁  α')) →
-              ∃-syntax (λ G' → (G₁ -< α' >-> G') × (G₂ -< α >-> G'))
-    o-diamond s→c/login s→c/login   f = ⊥-elim (f (inj₂ (∈R refl)))
-    o-diamond s→c/login s→c/cancel  f = ⊥-elim (f (inj₂ (∈R refl)))
-    o-diamond c→a/pwd c→a/pwd       f = ⊥-elim (f (inj₂ (∈R refl)))
-    o-diamond a→s/auth a→s/auth     f = ⊥-elim (f (inj₂ (∈R refl)))
-    o-diamond s→c/cancel s→c/login  f = ⊥-elim (f (inj₂ (∈R refl)))
-    o-diamond s→c/cancel s→c/cancel f = ⊥-elim (f (inj₂ (∈R refl)))
-    o-diamond c→a/quit c→a/quit f = ⊥-elim (f (inj₂ (∈R refl)))
+  M-typed : ⊢s[ Ρ ] M ∶ s₀
+  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
 
-    diamond : ∀ {G} {α} {G₁} {α'} {G₂} →
-              G -< α >-> G₁ → G -< α' >-> G₂ →
-              α ∥ α' →
-              ∃-syntax (λ G' → (G₁ -< α' >-> G') × (G₂ -< α >-> G'))
-    diamond s→c/login  s→c/login  (ii-≡snd refl x₃) = ⊥-elim (x₃ refl)
-    diamond s→c/login  s→c/cancel (ii-≡snd refl x₃) = ⊥-elim (x₃ refl)
-    diamond c→a/pwd c→a/pwd       (ii-≡snd refl x₃) = ⊥-elim (x₃ refl)
-    diamond a→s/auth a→s/auth     (ii-≡snd refl x₃) = ⊥-elim (x₃ refl)
-    diamond s→c/cancel s→c/login  (ii-≡snd refl x₃) = ⊥-elim (x₃ refl)
-    diamond s→c/cancel s→c/cancel (ii-≡snd refl x₃) = ⊥-elim (x₃ refl)
-    diamond c→a/quit c→a/quit (ii-≡snd refl x₃) = ⊥-elim (x₃ refl)
-    diamond x x₁ (ii-disj x₂) = o-diamond x x₁ x₂
+  M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
+         → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
+                   × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
+  M-safe = safety Ρ M-typed
 
-    o-cond-comm : ∀ {hα} {i j : Fin (suc (nchoices hα))}
-                      {α'} {G} {G'} {Gᵢ} {Gⱼ'} →
-                    hα ∥ₕ (proj₁ α') →
-                    G -< α' >-> G' →
-                    G -< hα , i >-> Gᵢ →
-                    G' -< hα , j >-> Gⱼ' → ∃-syntax (_-<_>->_ G (hα , j))
-    o-cond-comm x () s→c/login s→c/login
-    o-cond-comm x () s→c/login s→c/cancel
-    o-cond-comm x () c→a/pwd c→a/pwd
-    o-cond-comm x () c→a/pwd c→a/quit
-    o-cond-comm x () a→s/auth a→s/auth
-    o-cond-comm x () s→c/cancel s→c/login
-    o-cond-comm x () s→c/cancel s→c/cancel
-    o-cond-comm x () c→a/quit c→a/pwd
-    o-cond-comm x () c→a/quit c→a/quit
+-- {S,C,A}: everything is internal.
+module SCA where
+  Ρ : Assignment 1
+  Ρ = byOwner λ _ → zero
+  open Over Ρ
+  open Global Ρ using (_-[_]->ᵍ_)
 
-    OAuth2-Properties : BT-Prop OAuth2Theory
-    OAuth2-Properties .BT-Prop.recv-act-eq x x₁ x₂ with o-indep? x x₁
-    ... | inj₁ ii = ⊥-elim (ii (inj₂ x₂))
-    ... | inj₂ refl = refl
-    OAuth2-Properties .BT-Prop.snd≢rcv = o-snd≢rcv
-    OAuth2-Properties .BT-Prop.step-det = o-step-det
-    OAuth2-Properties .BT-Prop.~stepback = o-~stepback
-    OAuth2-Properties .BT-Prop.diamond = diamond
-    OAuth2-Properties .BT-Prop.cond-comm = o-cond-comm
+  M : Session
+  M = ∅ v∷ v[]
 
-    OAuth2-Extra : BT-Extra OAuth2Theory
-    OAuth2-Extra .BT-Extra.can-step? = can-step?
+  M-typed : ⊢s[ Ρ ] M ∶ s₀
+  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
 
-  open Behaviours
-  open Definitions.MPST Behaviours.OAuth2-Properties
-  open Definitions.MPST-Extra Behaviours.OAuth2-Properties Behaviours.OAuth2-Extra
-
-  sorts/S : Vec Sort 2
-  sorts/S = s/nat ∷ s/nat ∷ []
-
-  p/S : Proc 0 0
-  p/S = C ! _ , cancel < val (v/nat 0) >∙ ∅
-
-  P∉s3 : ∀ {P} → P ∈T s3 → ⊥
-  P∉s3 (BTheory.in/α () x₁)
-  P∉s3 (BTheory.in/later () x₁)
-
-  tt/end : ∀ {γ δ P}{Γ : Vec Sort γ}{Δ : Vec Behav δ}
-    → Γ & Δ / s3 ↑ P ⊢p< ng > ∅
-  tt/end = t/end P∉s3
-
-  S∉s4 : S ∈T s4 → ⊥
-  S∉s4 (in/α c→a/quit (∈S ()))
-  S∉s4 (in/α c→a/quit (∈R ()))
-  S∉s4 (in/later c→a/quit x) = P∉s3 x
-
-  t/S : [] & [] / s0 ↑ S ⊢p< ng > p/S
-  t/S = t/send s→c/cancel  (te/val tv/nat) (t/end S∉s4)
-
-  p/C : Proc 0 0
-  p/C = Σ S ？[ sorts/S ]·
-          ( A ! _ , passwd < val (v/nat 0) >∙ ∅
-          ∷ A ! _ , quit < val (v/bool true) >∙ ∅
-          ∷ [])
-
-
-  C∉s2 : C ∈T s2 → ⊥
-  C∉s2 (BTheory.in/α a→s/auth (∈S ()))
-  C∉s2 (BTheory.in/α a→s/auth (∈R ()))
-  C∉s2 (BTheory.in/later a→s/auth x₁) = P∉s3 x₁
-
-  t/C : [] & [] / s0 ↑ C ⊢p< ng > p/C
-  t/C = t/recv R[ s→c/login ]
-          (λ{ s→c/login → t/send c→a/pwd  (te/val tv/nat) (t/end C∉s2)
-            ; s→c/cancel → t/send c→a/quit  (te/val tv/bool) (t/end P∉s3)
-            })
-
-  p/A : Proc 0 0
-  p/A = Σ C ？[ s/nat ∷ s/bool ∷ [] ]·
-          ( S ! zero , zero < val (v/bool true) >∙ ∅
-          ∷ ∅
-          ∷ [])
-
-  c0AC : Causal? s0 A C
-  c0AC BTheory.■ _ _ BTheory.■ () x₁
-  c0AC BTheory.■ _ _ (s→c/login BTheory.► tr) x ()
-  c0AC BTheory.■ _ _ (s→c/cancel BTheory.► tr) x ()
-  c0AC (s→c/login BTheory.► c→a/pwd BTheory.► tr) () _ tr' x x₁
-  c0AC (s→c/cancel BTheory.► c→a/quit BTheory.► tr) () _ tr' x x₁
-
-  a0A : Active? s0 A
-  a0A = λ{ BTheory.■ _ → Active (s→c/login ► ■)
-        ; (s→c/login BTheory.► BTheory.■) _ → Active ■
-        ; (s→c/cancel BTheory.► BTheory.■) _ → Active ■
-        ; (s→c/login BTheory.► c→a/pwd BTheory.► _) ()
-        ; (s→c/cancel BTheory.► c→a/quit BTheory.► tr) ()
-        }
-
-  t/A : [] & [] / s0 ↑ A ⊢p< ng > p/A
-  t/A = dt/skip C c0AC a0A
-        λ{ (s→c/login BTheory.► BTheory.■) → t/recv R[ c→a/pwd ] (λ{ c→a/pwd → t/send a→s/auth (te/val tv/bool) tt/end})
-        ; (s→c/cancel BTheory.► BTheory.■) → t/recv R[ c→a/quit ] (λ{ c→a/quit → tt/end })
-        }
+  M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
+         → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
+                   × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
+  M-safe = safety Ρ M-typed

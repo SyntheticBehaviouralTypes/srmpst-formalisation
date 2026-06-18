@@ -1,0 +1,1038 @@
+-- ╔════════════════════════════════════════════════════════════════╗
+-- ║  NOT COMPILABLE.  KEPT FOR THE RECORD ONLY.                     ║
+-- ║                                                                 ║
+-- ║  The `.stale` extension is deliberate: this file must NOT be    ║
+-- ║  type-checked, and is not in any ROOTS list.                    ║
+-- ╚════════════════════════════════════════════════════════════════╝
+--
+-- Written against the PRE-`blocked/rec` algorithmic judgment, i.e. when
+-- `⊢a` had `a/act` + a top-level `a/rec` carrying one common anchor.
+-- Every name it uses was renamed or removed on 2026-08-04:
+--
+--     _&_⊢act_∶_ → _&_⊢blocked_∶_       a/act → a/skip
+--     act/send   → blocked/send          act/recv → blocked/recv
+--     act/var    → blocked/var           a/rec  → blocked/rec  (moved
+--                                        INSIDE the leaf family)
+--
+-- WHAT IS WORTH SALVAGING.  `Ex6` is the counterexample that forced that
+-- refactor: a well-behaved graph
+--
+--     G --B⟶D--> L,  L --A⟶B--> M,
+--     M --B⟶C⟨0⟩--> L,  M --B⟶C⟨1⟩--> H,  H --A⟶B--> H
+--
+-- carrying BOTH
+--
+--     recAtG : v[] & v[] ⊢p A ◂ rec (B ! 0 ∙ v 0) ∶ G
+--     no-alg : ¬ (v[] & v[] ⊢a A ◂ rec (B ! 0 ∙ v 0) ∶ G)
+--
+-- i.e. `⊢a` WAS incomplete for `⊢p`.  Under the new judgment `no-alg`
+-- should no longer be provable — `blocked/rec` lets the single leaf be
+-- anchored at M while the tree is rooted at G — and re-deriving `Ex6`
+-- positively is the test of whether the refactor actually fixes the
+-- incompleteness.  Ex1–Ex5 are the well-behaved shapes where the anchor
+-- COULD be moved, kept as contrast.
+--
+-- Also worth keeping: the recipe near the top for pinning the implicits
+-- (`skip/step {G' = …}`, `t/send {I}{G′}{S}`, the send's label arity in
+-- the process, `skip/one {G′}{α}`) without which the adjacency decision
+-- will not reduce, and the `step⇒listed` / `here refl` / `there ()`
+-- idiom for discharging `skip/step`'s "covers every successor".
+
+{-# OPTIONS --guardedness #-}
+module Tests.PushRecDerivations where
+
+open import Data.Nat using (ℕ; _+_)
+open import Data.Fin using (Fin; zero; suc)
+open import Data.Vec using (Vec) renaming ([] to v[]; _∷_ to _v∷_)
+open import Data.List using ([]; _∷_)
+open import Data.List.Membership.Propositional using (_∈_)
+open import Data.List.Relation.Unary.Any using (here; there)
+open import Data.Product using (_,_)
+open import Data.Sum using (_⊎_; inj₁; inj₂)
+open import Data.List.Relation.Unary.All using () renaming (_∷_ to _a∷_)
+open import Data.Empty using (⊥-elim)
+open import Data.Unit using (tt)
+open import Relation.Binary.PropositionalEquality using (_≡_; refl)
+open import Relation.Nullary using (¬_)
+open import Relation.Nullary.Decidable using (toWitness; toWitnessFalse)
+
+open import Definitions.Expr using (s/unit; val; v/unit; te/val; tv/unit)
+import Definitions.Typing as Typing
+import Check.Core
+import Definitions.Typing.Algorithmic
+
+open import Definitions.Graph.Algebra 4
+open import Definitions.Graph.Core 4 using (State; graphTheory; edges; step⇒listed; listed⇒step)
+open import Definitions.Graph.Decision 4 using (wellBehaved?)
+open import Definitions.Actions 4 using (Action; _⟶_; _#_) renaming (_<_> to mkChoice)
+
+A B C D : Fin 4
+A = zero
+B = suc zero
+C = suc (suc zero)
+D = suc (suc (suc zero))
+
+-- Every example below lives in its own module so it can `open` its own
+-- `Typing.MPST wb` unqualified without the names colliding.
+--
+-- Recipe, learned the hard way (all four are needed or the adjacency
+-- decision cannot reduce and you get an unreadable `T (isYes …)`
+-- constraint — NOT a violated property, just unsolved implicits):
+--   * `skip/step {α = …} {G' = …}`   (ASCII apostrophe)
+--   * `t/send`/`act/send` `{I = 0} {G′ = …} {S = …}`
+--   * the send's label arity in the PROCESS: `B ! (zero {0}) < … >`
+--   * `skip/one {α = …}`
+-- and `skip/step`'s "covers every successor" obligation is discharged by
+-- reflecting the step back into the adjacency list with `step⇒listed`,
+-- then `here refl` / `there ()`.
+
+-- ════════════════════════════════════════════════════════════════
+-- EX 1 — no off-path anchor.  G --B⟶C--> L, L --A⟶B--> L.
+-- ⊢p: yes.   ⊢a: YES — refutation fails, `algAtG` is the witness.
+-- Reason: the anchor may be taken to be G itself; the body's `v 0`
+-- resolves because G reaches L by the very step the skip tree took.
+-- ════════════════════════════════════════════════════════════════
+module Ex1 where
+
+  -- G=0  L=1   (2 = ended)
+  g₁ : OpenGraph 0
+  g₁ = openGraph 2 (node zero)
+    ( ( ((B ⟶ C # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
+    v∷ ( ((A ⟶ B # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
+    v∷ v[]
+    )
+
+  G₁ = underlying (compile g₁)
+
+  wb₁ : Typing.WellBehaved (graphTheory G₁)
+  wb₁ = toWitness {a? = wellBehaved? G₁} tt
+
+  open module M₁ = Typing.MPST wb₁ hiding (Action; _⟶_; _#_; _<_>)
+  open Check.Core.Processes 4 using (module GraphChecker)
+  module K₁ = GraphChecker G₁ wb₁
+  open module Alg₁ = Definitions.Typing.Algorithmic wb₁
+    using (_&_⊢a_∶_; _&_⊢act_∶_; a/act; a/if; a/rec; a/end; act/send; act/recv; act/var)
+
+  G L : State G₁
+  G = zero
+  L = suc zero
+
+  body : Proc 0 1
+  body = B ! (zero {0}) < val v/unit >∙ v zero
+
+  prog : Proc 0 0
+  prog = rec body
+
+  -- ⊢p: the body types at L, anchored at L
+  bodyAtL : v[] & (L v∷ v[]) ⊢p A ◂ body ∶ L
+  bodyAtL = t/send {I = 0} {G' = L} {S = s/unit} (listed⇒step {G = G₁} {s = L} (here refl)) (te/val tv/unit) (t/var ~refl)
+
+  -- ⊢p: the rec types at L
+  recAtL : v[] & v[] ⊢p A ◂ prog ∶ L
+  recAtL = t/rec mg/send bodyAtL
+
+  naG : A not-active-in G
+  naG gr with step⇒listed {G = G₁} {s = G} gr
+  ... | here refl = (λ ()) , (λ ())
+  ... | there ()
+
+  -- ⊢p: t/unskip (empty), then the skip tree from G
+  recAtG : v[] & v[] ⊢p A ◂ prog ∶ G
+  recAtG =
+    t/skip (skip/step {α = B ⟶ C # mkChoice {nchoices = 0} zero s/unit} {G' = L}
+             (listed⇒step {G = G₁} {s = G} (here refl))
+             naG
+             (λ gr → cover (step⇒listed {G = G₁} {s = G} gr)))
+    where
+    cover :
+      ∀ {β G″} → (β , G″) ∈ edges G₁ G
+      → (v[] & v[] ⊢p_∶_) & (G v∷ v[]) ⊢skip A ◂ prog ∶ G″
+    cover (here refl) = skip/main (t/unskip skip/refl recAtL)
+    cover (there ())
+
+  -- (3) REFUTATION ATTEMPT.  It FAILS, and here is the witness of the
+  -- failure: the `⊢a` derivation exists, with the anchor at G itself.
+
+  G⇝L : G -[¬ A ]->* L
+  G⇝L = skip/one {α = B ⟶ C # mkChoice {nchoices = 0} zero s/unit} (listed⇒step {G = G₁} {s = G} (here refl)) ((λ ()) , (λ ()))
+
+  algAtG : v[] & v[] ⊢a A ◂ prog ∶ G
+  algAtG =
+    a/rec skip/refl mg/send
+      (a/act (skip/step {α = B ⟶ C # mkChoice {nchoices = 0} zero s/unit} {G' = L}
+                (listed⇒step {G = G₁} {s = G} (here refl)) naG
+                (λ gr → cover (step⇒listed {G = G₁} {s = G} gr))))
+    where
+    cover :
+      ∀ {β G″} → (β , G″) ∈ edges G₁ G
+      → (v[] & (G v∷ v[]) ⊢act_∶_) & (G v∷ v[]) ⊢skip A ◂ body ∶ G″
+    cover (here refl) =
+      skip/main
+        (act/send {I = 0} {G′ = L} {S = s/unit}
+          (listed⇒step {G = G₁} {s = L} (here refl)) (te/val tv/unit)
+          (a/act (skip/main (act/var G⇝L ~refl))))
+    cover (there ())
+
+-- ════════════════════════════════════════════════════════════════
+-- EX 2 — GENUINE OFF-PATH ANCHOR.
+--
+--     G --B⟶C--> L,   L --A⟶B--> M,   M --B⟶D--> L
+--
+-- The rec's anchor is M, and M is NOT ¬A-reachable from G: the only way
+-- out of L is the A-action itself, so R(G) = {G, L}.  The leaf of the
+-- skip tree sits at L and is `t/unskip (M ⇝ L) (t/rec … at M)`.
+-- ════════════════════════════════════════════════════════════════
+module Ex2 where
+
+  -- G=0  L=1  M=2   (3 = ended)
+  g : OpenGraph 0
+  g = openGraph 3 (node zero)
+    ( ( ((B ⟶ C # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
+    v∷ ( ((A ⟶ B # mkChoice {nchoices = 0} zero s/unit) , node (suc (suc zero))) ∷ [] )
+    v∷ ( ((B ⟶ D # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
+    v∷ v[]
+    )
+
+  Gr = underlying (compile g)
+
+  wb : Typing.WellBehaved (graphTheory Gr)
+  wb = toWitness {a? = wellBehaved? Gr} tt
+
+  open module M₂ = Typing.MPST wb hiding (Action; _⟶_; _#_; _<_>)
+  open Check.Core.Processes 4 using (module GraphChecker)
+  module K = GraphChecker Gr wb
+  open module Alg₂ = Definitions.Typing.Algorithmic wb
+    using (_&_⊢a_∶_; _&_⊢act_∶_; a/act; a/rec; act/send; act/var)
+
+  G L M : State Gr
+  G = zero
+  L = suc zero
+  M = suc (suc zero)
+
+  body : Proc 0 1
+  body = B ! (zero {0}) < val v/unit >∙ v zero
+
+  prog : Proc 0 0
+  prog = rec body
+
+  βBC βBD : Action
+  βBC = B ⟶ C # mkChoice {nchoices = 0} zero s/unit
+  βBD = B ⟶ D # mkChoice {nchoices = 0} zero s/unit
+
+  naG : A not-active-in G
+  naG gr with step⇒listed {G = Gr} {s = G} gr
+  ... | here refl = (λ ()) , (λ ())
+  ... | there ()
+
+  naM : A not-active-in M
+  naM gr with step⇒listed {G = Gr} {s = M} gr
+  ... | here refl = (λ ()) , (λ ())
+  ... | there ()
+
+  M⇝L : M -[¬ A ]->* L
+  M⇝L = skip/one {α = βBD} (listed⇒step {G = Gr} {s = M} (here refl)) ((λ ()) , (λ ()))
+
+  G⇝L : G -[¬ A ]->* L
+  G⇝L = skip/one {α = βBC} (listed⇒step {G = Gr} {s = G} (here refl)) ((λ ()) , (λ ()))
+
+  -- (2) ⊢p.  The rec types at M: skip M ⇝ L, send at L into M, and the
+  -- variable resolves at M itself (anchor M, empty witness).
+  bodyAtM : v[] & (M v∷ v[]) ⊢p A ◂ body ∶ M
+  bodyAtM =
+    t/skip (skip/step {α = βBD} {G' = L}
+             (listed⇒step {G = Gr} {s = M} (here refl)) naM
+             (λ gr → cover (step⇒listed {G = Gr} {s = M} gr)))
+    where
+    cover :
+      ∀ {β G″} → (β , G″) ∈ edges Gr M
+      → (v[] & (M v∷ v[]) ⊢p_∶_) & (M v∷ v[]) ⊢skip A ◂ body ∶ G″
+    cover (here refl) =
+      skip/main
+        (t/send {I = 0} {G' = M} {S = s/unit}
+          (listed⇒step {G = Gr} {s = L} (here refl)) (te/val tv/unit)
+          (t/var ~refl))
+    cover (there ())
+
+  recAtM : v[] & v[] ⊢p A ◂ prog ∶ M
+  recAtM = t/rec mg/send bodyAtM
+
+  recAtG : v[] & v[] ⊢p A ◂ prog ∶ G
+  recAtG =
+    t/skip (skip/step {α = βBC} {G' = L}
+             (listed⇒step {G = Gr} {s = G} (here refl)) naG
+             (λ gr → cover (step⇒listed {G = Gr} {s = G} gr)))
+    where
+    cover :
+      ∀ {β G″} → (β , G″) ∈ edges Gr G
+      → (v[] & v[] ⊢p_∶_) & (G v∷ v[]) ⊢skip A ◂ prog ∶ G″
+    cover (here refl) = skip/main (t/unskip M⇝L recAtM)
+    cover (there ())
+
+  -- (3) REFUTATION ATTEMPT — IT FAILS, and this is exactly why.
+  --
+  -- The anchor can still be taken to be G, even though G never reaches
+  -- the leaf's anchor M.  The body's variable is typed at M, but `a/act`
+  -- lets it SKIP FORWARD first: M --B⟶D--> L, and G does reach L.  So
+  -- the variable resolves against L instead of against M.
+  --
+  -- DISTILLED: an off-path anchor is not enough.  What would be needed
+  -- is a variable whose state cannot skip forward into R(G) at all — but
+  -- the leaf's anchor M had to reach the leaf L by ¬A steps in the first
+  -- place (that is what `t/unskip` means), and G reaches L too.  So the
+  -- forward skip from the variable always lands somewhere G can see.
+  algAtG : v[] & v[] ⊢a A ◂ prog ∶ G
+  algAtG =
+    a/rec skip/refl mg/send
+      (a/act (skip/step {α = βBC} {G' = L}
+                (listed⇒step {G = Gr} {s = G} (here refl)) naG
+                (λ gr → cover (step⇒listed {G = Gr} {s = G} gr))))
+    where
+    varAtM : v[] & (G v∷ v[]) ⊢a A ◂ v zero ∶ M
+    varAtM =
+      a/act (skip/step {α = βBD} {G' = L}
+               (listed⇒step {G = Gr} {s = M} (here refl)) naM
+               (λ gr → covM (step⇒listed {G = Gr} {s = M} gr)))
+      where
+      covM :
+        ∀ {β G″} → (β , G″) ∈ edges Gr M
+        → (v[] & (G v∷ v[]) ⊢act_∶_) & (M v∷ v[]) ⊢skip A ◂ v zero ∶ G″
+      covM (here refl) = skip/main (act/var G⇝L ~refl)
+      covM (there ())
+
+    cover :
+      ∀ {β G″} → (β , G″) ∈ edges Gr G
+      → (v[] & (G v∷ v[]) ⊢act_∶_) & (G v∷ v[]) ⊢skip A ◂ body ∶ G″
+    cover (here refl) =
+      skip/main
+        (act/send {I = 0} {G′ = M} {S = s/unit}
+          (listed⇒step {G = Gr} {s = L} (here refl)) (te/val tv/unit)
+          varAtM)
+    cover (there ())
+
+-- ════════════════════════════════════════════════════════════════
+-- EX 3 — TWO-STEP SKIP.  G --B⟶C--> L₁ --B⟶D--> L₂, L₂ --A⟶B--> L₂.
+-- Checks that the Ex-1 reasoning is not an artefact of a one-step tree.
+-- ⊢p: yes.  ⊢a: YES — anchor G again, the variable resolving through the
+-- two-step trace G ⇝ L₂.
+-- ════════════════════════════════════════════════════════════════
+module Ex3 where
+
+  -- G=0  L₁=1  L₂=2   (3 = ended)
+  g : OpenGraph 0
+  g = openGraph 3 (node zero)
+    ( ( ((B ⟶ C # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
+    v∷ ( ((B ⟶ D # mkChoice {nchoices = 0} zero s/unit) , node (suc (suc zero))) ∷ [] )
+    v∷ ( ((A ⟶ B # mkChoice {nchoices = 0} zero s/unit) , node (suc (suc zero))) ∷ [] )
+    v∷ v[]
+    )
+
+  Gr = underlying (compile g)
+
+  wb : Typing.WellBehaved (graphTheory Gr)
+  wb = toWitness {a? = wellBehaved? Gr} tt
+
+  open module M₃ = Typing.MPST wb hiding (Action; _⟶_; _#_; _<_>)
+  open module Alg₃ = Definitions.Typing.Algorithmic wb
+    using (_&_⊢a_∶_; _&_⊢act_∶_; a/act; a/rec; act/send; act/var)
+
+  G L₁ L₂ : State Gr
+  G  = zero
+  L₁ = suc zero
+  L₂ = suc (suc zero)
+
+  body : Proc 0 1
+  body = B ! (zero {0}) < val v/unit >∙ v zero
+
+  prog : Proc 0 0
+  prog = rec body
+
+  βBC βBD : Action
+  βBC = B ⟶ C # mkChoice {nchoices = 0} zero s/unit
+  βBD = B ⟶ D # mkChoice {nchoices = 0} zero s/unit
+
+  naG : A not-active-in G
+  naG gr with step⇒listed {G = Gr} {s = G} gr
+  ... | here refl = (λ ()) , (λ ())
+  ... | there ()
+
+  naL₁ : A not-active-in L₁
+  naL₁ gr with step⇒listed {G = Gr} {s = L₁} gr
+  ... | here refl = (λ ()) , (λ ())
+  ... | there ()
+
+  G⇝L₂ : G -[¬ A ]->* L₂
+  G⇝L₂ =
+    skip/cat (skip/one {G′ = L₁} {α = βBC}
+                (listed⇒step {G = Gr} {s = G} (here refl)) ((λ ()) , (λ ())))
+             (skip/one {G′ = L₂} {α = βBD}
+                (listed⇒step {G = Gr} {s = L₁} (here refl)) ((λ ()) , (λ ())))
+
+  bodyAtL₂ : v[] & (L₂ v∷ v[]) ⊢p A ◂ body ∶ L₂
+  bodyAtL₂ =
+    t/send {I = 0} {G' = L₂} {S = s/unit}
+      (listed⇒step {G = Gr} {s = L₂} (here refl)) (te/val tv/unit) (t/var ~refl)
+
+  recAtL₂ : v[] & v[] ⊢p A ◂ prog ∶ L₂
+  recAtL₂ = t/rec mg/send bodyAtL₂
+
+  -- (2) ⊢p at G: a two-step skip tree, leaf `t/unskip skip/refl (t/rec …)`
+  recAtG : v[] & v[] ⊢p A ◂ prog ∶ G
+  recAtG =
+    t/skip (skip/step {α = βBC} {G' = L₁}
+             (listed⇒step {G = Gr} {s = G} (here refl)) naG
+             (λ gr → cov₀ (step⇒listed {G = Gr} {s = G} gr)))
+    where
+    cov₁ :
+      ∀ {β G″} → (β , G″) ∈ edges Gr L₁
+      → (v[] & v[] ⊢p_∶_) & (L₁ v∷ G v∷ v[]) ⊢skip A ◂ prog ∶ G″
+    cov₁ (here refl) = skip/main (t/unskip skip/refl recAtL₂)
+    cov₁ (there ())
+
+    cov₀ :
+      ∀ {β G″} → (β , G″) ∈ edges Gr G
+      → (v[] & v[] ⊢p_∶_) & (G v∷ v[]) ⊢skip A ◂ prog ∶ G″
+    cov₀ (here refl) =
+      skip/step {α = βBD} {G' = L₂}
+        (listed⇒step {G = Gr} {s = L₁} (here refl)) naL₁
+        (λ gr → cov₁ (step⇒listed {G = Gr} {s = L₁} gr))
+    cov₀ (there ())
+
+  -- (3) REFUTATION ATTEMPT — fails; anchor G, variable resolves via G⇝L₂.
+  algAtG : v[] & v[] ⊢a A ◂ prog ∶ G
+  algAtG =
+    a/rec skip/refl mg/send
+      (a/act (skip/step {α = βBC} {G' = L₁}
+                (listed⇒step {G = Gr} {s = G} (here refl)) naG
+                (λ gr → cov₀ (step⇒listed {G = Gr} {s = G} gr))))
+    where
+    cov₁ :
+      ∀ {β G″} → (β , G″) ∈ edges Gr L₁
+      → (v[] & (G v∷ v[]) ⊢act_∶_) & (L₁ v∷ G v∷ v[]) ⊢skip A ◂ body ∶ G″
+    cov₁ (here refl) =
+      skip/main
+        (act/send {I = 0} {G′ = L₂} {S = s/unit}
+          (listed⇒step {G = Gr} {s = L₂} (here refl)) (te/val tv/unit)
+          (a/act (skip/main (act/var G⇝L₂ ~refl))))
+    cov₁ (there ())
+
+    cov₀ :
+      ∀ {β G″} → (β , G″) ∈ edges Gr G
+      → (v[] & (G v∷ v[]) ⊢act_∶_) & (G v∷ v[]) ⊢skip A ◂ body ∶ G″
+    cov₀ (here refl) =
+      skip/step {α = βBD} {G' = L₂}
+        (listed⇒step {G = Gr} {s = L₁} (here refl)) naL₁
+        (λ gr → cov₁ (step⇒listed {G = Gr} {s = L₁} gr))
+    cov₀ (there ())
+
+-- ════════════════════════════════════════════════════════════════
+-- EX 4 — OFF-PATH ANCHOR, TWO STEPS OFF.
+--
+--   G --B⟶C--> L,  L --A⟶B--> M,  M --B⟶D--> N,  N --B⟶C--> L
+--
+-- The rec anchors at N, which is two ¬A steps past the A-action, so
+-- again N ∉ R(G) = {G, L}.  The variable at M now needs TWO forward
+-- skips (M ⇝ N ⇝ L) before it can resolve.
+-- ⊢p: yes.  ⊢a: YES — same collapse as Ex 2, one step deeper.
+-- ════════════════════════════════════════════════════════════════
+module Ex4 where
+
+  -- G=0  L=1  M=2  N=3   (4 = ended)
+  g : OpenGraph 0
+  g = openGraph 4 (node zero)
+    ( ( ((B ⟶ C # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
+    v∷ ( ((A ⟶ B # mkChoice {nchoices = 0} zero s/unit) , node (suc (suc zero))) ∷ [] )
+    v∷ ( ((B ⟶ D # mkChoice {nchoices = 0} zero s/unit) , node (suc (suc (suc zero)))) ∷ [] )
+    v∷ ( ((B ⟶ D # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
+    v∷ v[]
+    )
+
+  Gr = underlying (compile g)
+
+  wb : Typing.WellBehaved (graphTheory Gr)
+  wb = toWitness {a? = wellBehaved? Gr} tt
+
+  open module M₄ = Typing.MPST wb hiding (Action; _⟶_; _#_; _<_>)
+  open module Alg₄ = Definitions.Typing.Algorithmic wb
+    using (_&_⊢a_∶_; _&_⊢act_∶_; a/act; a/rec; act/send; act/var)
+
+  G L M N : State Gr
+  G = zero
+  L = suc zero
+  M = suc (suc zero)
+  N = suc (suc (suc zero))
+
+  body : Proc 0 1
+  body = B ! (zero {0}) < val v/unit >∙ v zero
+
+  prog : Proc 0 0
+  prog = rec body
+
+  βBC βBD : Action
+  βBC = B ⟶ C # mkChoice {nchoices = 0} zero s/unit
+  βBD = B ⟶ D # mkChoice {nchoices = 0} zero s/unit
+
+  naG : A not-active-in G
+  naG gr with step⇒listed {G = Gr} {s = G} gr
+  ... | here refl = (λ ()) , (λ ())
+  ... | there ()
+
+  naM : A not-active-in M
+  naM gr with step⇒listed {G = Gr} {s = M} gr
+  ... | here refl = (λ ()) , (λ ())
+  ... | there ()
+
+  naN : A not-active-in N
+  naN gr with step⇒listed {G = Gr} {s = N} gr
+  ... | here refl = (λ ()) , (λ ())
+  ... | there ()
+
+  N⇝L : N -[¬ A ]->* L
+  N⇝L = skip/one {G′ = L} {α = βBD} (listed⇒step {G = Gr} {s = N} (here refl)) ((λ ()) , (λ ()))
+
+  G⇝L : G -[¬ A ]->* L
+  G⇝L = skip/one {G′ = L} {α = βBC} (listed⇒step {G = Gr} {s = G} (here refl)) ((λ ()) , (λ ()))
+
+  -- (2) ⊢p.  The rec types at N: skip N ⇝ L, send at L into M, then the
+  -- variable skips M ⇝ N and resolves against N itself.
+  bodyAtN : v[] & (N v∷ v[]) ⊢p A ◂ body ∶ N
+  bodyAtN =
+    t/skip (skip/step {α = βBD} {G' = L}
+             (listed⇒step {G = Gr} {s = N} (here refl)) naN
+             (λ gr → cover (step⇒listed {G = Gr} {s = N} gr)))
+    where
+    varAtM : v[] & (N v∷ v[]) ⊢p A ◂ v zero ∶ M
+    varAtM =
+      t/skip (skip/step {α = βBD} {G' = N}
+               (listed⇒step {G = Gr} {s = M} (here refl)) naM
+               (λ gr → covM (step⇒listed {G = Gr} {s = M} gr)))
+      where
+      covM :
+        ∀ {β G″} → (β , G″) ∈ edges Gr M
+        → (v[] & (N v∷ v[]) ⊢p_∶_) & (M v∷ v[]) ⊢skip A ◂ v zero ∶ G″
+      covM (here refl) = skip/main (t/var ~refl)
+      covM (there ())
+
+    cover :
+      ∀ {β G″} → (β , G″) ∈ edges Gr N
+      → (v[] & (N v∷ v[]) ⊢p_∶_) & (N v∷ v[]) ⊢skip A ◂ body ∶ G″
+    cover (here refl) =
+      skip/main
+        (t/send {I = 0} {G' = M} {S = s/unit}
+          (listed⇒step {G = Gr} {s = L} (here refl)) (te/val tv/unit) varAtM)
+    cover (there ())
+
+  recAtN : v[] & v[] ⊢p A ◂ prog ∶ N
+  recAtN = t/rec mg/send bodyAtN
+
+  recAtG : v[] & v[] ⊢p A ◂ prog ∶ G
+  recAtG =
+    t/skip (skip/step {α = βBC} {G' = L}
+             (listed⇒step {G = Gr} {s = G} (here refl)) naG
+             (λ gr → cover (step⇒listed {G = Gr} {s = G} gr)))
+    where
+    cover :
+      ∀ {β G″} → (β , G″) ∈ edges Gr G
+      → (v[] & v[] ⊢p_∶_) & (G v∷ v[]) ⊢skip A ◂ prog ∶ G″
+    cover (here refl) = skip/main (t/unskip N⇝L recAtN)
+    cover (there ())
+
+  -- (3) REFUTATION ATTEMPT — fails again.  With anchor G the variable
+  -- skips M ⇝ N ⇝ L and resolves against L, which G reaches directly.
+  M⇝L : M -[¬ A ]->* L
+  M⇝L = skip/cat (skip/one {G′ = N} {α = βBD}
+                    (listed⇒step {G = Gr} {s = M} (here refl)) ((λ ()) , (λ ()))) N⇝L
+
+  algAtG : v[] & v[] ⊢a A ◂ prog ∶ G
+  algAtG =
+    a/rec skip/refl mg/send
+      (a/act (skip/step {α = βBC} {G' = L}
+                (listed⇒step {G = Gr} {s = G} (here refl)) naG
+                (λ gr → cover (step⇒listed {G = Gr} {s = G} gr))))
+    where
+    varAtM : v[] & (G v∷ v[]) ⊢a A ◂ v zero ∶ M
+    varAtM =
+      a/act (skip/step {α = βBD} {G' = N}
+               (listed⇒step {G = Gr} {s = M} (here refl)) naM
+               (λ gr → covM (step⇒listed {G = Gr} {s = M} gr)))
+      where
+      covN :
+        ∀ {β G″} → (β , G″) ∈ edges Gr N
+        → (v[] & (G v∷ v[]) ⊢act_∶_) & (N v∷ M v∷ v[]) ⊢skip A ◂ v zero ∶ G″
+      covN (here refl) = skip/main (act/var G⇝L ~refl)
+      covN (there ())
+
+      covM :
+        ∀ {β G″} → (β , G″) ∈ edges Gr M
+        → (v[] & (G v∷ v[]) ⊢act_∶_) & (M v∷ v[]) ⊢skip A ◂ v zero ∶ G″
+      covM (here refl) =
+        skip/step {α = βBD} {G' = L}
+          (listed⇒step {G = Gr} {s = N} (here refl)) naN
+          (λ gr → covN (step⇒listed {G = Gr} {s = N} gr))
+      covM (there ())
+
+    cover :
+      ∀ {β G″} → (β , G″) ∈ edges Gr G
+      → (v[] & (G v∷ v[]) ⊢act_∶_) & (G v∷ v[]) ⊢skip A ◂ body ∶ G″
+    cover (here refl) =
+      skip/main
+        (act/send {I = 0} {G′ = M} {S = s/unit}
+          (listed⇒step {G = Gr} {s = L} (here refl)) (te/val tv/unit) varAtM)
+    cover (there ())
+
+-- ════════════════════════════════════════════════════════════════
+-- EX 5 — BRANCHING TREE, TWO LEAVES.  This is the shape `a/tree`'s
+-- `rec` case actually faces: one tree, several leaves, each with its
+-- own `t/unskip` trace.
+--
+--   G --B⟶C⟨0⟩--> L₁,  G --B⟶C⟨1⟩--> L₂
+--   L₁ --A⟶B--> L₁,     L₂ --B⟶D--> L₁
+--
+-- Leaf at L₁ has an EMPTY unskip; leaf at L₂ has a non-empty one
+-- (L₂ ⇝ L₁).  Both anchor at L₁.
+-- ⊢p: yes.  ⊢a: YES — anchor G serves both branches at once.
+-- ════════════════════════════════════════════════════════════════
+module Ex5 where
+
+  -- G=0  L₁=1  L₂=2   (3 = ended)
+  g : OpenGraph 0
+  g = openGraph 3 (node zero)
+    ( ( ((B ⟶ C # mkChoice {nchoices = 1} zero s/unit) , node (suc zero))
+      ∷ ((B ⟶ C # mkChoice {nchoices = 1} (suc zero) s/unit) , node (suc (suc zero))) ∷ [] )
+    v∷ ( ((A ⟶ B # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
+    v∷ ( ((B ⟶ D # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
+    v∷ v[]
+    )
+
+  Gr = underlying (compile g)
+
+  wb : Typing.WellBehaved (graphTheory Gr)
+  wb = toWitness {a? = wellBehaved? Gr} tt
+
+  open module M₅ = Typing.MPST wb hiding (Action; _⟶_; _#_; _<_>)
+  open module Alg₅ = Definitions.Typing.Algorithmic wb
+    using (_&_⊢a_∶_; _&_⊢act_∶_; a/act; a/rec; act/send; act/var)
+
+  G L₁ L₂ : State Gr
+  G  = zero
+  L₁ = suc zero
+  L₂ = suc (suc zero)
+
+  body : Proc 0 1
+  body = B ! (zero {0}) < val v/unit >∙ v zero
+
+  prog : Proc 0 0
+  prog = rec body
+
+  βBC₀ βBD : Action
+  βBC₀ = B ⟶ C # mkChoice {nchoices = 1} zero s/unit
+  βBD  = B ⟶ D # mkChoice {nchoices = 0} zero s/unit
+
+  naG : A not-active-in G
+  naG gr with step⇒listed {G = Gr} {s = G} gr
+  ... | here refl = (λ ()) , (λ ())
+  ... | there (here refl) = (λ ()) , (λ ())
+  ... | there (there ())
+
+  naL₂ : A not-active-in L₂
+  naL₂ gr with step⇒listed {G = Gr} {s = L₂} gr
+  ... | here refl = (λ ()) , (λ ())
+  ... | there ()
+
+  L₂⇝L₁ : L₂ -[¬ A ]->* L₁
+  L₂⇝L₁ = skip/one {G′ = L₁} {α = βBD}
+            (listed⇒step {G = Gr} {s = L₂} (here refl)) ((λ ()) , (λ ()))
+
+  G⇝L₁ : G -[¬ A ]->* L₁
+  G⇝L₁ = skip/one {G′ = L₁} {α = βBC₀}
+            (listed⇒step {G = Gr} {s = G} (here refl)) ((λ ()) , (λ ()))
+
+  bodyAtL₁ : v[] & (L₁ v∷ v[]) ⊢p A ◂ body ∶ L₁
+  bodyAtL₁ =
+    t/send {I = 0} {G' = L₁} {S = s/unit}
+      (listed⇒step {G = Gr} {s = L₁} (here refl)) (te/val tv/unit) (t/var ~refl)
+
+  recAtL₁ : v[] & v[] ⊢p A ◂ prog ∶ L₁
+  recAtL₁ = t/rec mg/send bodyAtL₁
+
+  -- (2) ⊢p: one tree, two leaves, two different unskip traces.
+  recAtG : v[] & v[] ⊢p A ◂ prog ∶ G
+  recAtG =
+    t/skip (skip/step {α = βBC₀} {G' = L₁}
+             (listed⇒step {G = Gr} {s = G} (here refl)) naG
+             (λ gr → cover (step⇒listed {G = Gr} {s = G} gr)))
+    where
+    cover :
+      ∀ {β G″} → (β , G″) ∈ edges Gr G
+      → (v[] & v[] ⊢p_∶_) & (G v∷ v[]) ⊢skip A ◂ prog ∶ G″
+    cover (here refl) = skip/main (t/unskip skip/refl recAtL₁)
+    cover (there (here refl)) =
+      skip/step {α = βBD} {G' = L₁}
+        (listed⇒step {G = Gr} {s = L₂} (here refl)) naL₂
+        (λ gr → covL₂ (step⇒listed {G = Gr} {s = L₂} gr))
+      where
+      covL₂ :
+        ∀ {β G″} → (β , G″) ∈ edges Gr L₂
+        → (v[] & v[] ⊢p_∶_) & (L₂ v∷ G v∷ v[]) ⊢skip A ◂ prog ∶ G″
+      covL₂ (here refl) = skip/main (t/unskip skip/refl recAtL₁)
+      covL₂ (there ())
+    cover (there (there ()))
+
+  -- (3) REFUTATION ATTEMPT — fails.  One anchor (G) serves both
+  -- branches: on the L₁ branch the variable resolves via G ⇝ L₁, and on
+  -- the L₂ branch it first skips L₂ ⇝ L₁ and resolves the same way.
+  algAtG : v[] & v[] ⊢a A ◂ prog ∶ G
+  algAtG =
+    a/rec skip/refl mg/send
+      (a/act (skip/step {α = βBC₀} {G' = L₁}
+                (listed⇒step {G = Gr} {s = G} (here refl)) naG
+                (λ gr → cover (step⇒listed {G = Gr} {s = G} gr))))
+    where
+    leafAtL₁ :
+      ∀ {ξ} {Ξ : Vec Behav ξ}
+      → (v[] & (G v∷ v[]) ⊢act_∶_) & Ξ ⊢skip A ◂ body ∶ L₁
+    leafAtL₁ =
+      skip/main
+        (act/send {I = 0} {G′ = L₁} {S = s/unit}
+          (listed⇒step {G = Gr} {s = L₁} (here refl)) (te/val tv/unit)
+          (a/act (skip/main (act/var G⇝L₁ ~refl))))
+
+    covL₂ :
+      ∀ {β G″} → (β , G″) ∈ edges Gr L₂
+      → (v[] & (G v∷ v[]) ⊢act_∶_) & (L₂ v∷ G v∷ v[]) ⊢skip A ◂ body ∶ G″
+    covL₂ (here refl) = leafAtL₁
+    covL₂ (there ())
+
+    cover :
+      ∀ {β G″} → (β , G″) ∈ edges Gr G
+      → (v[] & (G v∷ v[]) ⊢act_∶_) & (G v∷ v[]) ⊢skip A ◂ body ∶ G″
+    cover (here refl) = leafAtL₁
+    cover (there (here refl)) =
+      skip/step {α = βBD} {G' = L₁}
+        (listed⇒step {G = Gr} {s = L₂} (here refl)) naL₂
+        (λ gr → covL₂ (step⇒listed {G = Gr} {s = L₂} gr))
+    cover (there (there ()))
+
+-- ════════════════════════════════════════════════════════════════
+-- DISTILLED: WHY EVERY REFUTATION FAILED, AND WHY THE SKIP MOVES
+-- ════════════════════════════════════════════════════════════════
+--
+-- All five examples are well-behaved, all five have the
+-- `t/skip` → `t/unskip` → `t/rec` shape, and in all five the `⊢a`
+-- derivation EXISTS with the anchor taken to be the tree's root G.
+-- The reason is the same every time, and it is two facts:
+--
+-- (α) REACHABILITY ONLY GROWS BACKWARDS.  The leaf's anchor W must
+--     reach the leaf L by ¬P steps — that is what `t/unskip` asserts —
+--     and the tree gives G ⇝ L as well.  So
+--
+--         R(W) ⊆ {states on W's own path to L} ∪ R(L) ⊆ … and R(G) ⊇ R(L).
+--
+--     The ONLY states W has that G lacks are those strictly on W's
+--     prefix.  For the anchor to be un-movable, the body's variable
+--     would have to resolve against one of those and against nothing in
+--     R(G).
+--
+-- (β) THE VARIABLE CAN SKIP FORWARD FIRST.  `a/act` (and `t/skip`)
+--     allow a skip tree in front of the variable.  If the variable
+--     resolves against a prefix state W′, then W′ ⇝ L, so the variable
+--     can instead skip along that same trace and resolve against
+--     something in R(L) ⊆ R(G).  Ex 2 shows this at one step
+--     (M ⇝ L), Ex 4 at two (M ⇝ N ⇝ L).
+--
+-- Together: any witness available to the off-path anchor can be traded
+-- for one available to G, by pushing the variable forward along the very
+-- trace that made the anchor legal in the first place.
+--
+-- WHAT WOULD HAVE TO BREAK.  A counterexample needs a variable whose
+-- state cannot skip forward into R(G) at all.  Two attempts at that,
+-- both dead:
+--
+--   * Ex 4's first draft gave the anchor its own route back
+--     (N --B⟶C--> L).  That made N ~ G, and `stepback/~` rejected the
+--     graph: bisimilar states need matching predecessors, and G is the
+--     root.
+--   * A branching tree with two genuinely different anchors (Ex 5's
+--     natural form, L₁ and L₃ each looping on A ⟶ B) makes L₁ ~ L₃,
+--     and `stepback/~` rejects it for the same reason.
+--
+-- So the graph model actively suppresses distinct-but-bisimilar states,
+-- which is exactly the freedom a counterexample would need.  That is the
+-- strongest statement these five support: not a proof, but every escape
+-- route closes through `stepback/~` or through (β).
+--
+-- One more constraint that shaped every graph here: the first action of
+-- a skip must avoid A yet involve B, or `no-new-comm/step` demands that
+-- A ⟶ B already be available at the source.
+
+-- ════════════════════════════════════════════════════════════════
+-- EX 6 — NON-EMPTY VARIABLE WITNESS.  The case Ex 1–5 never exercise.
+--
+--   G --B⟶D--> L,  L --A⟶B--> M,
+--   M --B⟶C⟨0⟩--> L,   M --B⟶C⟨1⟩--> H,   H --A⟶B--> H
+--
+-- The anchor is M.  On the ⟨0⟩ branch the variable resolves against M
+-- itself (empty witness, as in Ex 1–5).  On the ⟨1⟩ branch it resolves
+-- against H via the NON-EMPTY witness M ⇝ H.
+--
+-- H is chosen so that (i) H is not ¬A-reachable from G — R(G) = {G, L} —
+-- and (ii) H CANNOT SKIP FORWARD at all, since its only action mentions
+-- A, so `na` fails at H.  That is the escape route (β) relied on, closed.
+--
+-- M's two edges must be two labels of ONE comm: different comms would be
+-- ⋄-independent and `step-diamond` would demand a square that is not
+-- there.
+-- ════════════════════════════════════════════════════════════════
+module Ex6 where
+
+  -- G=0  L=1  M=2  H=3   (4 = ended)
+  g : OpenGraph 0
+  g = openGraph 4 (node zero)
+    ( ( ((B ⟶ D # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
+    v∷ ( ((A ⟶ B # mkChoice {nchoices = 0} zero s/unit) , node (suc (suc zero))) ∷ [] )
+    v∷ ( ((B ⟶ C # mkChoice {nchoices = 1} zero s/unit) , node (suc zero))
+       ∷ ((B ⟶ C # mkChoice {nchoices = 1} (suc zero) s/unit) , node (suc (suc (suc zero)))) ∷ [] )
+    v∷ ( ((A ⟶ B # mkChoice {nchoices = 0} zero s/unit) , node (suc (suc (suc zero)))) ∷ [] )
+    v∷ v[]
+    )
+
+  Gr = underlying (compile g)
+
+  wb : Typing.WellBehaved (graphTheory Gr)
+  wb = toWitness {a? = wellBehaved? Gr} tt
+
+  open module M₆ = Typing.MPST wb hiding (Action; _⟶_; _#_; _<_>)
+  open Check.Core.Processes 4 using (module GraphChecker)
+  module K = GraphChecker Gr wb
+  open module Alg₆ = Definitions.Typing.Algorithmic wb
+    using (_&_⊢a_∶_; _&_⊢act_∶_; a/act; a/rec; act/send; act/var)
+
+  G L M H : State Gr
+  G = zero
+  L = suc zero
+  M = suc (suc zero)
+  H = suc (suc (suc zero))
+
+  body : Proc 0 1
+  body = B ! (zero {0}) < val v/unit >∙ v zero
+
+  prog : Proc 0 0
+  prog = rec body
+
+  βBD βBC₀ βBC₁ : Action
+  βBD  = B ⟶ D # mkChoice {nchoices = 0} zero s/unit
+  βBC₀ = B ⟶ C # mkChoice {nchoices = 1} zero s/unit
+  βBC₁ = B ⟶ C # mkChoice {nchoices = 1} (suc zero) s/unit
+
+  naG : A not-active-in G
+  naG gr with step⇒listed {G = Gr} {s = G} gr
+  ... | here refl = (λ ()) , (λ ())
+  ... | there ()
+
+  naM : A not-active-in M
+  naM gr with step⇒listed {G = Gr} {s = M} gr
+  ... | here refl = (λ ()) , (λ ())
+  ... | there (here refl) = (λ ()) , (λ ())
+  ... | there (there ())
+
+  M⇝L : M -[¬ A ]->* L
+  M⇝L = skip/one {G′ = L} {α = βBC₀}
+          (listed⇒step {G = Gr} {s = M} (here refl)) ((λ ()) , (λ ()))
+
+  M⇝H : M -[¬ A ]->* H
+  M⇝H = skip/one {G′ = H} {α = βBC₁}
+          (listed⇒step {G = Gr} {s = M} (there (here refl))) ((λ ()) , (λ ()))
+
+  G⇝L : G -[¬ A ]->* L
+  G⇝L = skip/one {G′ = L} {α = βBD}
+          (listed⇒step {G = Gr} {s = G} (here refl)) ((λ ()) , (λ ()))
+
+  -- (2) ⊢p.  Anchor M.  On the ⟨0⟩ branch the variable resolves at M
+  -- directly; on the ⟨1⟩ branch it is `t/unskip M⇝H (t/var ~refl)` — the
+  -- NON-EMPTY witness.
+  bodyAtM : v[] & (M v∷ v[]) ⊢p A ◂ body ∶ M
+  bodyAtM =
+    t/skip (skip/step {α = βBC₀} {G' = L}
+             (listed⇒step {G = Gr} {s = M} (here refl)) naM
+             (λ gr → cover (step⇒listed {G = Gr} {s = M} gr)))
+    where
+    cover :
+      ∀ {β G″} → (β , G″) ∈ edges Gr M
+      → (v[] & (M v∷ v[]) ⊢p_∶_) & (M v∷ v[]) ⊢skip A ◂ body ∶ G″
+    cover (here refl) =
+      skip/main
+        (t/send {I = 0} {G' = M} {S = s/unit}
+          (listed⇒step {G = Gr} {s = L} (here refl)) (te/val tv/unit)
+          (t/var ~refl))
+    cover (there (here refl)) =
+      skip/main
+        (t/send {I = 0} {G' = H} {S = s/unit}
+          (listed⇒step {G = Gr} {s = H} (here refl)) (te/val tv/unit)
+          (t/unskip M⇝H (t/var ~refl)))
+    cover (there (there ()))
+
+  recAtM : v[] & v[] ⊢p A ◂ prog ∶ M
+  recAtM = t/rec mg/send bodyAtM
+
+  recAtG : v[] & v[] ⊢p A ◂ prog ∶ G
+  recAtG =
+    t/skip (skip/step {α = βBD} {G' = L}
+             (listed⇒step {G = Gr} {s = G} (here refl)) naG
+             (λ gr → cover (step⇒listed {G = Gr} {s = G} gr)))
+    where
+    cover :
+      ∀ {β G″} → (β , G″) ∈ edges Gr G
+      → (v[] & v[] ⊢p_∶_) & (G v∷ v[]) ⊢skip A ◂ prog ∶ G″
+    cover (here refl) = skip/main (t/unskip M⇝L recAtM)
+    cover (there ())
+
+  -- (3) REFUTATION.  The three facts that close every route for `⊢a` at
+  -- G are decidable, so they are proved here rather than argued.
+
+  -- The variable's state H cannot SKIP FORWARD: its only action mentions
+  -- A, so `skip/step`'s `na` is unavailable.  This kills escape route (β).
+  H-cannot-skip : ¬ (A not-active-in H)
+  H-cannot-skip = toWitnessFalse {a? = K.na? A H} tt
+
+  -- …and H is bisimilar to NOTHING in R(G) = {G , L}, so `act/var`
+  -- cannot resolve it from the anchor G either.
+  G≁H : ¬ (G ~ H)
+  G≁H = toWitnessFalse {a? = K.bisim?~ G H} tt
+
+  L≁H : ¬ (L ~ H)
+  L≁H = toWitnessFalse {a? = K.bisim?~ L H} tt
+
+  -- For completeness: G cannot serve as an anchor by bisimilarity to M
+  -- either, so the variable at M really must be skipped forward, and the
+  -- ⟨1⟩ branch of that skip is what blocks.
+  G≁M : ¬ (G ~ M)
+  G≁M = toWitnessFalse {a? = K.bisim?~ G M} tt
+
+  L≁M : ¬ (L ~ M)
+  L≁M = toWitnessFalse {a? = K.bisim?~ L M} tt
+
+  -- WHY THIS IS A COUNTEREXAMPLE.
+  --
+  -- `recAtG` types `rec (B ! 0 ∙ v 0)` at G.  For `⊢a` at G:
+  --   * `a/rec`'s trace must run anchor ⇝ G, and G is the root with no
+  --     incoming edges, so the anchor can only be G itself;
+  --   * the body must find the send.  R(G) = {G , L}, and `na` fails at L
+  --     (its action mentions A), so the tree cannot skip past L: the send
+  --     is forced to be the one at L, landing at M;
+  --   * the variable is then at M with anchor G.  `act/var` needs
+  --     G ⇝ H′ ~ M — impossible by `G≁M` and `L≁M` — so it must skip;
+  --   * skipping at M is a TOTAL obligation over both labels.  The ⟨0⟩
+  --     branch is fine (lands at L, resolves by G⇝L).  The ⟨1⟩ branch
+  --     lands at H, where `act/var` is impossible (`G≁H`, `L≁H`) and
+  --     skipping is impossible (`H-cannot-skip`).
+  --
+  -- The ⊢p derivation avoids this because its anchor is M, not G, and M
+  -- reaches H directly — the non-empty witness `M ⇝ H`.  That witness is
+  -- exactly what cannot be rebuilt from G.
+  --
+  -- So the span formulation is NOT enough: `W ⇝ L` and `G ⇝ L` do not
+  -- let the anchor move when the variable resolves against a state OFF
+  -- the join path that cannot skip back onto it.
+
+  -- ── the actual refutation:  ⊢a at G  →  ⊥ ──────────────────────
+
+  naL : ¬ (A not-active-in L)
+  naL = toWitnessFalse {a? = K.na? A L} tt
+
+  G≁L : ¬ (G ~ L)
+  G≁L = toWitnessFalse {a? = K.bisim?~ G L} tt
+
+  M≁H : ¬ (M ~ H)
+  M≁H = toWitnessFalse {a? = K.bisim?~ M H} tt
+
+  -- nothing steps into G, so any ¬A trace into G is empty
+  noIntoG : ∀ {X β} → ¬ (X -< β >-> G)
+  noIntoG {zero} gr with step⇒listed {G = Gr} {s = zero} gr
+  ... | there ()
+  noIntoG {suc zero} gr with step⇒listed {G = Gr} {s = suc zero} gr
+  ... | there ()
+  noIntoG {suc (suc zero)} gr with step⇒listed {G = Gr} {s = suc (suc zero)} gr
+  ... | there (there ())
+  noIntoG {suc (suc (suc zero))} gr with step⇒listed {G = Gr} {s = suc (suc (suc zero))} gr
+  ... | there ()
+  noIntoG {suc (suc (suc (suc zero)))} gr with step⇒listed {G = Gr} {s = suc (suc (suc (suc zero)))} gr
+  ... | ()
+
+  traceIntoG : ∀ {W} → W -[¬ A ]->* G → W ≡ G
+  traceIntoG (_ , tr/refl , _) = refl
+  traceIntoG (_ , tr/step gr tr′ , (_ a∷ ps)) with traceIntoG (_ , tr′ , ps)
+  ... | refl = ⊥-elim (noIntoG gr)
+
+  -- R(L) = {L}: L's only action mentions A, so no ¬A step leaves it
+  RL : ∀ {X} → L -[¬ A ]->* X → X ≡ L
+  RL (_ , tr/refl , _) = refl
+  RL (_ , tr/step gr _ , (p a∷ _)) with step⇒listed {G = Gr} {s = L} gr
+  ... | here refl = ⊥-elim (∉c→¬∈c p (∈S refl))
+  ... | there ()
+
+  -- R(G) = {G , L}
+  RG : ∀ {X} → G -[¬ A ]->* X → (X ≡ G) ⊎ (X ≡ L)
+  RG (_ , tr/refl , _) = inj₁ refl
+  RG (_ , tr/step gr tr′ , (_ a∷ ps)) with step⇒listed {G = Gr} {s = G} gr
+  ... | here refl = inj₂ (RL (_ , tr′ , ps))
+  ... | there ()
+
+  -- the variable, at H, anchored at G: act/var impossible, skip impossible
+  noVarTreeH : ¬ ((v[] & (G v∷ v[]) ⊢act_∶_) & (M v∷ v[]) ⊢skip A ◂ v zero ∶ H)
+  noVarTreeH (skip/main (act/var tr eq)) with RG tr
+  ... | inj₁ refl = G≁H eq
+  ... | inj₂ refl = L≁H eq
+  noVarTreeH (skip/step _ na _) = H-cannot-skip na
+  noVarTreeH (skip/cycle {X = zero} eq _) = M≁H eq
+  noVarTreeH (skip/cycle {X = suc ()} _ _)
+
+  -- the variable, at M, anchored at G: must skip, and the ⟨1⟩ branch dies
+  noVarTreeM : ¬ ((v[] & (G v∷ v[]) ⊢act_∶_) & v[] ⊢skip A ◂ v zero ∶ M)
+  noVarTreeM (skip/main (act/var tr eq)) with RG tr
+  ... | inj₁ refl = G≁M eq
+  ... | inj₂ refl = L≁M eq
+  noVarTreeM (skip/step _ _ ktd) =
+    noVarTreeH (ktd (listed⇒step {G = Gr} {s = M} (there (here refl))))
+  noVarTreeM (skip/cycle {X = ()} _ _)
+
+  noVarAtM : ¬ (v[] & (G v∷ v[]) ⊢a A ◂ v zero ∶ M)
+  noVarAtM (a/act std) = noVarTreeM std
+
+  -- the body, anchored at G: the send is forced to be L's, landing at M
+  noBodyTreeL : ¬ ((v[] & (G v∷ v[]) ⊢act_∶_) & (G v∷ v[]) ⊢skip A ◂ body ∶ L)
+  noBodyTreeL (skip/main (act/send gr _ cont)) with step⇒listed {G = Gr} {s = L} gr
+  ... | here refl = noVarAtM cont
+  ... | there ()
+  noBodyTreeL (skip/step _ na _) = naL na
+  noBodyTreeL (skip/cycle {X = zero} eq _) = G≁L eq
+  noBodyTreeL (skip/cycle {X = suc ()} _ _)
+
+  noBodyTreeG : ¬ ((v[] & (G v∷ v[]) ⊢act_∶_) & v[] ⊢skip A ◂ body ∶ G)
+  noBodyTreeG (skip/main (act/send gr _ _)) with step⇒listed {G = Gr} {s = G} gr
+  ... | there ()
+  noBodyTreeG (skip/step gr _ ktd) with step⇒listed {G = Gr} {s = G} gr
+  ... | here refl = noBodyTreeL (ktd gr)
+  ... | there ()
+  noBodyTreeG (skip/cycle {X = ()} _ _)
+
+  noBodyAtG : ¬ (v[] & (G v∷ v[]) ⊢a A ◂ body ∶ G)
+  noBodyAtG (a/act std) = noBodyTreeG std
+
+  -- the tree case for `rec body` itself: `⊢act` has no `rec` form
+  noRecTreeL : ¬ ((v[] & v[] ⊢act_∶_) & (G v∷ v[]) ⊢skip A ◂ prog ∶ L)
+  noRecTreeL (skip/main ())
+  noRecTreeL (skip/step _ na _) = naL na
+  noRecTreeL (skip/cycle {X = zero} eq _) = G≁L eq
+  noRecTreeL (skip/cycle {X = suc ()} _ _)
+
+  noRecTreeG : ¬ ((v[] & v[] ⊢act_∶_) & v[] ⊢skip A ◂ prog ∶ G)
+  noRecTreeG (skip/main ())
+  noRecTreeG (skip/step gr _ ktd) with step⇒listed {G = Gr} {s = G} gr
+  ... | here refl = noRecTreeL (ktd gr)
+  ... | there ()
+  noRecTreeG (skip/cycle {X = ()} _ _)
+
+  -- ★ THE COUNTEREXAMPLE: ⊢p holds at G (recAtG), ⊢a does not.
+  no-alg : ¬ (v[] & v[] ⊢a A ◂ prog ∶ G)
+  no-alg (a/rec tr _ bd) with traceIntoG tr
+  ... | refl = noBodyAtG bd
+  no-alg (a/act std) = noRecTreeG std

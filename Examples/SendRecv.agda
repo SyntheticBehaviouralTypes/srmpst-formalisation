@@ -1,118 +1,155 @@
 {-# OPTIONS --guardedness #-}
-open import Data.Empty using (⊥ ; ⊥-elim)
-open import Data.Unit using (⊤ ; tt)
-open import Data.Sum using (_⊎_ ; inj₁ ; inj₂)
-open import Data.Bool
-open import Data.Nat
-open import Data.Fin hiding (_+_ ; _-_)
-open import Data.Vec hiding (_++_)
-open import Data.Product
-open import Relation.Nullary.Decidable
-  using (True ; False ; toWitnessFalse ; fromWitnessFalse ; fromWitness ; toWitness)
-open import Relation.Binary.PropositionalEquality hiding ( [_] )
 
-open import Utils
-open import Definitions
+-- `A` sends a bool to `B`: once, in a loop, and in a loop unfolded once.
+-- Partitions {A} {B} and {A,B}.
 
 module Examples.SendRecv where
-  open import Examples.SimpleGT(2)
 
-  A : Part
-  A = zero
+open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin.Subset using (⁅_⁆)
+open import Data.Vec using ([]; _∷_)
+open import Data.Bool using (true)
+open import Data.Product using (proj₁; ∃-syntax; _×_)
+open import Data.List using (length)
+open import Relation.Binary.PropositionalEquality using (_≡_)
+open import Data.Sum using (_⊎_)
+open import Relation.Nullary.Decidable using (toWitness)
 
-  B : Part
-  B = suc zero
+open import Definitions.Expr using (s/bool; val; v/bool)
+open import Check
 
-  module SendRecvNR where
-    -- Non recursive protocol
-    send-recv : Global 0 ng
-    send-recv = >> (A ⟶ B ∶[ 0 , tt ] ((s/bool ·· end) ∷ []))
+open import Definitions.Graph.Algebra 2
+open import Definitions.Actions 2 renaming (_<_> to mkChoice)
+open import Definitions.Proc 2
 
-    sr/step : send-recv -< A ⟶ B # [ s/bool ] , zero >-> end
-    sr/step = step/i zero
+A B : Fin 2
+A = zero
+B = suc zero
 
-    p/A : Proc 0 0
-    p/A = B ! 0 , zero < val (v/bool true) >∙ ∅
+-- Pins `I = 0` for a non-branching send.
+here : Fin 1
+here = zero
 
-    p/B : Proc 0 0
-    p/B = Σ A ？[ [ s/bool ] ]· (∅ ∷ [])
+-- {A,B}: one process.
+Ρ/AB : Assignment 1
+Ρ/AB = byOwner λ _ → zero
 
-    M : Session
-    M = p/A ∷ p/B ∷ []
+module NonRecursive where
+  -- A --bool--> B, end
+  sendrecv : OpenGraph 0
+  sendrecv = (A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ end
 
-    td/A : [] & [] / send-recv ↑ A ⊢p< ng > p/A
-    td/A = t/send (step/i zero) (te/val tv/bool) tt/end
+  wbg : WBGraph {N = 2}
+  wbg = buildG sendrecv
 
-    td/B : [] & [] / send-recv ↑ B ⊢p< ng > p/B
-    td/B = t/recvhd λ { zero -> tt/end }
+  s₀ = initial (proj₁ wbg)
 
-    td/M : ⊢s M ∶ send-recv
-    td/M zero = td/A
-    td/M (suc zero) = td/B
+  open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module Global)
 
-  module SendRecv where
-    -- Recursive protocol
-    send-recv : Global 0 ng
-    send-recv = μ (A ⟶ B ∶[ 0 , tt ] ((s/bool ·· var zero) ∷ []))
-
-    sr/step : send-recv -< A ⟶ B # [ s/bool ] , zero >-> send-recv
-    sr/step = step/unfold (step/i zero)
-
-    p/A : Proc 0 0
-    p/A = rec (B ! 0 , zero < val (v/bool true) >∙ v zero)
-
-    p/B : Proc 0 0
-    p/B = rec (Σ A ？[ [ s/bool ] ]· ((v zero) ∷ []))
-
-    M : Session
-    M = p/A ∷ p/B ∷ []
-
-    td/A : [] & [] / send-recv ↑ A ⊢p< ng > p/A
-    td/A = tt/rec
-             (t/send (step/unfold (step/i zero))
-             (te/val tv/bool)
-             tt/var)
-
-    td/B : [] & [] / send-recv ↑ B ⊢p< ng > p/B
-    td/B = t/bisim (~sym ~unfold) (tt/rec (t/recvhd λ{ zero → tt/var/unfold }))
-
-    td/S : ⊢s M ∶ send-recv
-    td/S zero = td/A
-    td/S (suc zero) = td/B
-
-  module SendRecv' where
-    -- Recursive protocol but now the the process starts by sending before doing the loop
-    send-recv : Global 0 ng
-    send-recv = μ (A ⟶ B ∶[ 0 , tt ] ((s/bool ·· var zero) ∷ []))
-
-    sr/step : send-recv -< A ⟶ B # [ s/bool ] , zero >-> send-recv
-    sr/step = step/unfold (step/i zero)
-
-    p/A : Proc 0 0 -- Now A unfolds the loop once
-    p/A = B ! 0 , zero < val (v/bool true) >∙ (rec (B ! 0 , zero < val (v/bool true) >∙ v zero))
-
-    p/B : Proc 0 0
-    p/B = rec (Σ A ？[ [ s/bool ] ]· ((v zero) ∷ []))
+  -- {A} {B}
+  module A∣B where
+    Ρ = singletons
+    open Over Ρ
+    open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = p/A ∷ p/B ∷ []
+    M = (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ ∅) ∷ (B ⇐ A ？· (∅ ∷ [])) ∷ []
 
-    td/A : [] & [] / send-recv ↑ A ⊢p< ng > p/A
-    td/A = t/send sr/step
-      (te/val tv/bool)
-      (t/rec rt/refl (t/send (step/unfold (step/i zero))  (te/val tv/bool) (tt/var)))
+    M-typed : ⊢s[ Ρ ] M ∶ s₀
+    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
 
-    td/B : [] & [] / send-recv ↑ B ⊢p< ng > p/B
-    td/B = t/rec rt/refl (t/recv R[ step/unfold (step/i zero) ] cont/typ)
-      where
-        cont/typ : ∀ {i} {G'} →
-          send-recv -< (A ⟶ suc zero # [ s/bool ]) , i >-> G' →
-          (α/sort ((A ⟶ B # [ s/bool ]) , i) ∷ []) & send-recv ∷ [] /
-          G' ↑ suc zero ⊢p< ng > lookup (v zero ∷ []) i
-        cont/typ {zero} (step/unfold (step/i .zero)) = tt/var
-        cont/typ {zero} (step/unfold (step/tl/I indep _)) = ⊥-elim (indep (inj₂ (_∈pr_.∈R refl)))
+    M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
+           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
+                     × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
+    M-safe = safety Ρ M-typed
 
+  -- {A,B}
+  module AB where
+    Ρ = Ρ/AB
+    open Over Ρ
+    open Global Ρ using (_-[_]->ᵍ_)
 
-    td/M : ⊢s M ∶ send-recv
-    td/M zero = td/A
-    td/M (suc zero) = td/B
+    M : Session
+    M = ∅ ∷ []
+
+    M-typed : ⊢s[ Ρ ] M ∶ s₀
+    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+
+    M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
+           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
+                     × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
+    M-safe = safety Ρ M-typed
+
+module Recursive where
+  -- μ (A --bool--> loop)
+  sendrecv : OpenGraph 0
+  sendrecv = μ ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ var zero)
+
+  wbg : WBGraph {N = 2}
+  wbg = buildG sendrecv
+
+  s₀ = initial (proj₁ wbg)
+
+  open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module Global)
+
+  -- {A} {B}
+  module A∣B where
+    Ρ = singletons
+    open Over Ρ
+    open Global Ρ using (_-[_]->ᵍ_)
+
+    M : Session
+    M = rec (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ v zero)
+      ∷ rec (B ⇐ A ？· (v zero ∷ []))
+      ∷ []
+
+    M-typed : ⊢s[ Ρ ] M ∶ s₀
+    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+
+    M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
+           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
+                     × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
+    M-safe = safety Ρ M-typed
+
+  -- {A,B}: an internal loop.
+  module AB where
+    Ρ = Ρ/AB
+    open Over Ρ
+    open Global Ρ using (_-[_]->ᵍ_)
+
+    M : Session
+    M = ∅ ∷ []
+
+    M-typed : ⊢s[ Ρ ] M ∶ s₀
+    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+
+    M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
+           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
+                     × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
+    M-safe = safety Ρ M-typed
+
+module RecursiveUnfoldOnce where
+  -- As `Recursive`, with `A`'s process unfolding the loop once.
+  open Recursive using (sendrecv; wbg; s₀)
+
+  open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module Global)
+
+  -- {A} {B}
+  module A∣B where
+    Ρ = singletons
+    open Over Ρ
+    open Global Ρ using (_-[_]->ᵍ_)
+
+    M : Session
+    M = (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙
+           (rec (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ v zero)))
+      ∷ rec (B ⇐ A ？· (v zero ∷ []))
+      ∷ []
+
+    M-typed : ⊢s[ Ρ ] M ∶ s₀
+    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+
+    M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
+           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
+                     × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
+    M-safe = safety Ρ M-typed

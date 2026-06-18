@@ -1,449 +1,565 @@
 {-# OPTIONS --guardedness #-}
-open import Data.Empty using (⊥-elim)
-open import Data.Unit using (⊤ ; tt)
-open import Data.Fin using (Fin; zero; suc)
-  renaming (_≟_ to _≟f_)
-open import Data.Nat using (ℕ ; zero; suc)
-  renaming (_+_ to _+ℕ_)
-open import Data.Product using (Σ-syntax; ∃-syntax; _,_; _×_; proj₁; proj₂)
-open import Data.Sum using (_⊎_; inj₁; inj₂)
-open import Data.Vec using (Vec ; []; _∷_; lookup ; map; tabulate; _[_]≔_)
-open import Data.Vec.Properties using (lookup-map; lookup∘update;
-  lookup∘update′; lookup∘tabulate)
-open import Function  using (_∘_)
-open import Relation.Binary.PropositionalEquality using (_≡_; _≢_; refl; cong;
-  cong₂; sym; subst; ≢-sym)
-open import Relation.Nullary using (Dec; ¬_; ¬?; yes; no; contraposition)
 
-open import Definitions.Guard
-open import Definitions.Expr
+open import Data.Nat using (ℕ; zero; suc)
+open import Data.Fin using (Fin; zero; suc)
+
+open import Data.Vec using (Vec; []; _∷_; lookup)
+open import Data.Product using (∃-syntax; _,_; _×_; proj₁; proj₂)
+open import Data.Maybe using (just)
+open import Data.Fin.Subset using (_∈_; _∉_; Nonempty)
+open import Data.Sum using (inj₁; inj₂)
+
+open import Data.List using (List; []; _∷_; _++_)
+open import Data.List.Relation.Unary.Any using (Any; here; there)
+open import Data.List.Relation.Unary.All using (All; []; _∷_)
+import Data.List.Relation.Unary.All.Properties as AllProp
+
+open import Relation.Nullary using (¬_)
+
+open import Relation.Binary.PropositionalEquality
+  using (_≡_; _≢_; refl; sym; trans)
 
 module Definitions.Behav where
 
-  import Definitions.Common
   import Definitions.Actions
+  import Definitions.Common
 
   record BTheory (N : ℕ) : Set₁ where
-    open Definitions.Common(N)
-    open Definitions.Actions(N)
+    open Definitions.Actions N
+    open Definitions.Common N
+
     field
       Behav : Set
       _-<_>->_ : Behav → Action → Behav → Set
 
-    record _[R]_ (α : HeadAct) (G : Behav) : Set where
-      constructor R[_]
-      field
-        {nextG} : Behav
-        {someI} : choice α
-        rdyTr : G -< α , someI >-> nextG
+    -- Participation of a set of roles.
 
-    _-<_∣_>->_ : Behav → Action → (Action → Set) → Behav → Set
-    G -< α ∣ P >-> G' = (G -< α >-> G') × P α
+    _not-active-in_ : PartSet → Behav → Set
+    P not-active-in G =
+      ∀ {α G′} → G -< α >-> G′ → P ∉αˢ α
 
-    _-<_∌_>->_ : Behav → Action → Part → Behav → Set
-    G -< α ∌ P >-> G' = G -< α ∣ P ∉α_ >-> G'
+    -- Traces.
 
-    _-<_∥i_>->_ : Behav → Action → Action → Behav → Set
-    G -< α ∥i α' >-> G' = G -< α ∣ _∥ α' >-> G'
+    infix 4 _-[_]->_
 
-    _-<_∋_>->_ : Behav → Action → Part → Behav → Set
-    G -< α ∋ P >-> G' = G -< α ∣ P ∈α_ >-> G'
+    data _-[_]->_ : Behav → List Action → Behav → Set where
+      tr/refl :
+        ∀ {G} → G -[ [] ]-> G
 
-    data _=[_]=>ᵣ_ (G : Behav) (ϕ : Action → Set) : Behav → Set where
-      rt/refl : G =[ ϕ ]=>ᵣ G
-      rt/trans : ∀{α Gi Gf} → G =[ ϕ ]=>ᵣ Gi → Gi -< α ∣ ϕ >-> Gf → G =[ ϕ ]=>ᵣ Gf
+      tr/step :
+        ∀ {G G′ G″ α αs}
+        → G -< α >-> G′
+        → G′ -[ αs ]-> G″
+        → G -[ α ∷ αs ]-> G″
 
-    rt/trans' : ∀{G α Gi Gf ϕ}
-      → G -< α ∣ ϕ >-> Gi → Gi =[ ϕ ]=>ᵣ Gf → G =[ ϕ ]=>ᵣ Gf
-    rt/trans' x rt/refl = rt/trans rt/refl x
-    rt/trans' x (rt/trans tr x₁) = rt/trans (rt/trans' x tr) x₁
+    tr/trans :
+      ∀ {G G′ G″ αs βs}
+      → G -[ αs ]-> G′ → G′ -[ βs ]-> G″ → G -[ αs ++ βs ]-> G″
+    tr/trans tr/refl tr′         = tr′
+    tr/trans (tr/step gr tr) tr′ = tr/step gr (tr/trans tr tr′)
 
-    rt/cat : ∀{G Gi Gf P} → G =[ P ]=>ᵣ Gi → Gi =[ P ]=>ᵣ Gf → G =[ P ]=>ᵣ Gf
-    rt/cat tr rt/refl = tr
-    rt/cat tr (rt/trans tr' x) = rt/trans (rt/cat tr tr') x
+    -- A step whose event at `P` is `e`: the triple `(α , eq , gr)`.
+    infix 4 _-<[_↦_]>->_
 
-    _=<¬_>=>ᵣ_ : Behav → Part → Behav → Set
-    G =<¬ P >=>ᵣ G' = G =[ P ∉α_ ]=>ᵣ G'
+    _-<[_↦_]>->_ : Behav → Part → Event → Behav → Set
+    s -<[ P ↦ e ]>-> t = ∃[ α ] ev α P ≡ just e × s -< α >-> t
 
-    weaken : ∀ {G P Q G'} → (∀ p → P p → Q p) → G =[ P ]=>ᵣ G' → G =[ Q ]=>ᵣ G'
-    weaken f rt/refl = rt/refl
-    weaken f (rt/trans x y) = rt/trans (weaken f x) (y .proj₁ , f _ (y .proj₂))
+    -- A step with event `e` at `R`, sent from outside `Q`.
+    infix 4 _-<[_∣_↦_]>->_
 
-    record _∈tr_ (P : Part) (G : Behav) : Set where
-      pattern
-      constructor ∈-tr
-      field
-        {∈-G′} : Behav
-        {∈-α}  : Action
-        ∈-step : G -< ∈-α >-> ∈-G′
-        ∈-prf : P ∈α ∈-α
+    _-<[_∣_↦_]>->_ : Behav → PartSet → Part → Event → Behav → Set
+    s -<[ Q ∣ R ↦ e ]>-> t =
+      ∃[ α ] ev α R ≡ just e × s -< α >-> t × Foreign Q α
 
-    _∉tr_ : Part → Behav → Set
-    P ∉tr G = ¬ (P ∈tr G)
+    -- `P ∈T G`: some trace from `G` mentions `P`.  `G -[¬ P ]->* G′`: a
+    -- trace to `G′` that never mentions `P`.
 
-    data _~~>_ : Behav → Behav → Set where
-      ■ : ∀ {G} → G ~~> G
-      _►_ : ∀ {G α G′ G″} → G -< α >-> G′ → G′ ~~> G″ → G ~~> G″
-
-    infixr 5 _►_
-
-    until : ∀ {G G′} → G ~~> G′
-      → (φ : (G : Behav) → (α : Action) → Set) → (ψ : Set) →  Set
-    until ■ φ ψ = ψ
-    until (_►_ {G = G} {α = α} x tr) φ ψ = φ G α × until tr φ ψ
-
-    _=[_]=>_ : ∀ (G : Behav) (φ : Action → Set) (G′ : Behav) → Set
-    G =[ φ ]=> G′ = Σ[ tr ∈ G ~~> G′ ] until tr (λ _ α → φ α) ⊤
-
-    skippable : ∀ {G G'} → Part → G ~~> G' → Set
-    skippable {G' = G} P tr = until tr (λ G _ → P ∉tr G) (P ∈tr G)
-
-    _~<_>~>_ : Behav → Part → Behav → Set
-    G ~< P >~> G' = Σ[ tr ∈ G ~~> G' ] skippable P tr --  × causal tr
-
-    _~<_∧_>~>_ : Behav → Part → Part → Behav → Set
-    G ~< P ∧ Q >~> G' = Σ[ tr ∈ G ~~> G' ] skippable P tr × skippable Q tr --  × causal tr
-
-    [_,_]► : ∀ {G α G′ G″ φ ψ}
-      → G -< α >-> G′ → φ G α
-      → Σ[ tr ∈ G′ ~~> G″ ] until tr φ ψ
-      → Σ[ tr ∈ G ~~> G″ ] until tr φ ψ
-    [ gr , P∉G ]► (tr , P∉tr) = (gr ► tr , (P∉G , P∉tr ))
-
-    open _∈tr_
-    ~>α : ∀ {G P G′} → G ~< P >~> G′ → Action
-    ~>α (■ , ∈G) = ∈-α ∈G
-    ~>α ((x ► tr) , (_ , sk)) = ~>α (tr , sk)
-
-    ~>G : ∀ {G P G′} → G ~< P >~> G′ → Behav
-    ~>G (■ , ∈G) = ∈-G′ ∈G
-    ~>G ((x ► tr) , (_ , sk)) = ~>G (tr , sk)
-
-    ~> : ∀ {G P G′} → (rt : G ~< P >~> G′) → G′ -< ~>α rt ∋ P >-> ~>G rt
-    ~> (■ , ∈G) = ∈-step ∈G , ∈-prf ∈G
-    ~> ((x ► fst) , (_ , sk)) = ~> (fst , sk)
-
-    tr/cat : ∀{G Gi Gf P} → G =[ P ]=> Gi → Gi =[ P ]=> Gf → G =[ P ]=> Gf
-    tr/cat (■ , tt)            tr = tr
-    tr/cat (gr ► tr′ , φα , φ) tr = let (tr″ , φ') = tr/cat (tr′ , φ) tr
-                                    in (gr ► tr″) , φα , φ'
-
-    _=<¬_>=>_ : Behav → Part → Behav → Set
-    G =<¬ P >=> G' = G =[ P ∉α_ ]=> G'
-
-    _===>_ : Behav → Behav → Set
-    G ===> G' = G =[ (λ _ → ⊤) ]=> G'
-
-    _=<∥_>=>_ : Behav → Action → Behav → Set
-    G =<∥ α >=> G' = G =[ _∥ α ]=> G'
-
-    tr/first : ∀ {G P G'} → G ~< P >~> G' →  ∃[ α ] ∃[ G'' ] G -< α >-> G''
-    tr/first (■ , ∈-tr sk _) = _ , _ , sk
-    tr/first ((x ► tr) , sk , c) = _ , _ , x
-
-    data _∈T_ P : Behav → Set where
-      in/α : ∀ {G G′ α} → G -< α >-> G′ → P ∈α α → P ∈T G
-      in/later : ∀ {G G′ α} → G -< α >-> G′ → P ∈T G′ → P ∈T G
-
-    in/send : ∀{G α G'} (st : G -< α >-> G') → sender α ∈T G
-    in/send st = in/α st (∈S refl)
-
-    in/recv : ∀{G α G'} (st : G -< α >-> G') → receiver α ∈T G
-    in/recv st = in/α st (∈R refl)
+    _∈T_ : PartSet → Behav → Set
+    P ∈T G = ∃[ αs ] ∃[ G′ ] (G -[ αs ]-> G′) × Any (P ∈αˢ_) αs
 
     ended : Behav → Set
-    ended B = ∀ (P : Part) → ¬ (P ∈T B)
+    ended G = ∀ P → ¬ P ∈T G
 
-    _∉T_ : Part → Behav → Set
-    P ∉T G = ¬ (P ∈T G)
+    infix 4 _-[¬_]->*_
 
-    record _~_ (G G′ : Behav) : Set where
-      coinductive
-      field
-        ~L : ∀ {α G″} → G  -< α >-> G″ → ∃[ G‴ ] G′ -< α >-> G‴ × G″ ~ G‴
-        ~R : ∀ {α G‴} → G′ -< α >-> G‴ → ∃[ G″ ] G  -< α >-> G″ × G″ ~ G‴
+    _-[¬_]->*_ : Behav → PartSet → Behav → Set
+    G -[¬ P ]->* G′ = ∃[ αs ] (G -[ αs ]-> G′) × All (P ∉αˢ_) αs
 
-    open _~_
-    ~refl : ∀ {G} → G ~ G
-    ~L ~refl x = _ , x , ~refl
-    ~R ~refl x = _ , x , ~refl
 
-    ~sym : ∀ {G₁ G₂} → G₁ ~ G₂ → G₂ ~ G₁
-    ~sym x .~L x₁ = let _ , tr , b = ~R x x₁ in  _ , tr , ~sym b
-    ~sym x .~R x₁ = let _ , tr , b = ~L x x₁ in  _ , tr , ~sym b
+    in/α : ∀ {P G G′ α} → G -< α >-> G′ → P ∈αˢ α → P ∈T G
+    in/α gr px = _ ∷ [] , _ , tr/step gr tr/refl , here px
 
-    ~trans : ∀ {G₁ G₂ G₃} → G₁ ~ G₂ → G₂ ~ G₃ → G₁ ~ G₃
-    ~trans x y .~L z
-      = let _ , nT , nB = ~L x z
-            _ , tr , b = ~L y nT
-        in _ , tr , ~trans nB b
-    ~trans x y .~R z
-      = let _ , nT , nB = ~R y z
-            _ , tr , b = ~R x nT
-        in _ , tr , ~trans b nB
+    in/later : ∀ {P G G′ α} → G -< α >-> G′ → P ∈T G′ → P ∈T G
+    in/later gr (αs , G″ , tr , mem) = _ ∷ αs , G″ , tr/step gr tr , there mem
 
-    ~L→G : ∀ {G₁ G₂ G₃ α} → G₁ ~ G₂ → G₁ -< α >-> G₃ → Behav
-    ~L→G b gr = ~L b gr .proj₁
+    in/ev :
+      ∀ {P Q e G α G′} → G -< α >-> G′ → Q ∈ P → ev α Q ≡ just e → P ∈T G
+    in/ev gr Q∈ eq = in/α gr (_ , Q∈ , _ , eq)
 
-    ~L→ : ∀ {G₁ G₂ G₃ α} (b : G₁ ~ G₂) (r : G₁ -< α >-> G₃)
-      → G₂ -< α >-> ~L→G b r
-    ~L→ b gr = ~L b gr .proj₂ .proj₁
+    skip/refl : ∀ {G P} → G -[¬ P ]->* G
+    skip/refl = [] , tr/refl , []
 
-    ~L→~ : ∀ {G₁ G₂ G₃ α} (b : G₁ ~ G₂) (r : G₁ -< α >-> G₃) → G₃ ~ ~L→G b r
-    ~L→~ b gr = ~L b gr .proj₂ .proj₂
+    tr¬/step :
+      ∀ {G G′ G″ P α}
+      → G -< α >-> G′ → P ∉αˢ α → G′ -[¬ P ]->* G″ → G -[¬ P ]->* G″
+    tr¬/step gr P∉α (αs , tr , allP) = _ ∷ αs , tr/step gr tr , P∉α ∷ allP
 
-    ~R→G : ∀ {G₁ G₂ G₃ α} → G₁ ~ G₂ → G₂ -< α >-> G₃ → Behav
-    ~R→G b gr = ~R b gr .proj₁
+    skip/one :
+      ∀ {G G′ P α}
+      → G -< α >-> G′
+      → P ∉αˢ α
+      → G -[¬ P ]->* G′
+    skip/one gr P∉α =
+      tr¬/step gr P∉α skip/refl
 
-    ~R→ : ∀ {G₁ G₂ G₃ α} (b : G₁ ~ G₂) (r : G₂ -< α >-> G₃)
-      → G₁ -< α >-> ~R→G b r
-    ~R→ b gr = ~R b gr .proj₂ .proj₁
+    skip/cat :
+      ∀ {G G′ G″ P}
+      → G -[¬ P ]->* G′
+      → G′ -[¬ P ]->* G″
+      → G -[¬ P ]->* G″
+    skip/cat (αs , tr , allP) (βs , tr′ , allP′) =
+      αs ++ βs , tr/trans tr tr′ , AllProp.++⁺ allP allP′
 
-    ~R→~ : ∀ {G₁ G₂ G₃ α} (b : G₁ ~ G₂) (r : G₂ -< α >-> G₃) → ~R→G b r ~ G₃
-    ~R→~ b gr = ~R b gr .proj₂ .proj₂
+    -- `P` acts at role `X` only, at `G` and wherever outsiders move `G`.
+    Focus : PartSet → Part → Behav → Set
+    Focus P X G =
+      ∀ {G′ β G″} → G -[¬ P ]->* G′ → G′ -< β >-> G″ → P ∈αˢ β → X ∈α β
 
-    ~→ : ∀ {G₁ G₂ G₃ α P} (b : G₁ ~ G₂) (gr : G₁ -< α ∣ P >-> G₃)
-      → G₂ -< α ∣ P >-> ~L→G b (gr .proj₁)
-    ~→ b gr = ~L→ b (gr .proj₁) , gr .proj₂
+    focus/skip :
+      ∀ {P X G G′} → Focus P X G → G -[¬ P ]->* G′ → Focus P X G′
+    focus/skip f tr tr′ = f (skip/cat tr tr′)
 
-    ~⇒ᵣ : ∀ {Gi Gi' Go Inv}  → Gi ~ Gi' → Gi =[ Inv ]=>ᵣ Go
-      → ∃[ Go' ] (Gi' =[ Inv ]=>ᵣ Go') × (Go ~ Go')
-    ~⇒ᵣ b rt/refl = _ , rt/refl , b
-    ~⇒ᵣ b (rt/trans x gr)
-      = let _ , x'  , b'  = ~⇒ᵣ b x
-            _ , gr' , b'' = ~L b' (proj₁ gr)
-        in _ , rt/trans x' (gr' , proj₂ gr) , b''
+    -- Bisimilarity
 
-    ~⇒ᵣG : ∀ {Gi Gi' Go Inv}  → Gi ~ Gi' → Gi =[ Inv ]=>ᵣ Go → Behav
-    ~⇒ᵣG b tr = proj₁ (~⇒ᵣ b tr)
+    mutual
+      record _≲_ (G G′ : Behav) : Set where
+        coinductive
+        field
+          simulate :
+            ∀ {α G″}
+            → G -< α >-> G″
+            → ∃[ G‴ ] G′ -< α >-> G‴ × G″ ~ G‴
 
-    ~⇒ᵣtrace : ∀ {Gi Gi' Go Inv} (b : Gi ~ Gi') (tr : Gi =[ Inv ]=>ᵣ Go)
-      → Gi' =[ Inv ]=>ᵣ ~⇒ᵣG b tr
-    ~⇒ᵣtrace b tr = proj₁ (proj₂ (~⇒ᵣ b tr))
+      _~_ : Behav → Behav → Set
+      G ~ G′ = G ≲ G′ × G′ ≲ G
 
-    ~⇒ᵣ~ : ∀ {Gi Gi' Go Inv} (b : Gi ~ Gi') (tr : Gi =[ Inv ]=>ᵣ Go)
-      → Go ~ ~⇒ᵣG b tr
-    ~⇒ᵣ~ b tr = proj₂ (proj₂ (~⇒ᵣ b tr))
+    open _≲_
 
-    ~⇒ : ∀ {Gi Gi' Go Inv}  → Gi ~ Gi' → Gi =[ Inv ]=> Go
-      → ∃[ Go' ] (Gi' =[ Inv ]=> Go') × (Go ~ Go')
-    ~⇒ b (■ , p) = _ , (■ , p) , b
-    ~⇒ b (gr ► x , p , px)
-      = let _ , (x' , px')  , b'  = ~⇒ (~L→~ b gr) (x , px)
-        in _ , (~L→ b gr ► x' , p , px') , b'
+    mutual
+      ≲refl : ∀ {G} → G ≲ G
+      simulate ≲refl gr =
+        _ , gr , ~refl
 
-    ~⇒G : ∀ {Gi Gi' Go Inv}  → Gi ~ Gi' → Gi =[ Inv ]=> Go → Behav
-    ~⇒G b tr = proj₁ (~⇒ b tr)
+      ~refl : ∀ {G} → G ~ G
+      ~refl =
+        ≲refl , ≲refl
 
-    ~⇒trace : ∀ {Gi Gi' Go Inv} (b : Gi ~ Gi') (tr : Gi =[ Inv ]=> Go)
-      → Gi' =[ Inv ]=> ~⇒G b tr
-    ~⇒trace b tr = proj₁ (proj₂ (~⇒ b tr))
+    ~sym : ∀ {G G′} → G ~ G′ → G′ ~ G
+    ~sym (G≲G′ , G′≲G) =
+      G′≲G , G≲G′
 
-    ~⇒~ : ∀ {Gi Gi' Go Inv} (b : Gi ~ Gi') (tr : Gi =[ Inv ]=> Go)
-      → Go ~ ~⇒G b tr
-    ~⇒~ b tr = proj₂ (proj₂ (~⇒ b tr))
+    mutual
+      ≲trans : ∀ {G G′ G″} → G ≲ G′ → G′ ≲ G″ → G ≲ G″
+      simulate (≲trans G≲G′ G′≲G″) gr =
+        let _ , gr′ , b′ = simulate G≲G′ gr
+            _ , gr″ , b″ = simulate G′≲G″ gr′
+        in _ , gr″ , ~trans b′ b″
 
-    ∉tr~ : {G G' : Behav} {P : Part} (b : G ~ G') (y : P ∉tr G) → P ∉tr G'
-    ∉tr~ b y (∈-tr x z) = y (∈-tr (~L→ (~sym b) x) z)
+      ~trans : ∀ {G G′ G″} → G ~ G′ → G′ ~ G″ → G ~ G″
+      ~trans (G≲G′ , G′≲G) (G′≲G″ , G″≲G′) =
+        ≲trans G≲G′ G′≲G″ , ≲trans G″≲G′ G′≲G
 
-    ~~>~ : ∀ {Gi Gi' Go} → Gi ~ Gi' → Gi ~~> Go
-      → ∃[ Go' ] (Gi' ~~> Go') × (Go ~ Go')
-    ~~>~ b ■ = _ , ■ , b
-    ~~>~ b (x ► tr) =
-      _ , (~L→ b x ► ~~>~ (~L→~ b x) tr .proj₂ .proj₁)
-        , ~~>~ (~L→~ b x) tr .proj₂ .proj₂
+    ~L :
+      ∀ {G G′ α G″}
+      → G ~ G′
+      → G -< α >-> G″
+      → ∃[ G‴ ] G′ -< α >-> G‴ × G″ ~ G‴
+    ~L (G≲G′ , _) =
+      simulate G≲G′
 
-    ∈tr~ : ∀ {Gi Gi' P} (b : Gi ~ Gi') (x : P ∈tr Gi) → P ∈tr Gi'
-    ∈tr~ b (∈-tr ∈-step ∈-prf) = ∈-tr (~L→ b ∈-step) ∈-prf
+    ~R :
+      ∀ {G G′ α G‴}
+      → G ~ G′
+      → G′ -< α >-> G‴
+      → ∃[ G″ ] G -< α >-> G″ × G″ ~ G‴
+    ~R (_ , G′≲G) gr =
+      let _ , gr′ , b = simulate G′≲G gr
+      in _ , gr′ , ~sym b
 
-    skippable~ : ∀ {Gi Gi' Go P} (b : Gi ~ Gi') (tr : Gi ~~> Go)
-      → skippable P tr → skippable P (~~>~ b tr .proj₂ .proj₁)
-    skippable~ b ■ P∈x = ∈tr~ b P∈x
-    skippable~ b (x₁ ► tr) (x , y) = ∉tr~ b x , skippable~ (~L→~ b x₁) tr y
-
-    ~>~ : ∀ {Gi Gi' Go P} → Gi ~ Gi' → Gi ~< P >~> Go
-      → ∃[ Go' ] (Gi' ~< P >~> Go') × (Go ~ Go')
-    ~>~ b (tr , sk)
-      = _ , (~~>~ b tr .proj₂ .proj₁ , skippable~ b tr sk)
-          , ~~>~ b tr .proj₂ .proj₂
-
-    ~>~G : ∀ {Gi Gi' Go P} → Gi ~ Gi' → Gi ~< P >~> Go
+    ~L→G :
+      ∀ {G G′ G″ α}
+      → G ~ G′
+      → G -< α >-> G″
       → Behav
-    ~>~G b x = ~>~ b x .proj₁
+    ~L→G G~G′ gr =
+      ~L G~G′ gr .proj₁
 
-    ~>~→ : ∀ {Gi Gi' Go P} (b : Gi ~ Gi') (x : Gi ~< P >~> Go)
-      → Gi' ~< P >~> ~>~G b x
-    ~>~→ b x = ~>~ b x .proj₂ .proj₁
+    ~L→ :
+      ∀ {G G′ G″ α}
+      → (G~G′ : G ~ G′)
+      → (gr : G -< α >-> G″)
+      → G′ -< α >-> ~L→G G~G′ gr
+    ~L→ G~G′ gr =
+      ~L G~G′ gr .proj₂ .proj₁
 
-    ~>~~ : ∀ {Gi Gi' Go P} (b : Gi ~ Gi') (x : Gi ~< P >~> Go) → Go ~ ~>~G b x
-    ~>~~ b x = ~>~ b x .proj₂ .proj₂
+    ~L→~ :
+      ∀ {G G′ G″ α}
+      → (G~G′ : G ~ G′)
+      → (gr : G -< α >-> G″)
+      → G″ ~ ~L→G G~G′ gr
+    ~L→~ G~G′ gr =
+      ~L G~G′ gr .proj₂ .proj₂
 
-    -- _=<¬_∧_>~>_ : Behav → Part → Part → Behav → Set
-    -- G =<¬ P ∧ Q >~> G′
-    --   = (G =[ (λ α → P ∉α α × Q ∉α α) ]=> G′)
-    --   × ∃[ G″ ] ∃[ α ] (G′ -< α ∣ (λ α → P ∈α α × Q ∈α α) >-> G″)
+    ~R→G :
+      ∀ {G G′ G″ α}
+      → G ~ G′
+      → G′ -< α >-> G″
+      → Behav
+    ~R→G G~G′ gr =
+      ~R G~G′ gr .proj₁
 
-    disj? : ∀ {G₁ G₂ G₃ G₄ α₁ α₂} → G₁ -< α₁ >-> G₂ → G₃ -< α₂ >-> G₄
-      → Dec (proj₁ α₁ ⋏ proj₁ α₂)
-    disj? {α₁ = α₁} {α₂ = α₂} _ _ = proj₁ α₁ ⋏? proj₁ α₂
+    ~R→ :
+      ∀ {G G′ G″ α}
+      → (G~G′ : G ~ G′)
+      → (gr : G′ -< α >-> G″)
+      → G -< α >-> ~R→G G~G′ gr
+    ~R→ G~G′ gr =
+      ~R G~G′ gr .proj₂ .proj₁
 
-    -- mk-itrace : ∀{G P Q G′} → G =[ (λ α → P ∉α α × Q ∉α α) ]=> G′
-    --   → ∀ {G″ α} → P ∈α α → Q ∈α α → G′ -< α >-> G″ → G =<¬ P ∧ Q >~> G′
-    -- mk-itrace x x₁ x₂ x₃ = x , _ , _ , x₃ , x₁ , x₂
+    ~R→~ :
+      ∀ {G G′ G″ α}
+      → (G~G′ : G ~ G′)
+      → (gr : G′ -< α >-> G″)
+      → ~R→G G~G′ gr ~ G″
+    ~R→~ G~G′ gr =
+      ~R G~G′ gr .proj₂ .proj₂
 
-    itrace-trans : ∀ {G P Q G′ G″ α} → G -< α >-> G′ → P ∉tr G → Q ∉tr G
-      → G′ ~< P ∧ Q >~> G″ → G ~< P ∧ Q >~> G″
-    itrace-trans gr p q (tr , φP , φQ) = gr ► tr , (p , φP) , q , φQ
+    -- Bisimilar states have the same traces, with bisimilar endpoints.
+    tr-transport :
+      ∀ {G G′ H αs}
+      → G ~ G′
+      → G -[ αs ]-> H
+      → ∃[ H′ ] (G′ -[ αs ]-> H′) × (H ~ H′)
+    tr-transport G~G′ tr/refl =
+      _ , tr/refl , G~G′
+    tr-transport G~G′ (tr/step gr tr) =
+      let _ , gr′ , G″~G‴ = ~L G~G′ gr
+          _ , tr′ , H~H′  = tr-transport G″~G‴ tr
+      in _ , tr/step gr′ tr′ , H~H′
 
-    itrace~ : ∀ {G₁ G₁' G₂ P Q} → G₁ ~ G₁' → G₁ ~< P ∧ Q >~> G₂
-      → ∃[ G₂' ] (G₁' ~< P ∧ Q >~> G₂') × (G₂ ~ G₂')
-    itrace~ b (■ , φx , φy) = _ , (■ , ∈tr~ b φx , ∈tr~ b φy) , b
-    itrace~ b ((x ► tr) , (φP , φPt) , (φQ , φQt))
-      = let _ , (tr' , φP' , φQ') , b'  = itrace~ (~L→~ b x) (tr , φPt , φQt)
-        in _ , ( ~L→ b x ► tr'
-               , (φP ∘ ∈tr~ (~sym b) , φP')
-               ,  φQ ∘ ∈tr~ (~sym b) , φQ')
-             , b'
+    focus/~ : ∀ {P X G H} → G ~ H → Focus P X G → Focus P X H
+    focus/~ G~H f (αs , tr , idles) gr own =
+      let _ , tr′ , H′~G′ = tr-transport (~sym G~H) tr
+          _ , gr′ , _ = ~L H′~G′ gr
+      in f (αs , tr′ , idles) gr′ own
 
-    ∈~ : ∀ {P G G'} (b : G ~ G') → P ∈T G → P ∈T G'
-    ∈~ b (in/α x x₁) = in/α (~L→ b x) x₁
-    ∈~ b (in/later x x₁) = in/later (~L→ b x) (∈~ (~L→~ b x) x₁)
+    ∈~ : ∀ {P G G′} → G ~ G′ → P ∈T G → P ∈T G′
+    ∈~ G~G′ (αs , H , tr , mem) =
+      let H′ , tr′ , _ = tr-transport G~G′ tr
+      in αs , H′ , tr′ , mem
 
-    ∈-skip : ∀ {G P G'} → G =<¬ P >=> G' → P ∈T G' → P ∈T G
-    ∈-skip (■ , snd) x₁ = x₁
-    ∈-skip ((x ► tr) , _ , φ) x₁ = in/later x (∈-skip (tr , φ) x₁)
+    na-bisim :
+      ∀ {P G G′}
+      → G ~ G′
+      → P not-active-in G
+      → P not-active-in G′
+    na-bisim G~G′ na gr =
+      na (~R→ G~G′ gr)
 
-    ∈-last : ∀ {G P G'} → G ~< P >~> G' → P ∈T G
-    ∈-last (■ , ∈-tr x sk) = in/α x sk
-    ∈-last ((x ► tr) , (_ , sk))
-      = in/later x (∈-last (tr , sk))
+    -- Environment bisimilarity
 
-  record BT-Prop {N : ℕ}(B : BTheory N) : Set₁ where
-    open Definitions.Common(N)
-    open Definitions.Actions(N)
+    data _~ᵛ_ : ∀ {δ δ′} → Vec Behav δ → Vec Behav δ′ → Set where
+      ~ᵛ/[] :
+        [] ~ᵛ []
+
+      ~ᵛ/∷ :
+        ∀ {δ δ′}
+          {G G′ : Behav}
+          {Δ  : Vec Behav δ}
+          {Δ′ : Vec Behav δ′}
+        → G ~ G′
+        → Δ ~ᵛ Δ′
+        → (G ∷ Δ) ~ᵛ (G′ ∷ Δ′)
+
+    ~ᵛ-refl : ∀ {δ} {Δ : Vec Behav δ} → Δ ~ᵛ Δ
+    ~ᵛ-refl {Δ = []} =
+      ~ᵛ/[]
+    ~ᵛ-refl {Δ = _ ∷ _} =
+      ~ᵛ/∷ ~refl ~ᵛ-refl
+
+    lookup/~ᵛ :
+      ∀ {δ}
+        {Δ Δ′ : Vec Behav δ}
+        {G : Behav}
+      → Δ ~ᵛ Δ′
+      → (X : Fin δ)
+      → lookup Δ X ~ G
+      → lookup Δ′ X ~ G
+    lookup/~ᵛ (~ᵛ/∷ G~G′ _) zero G~lookup =
+      ~trans (~sym G~G′) G~lookup
+    lookup/~ᵛ (~ᵛ/∷ _ Δ~Δ′) (suc X) G~lookup =
+      lookup/~ᵛ Δ~Δ′ X G~lookup
+
+  record WellBehaved {N : ℕ} (B : BTheory N) : Set₁ where
+    open Definitions.Actions N
+    open Definitions.Common N
     open BTheory B
+
     field
+      -- A receiver of `α` that takes part in `α′` makes them one
+      -- communication.
 
-      -- -- If a participant can appear in a trace, it must be in the specification,
-      -- -- and viceversa.
-      -- ∈T-∈B : ∀ {P G} → P ∈T G → P ∈B G
-      -- ∈B-∈T : ∀ {P G} → P ∈B G → P ∈T G
+      -- (`overlap` would be the natural name, but it is an Agda keyword.)
+      recv-overlap :
+        ∀ {G α α′ G′ G″ Q}
+        → G -< α  >-> G′
+        → G -< α′ >-> G″
+        → Recv α Q
+        → Q ∈α α′
+        → comm α ≡ comm α′
 
-      -- We need to be able to determine if two actions are independent or not.
-      -- ATM (with our definition of Actions.agda), two actions are independent
-      -- if they do not involve the same participants, and if they are not
-      -- independent, they should have the same header. This may be too
-      -- restrictive ...
-      recv-act-eq : ∀ {G α α' G' G''} → G -< α >-> G' → G -< α' >-> G''
-        → receiver α ∈α α' → proj₁ α ≡ proj₁ α'
+      -- Up to `~`: in a view, one action may reach two bisimilar states.
+      step-deterministic :
+        ∀ {G α G′ G″}
+        → G -< α >-> G′
+        → G -< α >-> G″
+        → G′ ~ G″
 
-      -- The sender cannot be the same as the receiver.
-      -- Probably easy to generalise or remove.
-      snd≢rcv : ∀{G G' α} → G -< α >-> G' → sender α ≢ receiver α
+      -- Sort/arity determinism, for receive events only.
+      step-sort-det :
+        ∀ {G G′ G″ α α′ P Q I S T}
+          {i : Fin (suc I)}
+        → G -< α >-> G′
+        → G -< α′ >-> G″
+        → ev α Q ≡ just ((？ P) # i < S >)
+        → ev α′ Q ≡ just ((？ P) # i < T >)
+        → S ≡ T
 
-      -- Stepping with the same action leads to the same protocol state.
-      step-det : ∀ {G α G' G''} → G -< α >-> G' → G -< α >-> G'' → G' ≡ G''
+      step-arity-det :
+        ∀ {G G′ G″ α α′ P Q I J S T}
+          {i : Fin (suc I)}
+          {j : Fin (suc J)}
+        → G -< α >-> G′
+        → G -< α′ >-> G″
+        → ev α Q ≡ just ((？ P) # i < S >)
+        → ev α′ Q ≡ just ((？ P) # j < T >)
+        → I ≡ J
 
-      -- If the protocol steps with an action to a state that has a bisimilar
-      -- state, we must be able to construct a bisimilar protocol that
-      -- transitions with this action to this bisimilar state.
-      ~stepback : ∀ {α G0 G1 G1'}
-        → G1 ~ G1' → G0 -< α >-> G1 → ∃[ G0' ] (G0 ~ G0') × (G0' -< α >-> G1')
+      no-new-branch/step :
+        ∀ {G G′ Gᵢ Gⱼ′ β γ γ′}
+        → G -< β >-> G′
+        → (∀ Q → Recv γ Q → Q ∉α β)
+        → G  -< γ  >-> Gᵢ
+        → G′ -< γ′ >-> Gⱼ′
+        → comm γ′ ≡ comm γ
+        → ∃[ Gⱼ ] G -< γ′ >-> Gⱼ
 
-      -- Diamond property.
-      diamond : ∀ {G α G₁ α' G₂} → G -< α >-> G₁ → G -< α' >-> G₂
-        → α ∥ α' → ∃[ G' ] (G₁ -< α' >-> G' × G₂ -< α >-> G')
+      -- Diamond
 
-      -- Conditional commutativity
-      cond-comm : ∀ {hα i j α' G G' Gᵢ Gⱼ'} → hα ∥ₕ (proj₁ α')
-        → G -< α' >-> G' → G -< hα , i >-> Gᵢ → G' -< hα , j >-> Gⱼ'
-        → ∃[ Gⱼ ] G -< hα , j >-> Gⱼ
+      step-diamond :
+        ∀ {G α G₁ α′ G₂}
+        → G -< α  >-> G₁
+        → G -< α′ >-> G₂
+        → α ⋄ α′
+        → ∃[ X ] ∃[ Y ] (G₁ -< α′ >-> X) × (G₂ -< α >-> Y) × X ~ Y
 
-    send-act-indep : {G : Behav} {α α' : Action} {G' G'' : Behav} →
-             G -< α >-> G' → G -< α' >-> G'' → sender α' ∉α α → α ∥ α'
-    send-act-indep {_}{α}{α'} gr1 gr2 f with receiver α' ∈α? α
-    send-act-indep {_}{α}{α'} gr1 gr2 f | yes pr with recv-act-eq gr2 gr1 pr
-    ... | refl = ⊥-elim (f (∈S refl))
-    send-act-indep {_}{α}{α'} gr1 gr2 f | no ¬pr
-      = ii-disj λ{ (inj₁ (∈S refl)) → f (∈S refl)
-                ; (inj₁ (∈R refl)) → ¬pr (∈S refl)
-                ; (inj₂ (∈S refl)) → f (∈R refl)
-                ; (inj₂ (∈R refl)) → ¬pr (∈R refl) }
+    active-inactive/⋄ :
+      ∀ {G Gα Gβ P α β}
+      → G -< α >-> Gα
+      → G -< β >-> Gβ
+      → P ∈α α
+      → P ∉α β
+      → α ⋄ β
+    active-inactive/⋄ {P = P} {α} {β} grα grβ P∈α P∉β =
+      ∈∉→≢ {P} {α} {β} P∈α P∉β
+      ,
+      (λ Q rQ → ¬∈α→∉α {Q} {β} λ Q∈β →
+        ∉α→¬∈α {P} {β} P∉β
+          (comm-∈α {α} {β} {P} (recv-overlap {Q = Q} grα grβ rQ Q∈β) P∈α))
+      ,
+      (λ Q rQ → ¬∈α→∉α {Q} {α} λ Q∈α →
+        ∉α→¬∈α {P} {β} P∉β
+          (comm-∈α {α} {β} {P}
+            (sym (recv-overlap {Q = Q} grβ grα rQ Q∈α)) P∈α))
 
-    recv-act-indep : ∀ {G α α' G' G''} → G -< α >-> G' → G -< α' >-> G''
-        → receiver α ∉α α' → sender α ≢ receiver α' → α ∥ α'
-    recv-act-indep {α = α} {α' = α'} gr gr' R∉ S≢R
-      with sender α ≟f sender α'
-    ... | yes eq = ii-≡snd eq λ x → R∉ (∈R (sym x))
-    ... | no ¬eq = ii-disj λ{ (inj₁ (∈S refl)) → ¬eq refl
-                            ; (inj₁ (∈R refl)) → S≢R refl
-                            ; (inj₂ x) → R∉ x }
+    -- If one receiver of `γ` is idle in `β`, all of them are: an active one
+    -- would make `γ` and `β` the same communication.
+    recv-idle/all :
+      ∀ {G Gγ Gβ γ β R}
+      → G -< γ >-> Gγ
+      → G -< β >-> Gβ
+      → Recv γ R
+      → R ∉α β
+      → ∀ Q → Recv γ Q → Q ∉α β
+    recv-idle/all {γ = γ} {β} {R} grγ grβ rR R∉β Q rQ =
+      ¬∈α→∉α {Q} {β} λ Q∈β →
+        ∉α→¬∈α {R} {β} R∉β
+          (comm-∈α {γ} {β} {R} (recv-overlap {Q = Q} grγ grβ rQ Q∈β)
+            (Recv→∈α {γ} {R} rR))
 
-    indep? : ∀ {G₁ G₂ G₃ α₁ α₂} → G₁ -< α₁ >-> G₂ → G₁ -< α₂ >-> G₃
-      → (α₁ ∥ α₂) ⊎ (proj₁ α₁ ≡ proj₁ α₂)
-    indep? {α₁ = α₁} {α₂ = α₂} x y with disj? x y
-    ... | no ¬d = inj₁ (ii-disj ¬d)
-    ... | yes (inj₂ y₁) rewrite recv-act-eq x y y₁ = inj₂ refl
-    ... | yes (inj₁ (∈R refl)) rewrite recv-act-eq y x (∈S refl) = inj₂ refl
-    ... | yes (inj₁ (∈S p)) with receiver α₁ ≟f receiver α₂
-    ... | yes refl rewrite recv-act-eq x y (∈R refl) = inj₂ refl
-    ... | no  R∉ = inj₁ (ii-≡snd (sym p) R∉)
+    -- The `-aux` helpers take the run curried: repacking it into a Σ at
+    -- each call hides the structural recursion from the termination checker.
 
-    ◇-join : ∀ {G α G₁ α' G₂} → G -< α >-> G₁ → G -< α' >-> G₂
-        → α ∥ α' → Behav
-    ◇-join gr gr′ ii = proj₁ (diamond gr gr′ ii)
+    skip/advance-aux :
+      ∀ {G G′ Gα P α αs}
+      → G -[ αs ]-> G′
+      → All (P ∉αˢ_) αs
+      → G -< α >-> Gα
+      → P ∈αˢ α
+      → ∃[ G′α ] G′ -< α >-> G′α × ∃[ Z ] Gα -[¬ P ]->* Z × Z ~ G′α
+    skip/advance-aux tr/refl [] grα _ =
+      _ , grα , _ , skip/refl , ~refl
+    skip/advance-aux (tr/step grβ tr) (P∉β ∷ allP) grα P∈α@(X , X∈ , X∈α)
+      with step-diamond grα grβ (active-inactive/⋄ grα grβ X∈α (P∉β X X∈))
+    ... | _ , _ , Gα↝X , Gβ↝Y , X~Y
+      with skip/advance-aux tr allP Gβ↝Y P∈α
+    ... | G′α , G′↝G′α , _ , (βs , trY , allP′) , Z~G′α =
+      let _ , trX , Z~Z′ = tr-transport (~sym X~Y) trY
+      in G′α , G′↝G′α , _ , tr¬/step Gα↝X P∉β (βs , trX , allP′)
+       , ~trans (~sym Z~Z′) Z~G′α
 
-    ◇-l : ∀ {G α G₁ α' G₂} (gr : G -< α >-> G₁) (gr' : G -< α' >-> G₂)
-        → (ii : α ∥ α') → G₁ -< α' >-> ◇-join gr gr' ii
-    ◇-l gr gr′ ii = proj₁ (proj₂ (diamond gr gr′ ii))
+    skip/advance :
+      ∀ {G G′ Gα P α}
+      → G -[¬ P ]->* G′
+      → G -< α >-> Gα
+      → P ∈αˢ α
+      → ∃[ G′α ] G′ -< α >-> G′α × ∃[ Z ] Gα -[¬ P ]->* Z × Z ~ G′α
+    skip/advance (_ , tr , allP) =
+      skip/advance-aux tr allP
 
-    ◇-r : ∀ {G α G₁ α' G₂} (gr : G -< α >-> G₁) (gr' : G -< α' >-> G₂)
-        → (ii : α ∥ α') → G₂ -< α >-> ◇-join gr gr' ii
-    ◇-r gr gr′ ii = proj₂ (proj₂ (diamond gr gr′ ii))
+    no-new-branch/skip-aux :
+      ∀ {G G′ Gᵢ Gⱼ′ γ γ′ P Q αs}
+      → G -[ αs ]-> G′
+      → All (P ∉αˢ_) αs
+      → Q ∈ P
+      → Recv γ Q
+      → G  -< γ  >-> Gᵢ
+      → G′ -< γ′ >-> Gⱼ′
+      → comm γ′ ≡ comm γ
+      → ∃[ Gⱼ ] G -< γ′ >-> Gⱼ
+    no-new-branch/skip-aux tr/refl [] Q∈ rQ grᵢ grⱼ ceq =
+      _ , grⱼ
+    no-new-branch/skip-aux {γ = γ} {Q = Q}
+      (tr/step grβ tr) (P∉β ∷ allP) Q∈ rQ grᵢ grⱼ′ ceq
+      with step-diamond grᵢ grβ
+             (active-inactive/⋄ grᵢ grβ (Recv→∈α {γ} {Q} rQ) (P∉β Q Q∈))
+    ... | _ , _ , _ , grᵢ′ , _
+      with no-new-branch/skip-aux tr allP Q∈ rQ grᵢ′ grⱼ′ ceq
+    ... | _ , grⱼ =
+      no-new-branch/step grβ (recv-idle/all grᵢ grβ rQ (P∉β Q Q∈)) grᵢ grⱼ
+        ceq
 
-    ∉B-step : ∀ {G α G' P} → G -< α >-> G' → ¬ P ∈T G → ¬ P ∈T G'
-    ∉B-step st = contraposition (in/later st)
+    no-new-branch/skip :
+      ∀ {G G′ Gᵢ Gⱼ′ γ γ′ P Q}
+      → G -[¬ P ]->* G′
+      → Q ∈ P
+      → Recv γ Q
+      → G  -< γ  >-> Gᵢ
+      → G′ -< γ′ >-> Gⱼ′
+      → comm γ′ ≡ comm γ
+      → ∃[ Gⱼ ] G -< γ′ >-> Gⱼ
+    no-new-branch/skip (_ , tr , allP) =
+      no-new-branch/skip-aux tr allP
 
-    ~traceback : ∀ {P G G' Gi} → G ~ G' → Gi =<¬ P >=>ᵣ G
-      → ∃[ Gi' ] (Gi ~ Gi') × Gi' =<¬ P >=>ᵣ G'
-    ~traceback b rt/refl = _ , b , rt/refl
-    ~traceback b (rt/trans gr (x , nP))
-      = let Gii , bG , y = ~stepback b x
-            Gi' , bR , gr' = ~traceback bG gr
-        in _ , bR , rt/trans gr' (y , nP)
+    branch/before :
+      ∀ {G G′ Gᵢ Gⱼ′ γ γ′ P Q}
+      → (tr   : G -[¬ P ]->* G′)
+      → Q ∈ P
+      → Recv γ Q
+      → (grᵢ  : G  -< γ  >-> Gᵢ)
+      → (grⱼ′ : G′ -< γ′ >-> Gⱼ′)
+      → comm γ′ ≡ comm γ
+      → ∃[ Gⱼ ] (G -< γ′ >-> Gⱼ) × ∃[ H ] (Gⱼ -[¬ P ]->* H) × H ~ Gⱼ′
+    branch/before {γ = γ} {γ′} {Q = Q} tr Q∈ rQ grᵢ grⱼ′ ceq
+      with no-new-branch/skip tr Q∈ rQ grᵢ grⱼ′ ceq
+    ... | Gⱼ , grⱼ
+      with skip/advance tr grⱼ
+             (Q , Q∈ , comm-∈α {γ} {γ′} {Q} (sym ceq) (Recv→∈α {γ} {Q} rQ))
+    ... | _ , grⱼ″ , H , trⱼ , H~Gⱼ″ =
+      Gⱼ , grⱼ , H , trⱼ , ~trans H~Gⱼ″ (step-deterministic grⱼ″ grⱼ′)
 
-    ~traceback/l : ∀ {P G G' Gi} → G ~ G' → Gi =<¬ P >=> G
-      → ∃[ Gi' ] (Gi ~ Gi') × Gi' =<¬ P >=> G'
-    ~traceback/l b (■ , tt) = _ , b , (■ , tt)
-    ~traceback/l b ((x ► tr) , P∉x , P∉tr)
-      = let Gii , bG , tr' , P∉tr'  = ~traceback/l b (tr , P∉tr)
-            Gi' , bR , x' = ~stepback bG x
-        in _ , bR , (x' ► tr') , P∉x ,  P∉tr'
+    -- Two receives by `Q`, one before and one after a run free of `Q`'s
+    -- process, are the same communication.
+    recv/same-comm :
+      ∀ {G G′ Gγ Gγ′ γ γ′ P Q}
+      → G -[¬ P ]->* G′
+      → Q ∈ P
+      → G -< γ >-> Gγ
+      → Recv γ Q
+      → G′ -< γ′ >-> Gγ′
+      → Recv γ′ Q
+      → comm γ′ ≡ comm γ
+    recv/same-comm {γ = γ} {Q = Q} tr Q∈ grγ rQ grγ′ rQ′
+      with skip/advance tr grγ (Q , Q∈ , Recv→∈α {γ} {Q} rQ)
+    ... | _ , grγ-at-G′ , _ =
+      recv-overlap {Q = Q} grγ′ grγ-at-G′ rQ′ (Recv→∈α {γ} {Q} rQ)
 
-
-  record BT-Extra {N : ℕ}(B : BTheory N) : Set₁ where
-    open Definitions.Common(N)
-    open Definitions.Actions(N)
+  -- Every step is one multicast.
+  record Balanced {N : ℕ} (B : BTheory N) : Set₁ where
+    open Definitions.Actions N
+    open Definitions.Common N
     open BTheory B
+
     field
+      -- Nonempty receivers, sender not among them.
+      balanced :
+        ∀ {G G′ α}
+        → G -< α >-> G′
+        → ∃[ P ] ∃[ Qs ] ∃[ c ] P ∉ Qs × Nonempty Qs × α ≡ P ⟶ Qs # c
 
-      can-step? : ∀ P B → Dec (P ∈tr B)
+    -- A step with a send event at `P` IS `P`'s multicast.
+    send-action :
+      ∀ {G G′ α P Qs c}
+      → G -< α >-> G′
+      → ev α P ≡ just ((! Qs) # c)
+      → P ∉ Qs × α ≡ P ⟶ Qs # c
+    send-action {P = P} gr eq with balanced gr
+    ... | P′ , Qs′ , c′ , P′∉Qs′ , _ , refl with ev-inv {P′} {Qs′} {c′} {P} eq
+    ...   | inj₁ (refl , refl) = P′∉Qs′ , refl
+    ...   | inj₂ (_ , _ , ())
 
-    skippable? : ∀ {Bi Bo} P → (tr : Bi ~~> Bo) → Dec (skippable P tr)
-    skippable? {Bi = B} P ■ = can-step? P B
-    skippable? {Bi = B} P (x BTheory.► tr) with can-step? P B
-    ... | yes p = no (λ z → z .proj₁ p)
-    ... | no ¬p with skippable? P tr
-    ... | yes sk = yes (¬p , sk)
-    ... | no ¬sk = no (λ z → ¬sk (z .proj₂))
+    -- The sender of a receive takes part in the same step.
+    recv-sender :
+      ∀ {G G′ α R P c}
+      → G -< α >-> G′
+      → ev α R ≡ just ((？ P) # c)
+      → P ∈α α
+    recv-sender {R = R} gr eq with balanced gr
+    ... | P′ , Qs′ , c′ , _ , _ , refl with ev-inv {P′} {Qs′} {c′} {R} eq
+    ...   | inj₁ (_ , ())
+    ...   | inj₂ (_ , _ , refl) = _ , ev-sender {P′} {Qs′} {c′}
 
-    unrelated? : ∀ {Bi Bo} P → (tr : Bi ~~> Bo)
-      → Dec (until tr (λ _ α → P ∉α α) ⊤)
-    unrelated? {Bi = B} P ■ = yes tt
-    unrelated? {Bi = B} P (_►_ {α = α} x tr) with P ∈α? α
-    ... | yes f = no λ z → z .proj₁ f
-    ... | no ¬p with unrelated? P tr
-    ... | yes p = yes (¬p , p)
-    ... | no ¬p = no (λ z → ¬p (z .proj₂))
+    -- `P`'s send event determines the action.
+    send-det :
+      ∀ {G G′ G″ α α′ P Qs c}
+      → G -< α >-> G′
+      → G -< α′ >-> G″
+      → ev α P ≡ just ((! Qs) # c)
+      → ev α′ P ≡ just ((! Qs) # c)
+      → α ≡ α′
+    send-det gr gr′ eq eq′ =
+      trans (proj₂ (send-action gr eq)) (sym (proj₂ (send-action gr′ eq′)))
 
+  -- Balanced, and no communication first appears after an unrelated step.
+  record Synchronous {N : ℕ} (B : BTheory N) : Set₁ where
+    open Definitions.Actions N
+    open Definitions.Common N
+    open BTheory B
 
+    field
+      balanced :
+        ∀ {G G′ α}
+        → G -< α >-> G′
+        → ∃[ P ] ∃[ Qs ] ∃[ c ] P ∉ Qs × Nonempty Qs × α ≡ P ⟶ Qs # c
+
+      no-new-comm/step :
+        ∀ {G G′ Gγ β γ}
+        → G -< β >-> G′
+        → (∀ X → X ∈α γ → X ∉α β)
+        → G′ -< γ >-> Gγ
+        → ∃[ Gγ′ ] G -< γ >-> Gγ′
+
+    bal : Balanced B
+    bal = record { balanced = balanced }
+
+    open Balanced bal public using (send-action; recv-sender; send-det)

@@ -1,0 +1,624 @@
+{-# OPTIONS --guardedness #-}
+
+open import Data.Bool
+  using (Bool; T; true; _∧_)
+import Data.Bool.Properties as Bool
+open import Data.Bool.Properties using (T-∧)
+open import Data.Empty using (⊥-elim)
+open import Data.Fin using (Fin)
+import Data.Fin as Fin
+open import Data.List using (List; []; _∷_; all; any)
+open import Data.List.Membership.Propositional using (_∈_)
+  renaming (find to find∈)
+import Data.List.Relation.Unary.Any as Any
+import Data.List.Relation.Unary.Any.Properties as AnyP
+import Data.List.Relation.Unary.All as All
+import Data.List.Relation.Unary.All.Properties as AllP
+open import Function using (Equivalence)
+open Equivalence using (to; from)
+open import Data.Nat
+  using (ℕ; zero; suc; _+_; _*_; _≤_; _<_; z≤n)
+import Data.Nat.Properties as Nat
+open import Data.Product
+  using (_×_; _,_; proj₁; proj₂; Σ-syntax)
+open import Data.Unit using (tt)
+open import Data.Vec using (Vec; lookup; replicate; tabulate)
+import Data.Vec as V
+import Data.Vec.Properties as Vec
+open import Relation.Binary.PropositionalEquality
+  using (_≡_; _≢_; refl; cong; subst; sym; trans)
+open import Relation.Nullary.Decidable
+  using (⌊_⌋; fromWitness; toWitness)
+open import Relation.Nullary using (Dec; yes; no)
+
+open import Definitions.Behav using (BTheory)
+open import Utils.Bits
+  using (wt; Incl; wt/mono; wt/strict; wt/true; iterateFix; iterateFix/iterate)
+  renaming (iter to iterate)
+
+module Definitions.Graph.Bisimulation (N : ℕ) where
+
+  open import Definitions.Actions N using (Action)
+  open import Definitions.Graph.Action N
+  open import Definitions.Graph.Core N
+
+  module Semantic (G : Graph) where
+    open BTheory (graphTheory G)
+
+    forth :
+      ∀ {s t α u}
+      → s ~ t
+      → BTheory._-<_>->_ (graphTheory G) s α u
+      → Σ[ v ∈ State G ]
+          BTheory._-<_>->_ (graphTheory G) t α v × (u ~ v)
+    forth equivalent gr = ~L equivalent gr
+
+    symmetric : ∀ {s t} → s ~ t → t ~ s
+    symmetric = ~sym
+
+  Matrix : Graph → Set
+  Matrix G = Vec (Vec Bool (size G)) (size G)
+
+  top : (G : Graph) → Matrix G
+  top G = replicate (size G) (replicate (size G) true)
+
+  related :
+    (G : Graph) → Matrix G → State G → State G → Bool
+  related G relation s t = lookup (lookup relation s) t
+
+  actionMatches : Action → Action → Bool
+  actionMatches α α′ = ⌊ α ≟Action α′ ⌋
+
+  edgeMatches :
+    ∀ {G}
+    → Matrix G
+    → Edge (size G)
+    → Edge (size G)
+    → Bool
+  edgeMatches {G} relation left right =
+    actionMatches (proj₁ left) (proj₁ right)
+      ∧ related G relation (proj₂ left) (proj₂ right)
+
+  simulates :
+    (G : Graph)
+    → Matrix G
+    → State G
+    → State G
+    → Bool
+  simulates G relation s t =
+    all
+      (λ left → any (edgeMatches {G} relation left) (edges G t))
+      (edges G s)
+
+  refineAt :
+    (G : Graph)
+    → Matrix G
+    → State G
+    → State G
+    → Bool
+  refineAt G relation s t =
+    related G relation s t
+      ∧ simulates G relation s t
+      ∧ simulates G relation t s
+
+  refine : (G : Graph) → Matrix G → Matrix G
+  refine G relation =
+    tabulate λ s → tabulate λ t → refineAt G relation s t
+
+  -- Refinement rounds, stopping at a stable one (`iterateFix`).
+
+  matrix≟ :
+    (G : Graph) → (left right : Matrix G) → Dec (left ≡ right)
+  matrix≟ G = Vec.≡-dec (Vec.≡-dec Bool._≟_)
+
+  approximation : (G : Graph) → Matrix G
+  approximation G =
+    iterateFix (matrix≟ G) (size G * size G) (refine G) (top G)
+
+  approximation/iterate :
+    ∀ {G}
+    → approximation G ≡ iterate (size G * size G) (refine G) (top G)
+  approximation/iterate {G} =
+    iterateFix/iterate (matrix≟ G) (size G * size G) (refine G) (top G)
+
+  bisim? : (G : Graph) → State G → State G → Bool
+  bisim? G = related G (approximation G)
+
+  Bisimilar : (G : Graph) → State G → State G → Set
+  Bisimilar G s t = T (bisim? G s t)
+
+
+  all/intro :
+    ∀ {A : Set}
+      {p : A → Bool}
+      {xs : List A}
+    → (∀ x → x ∈ xs → T (p x))
+    → T (all p xs)
+  all/intro {p = p} member = AllP.all⁻ p (All.tabulate λ {x} → member x)
+
+  any/intro :
+    ∀ {A : Set}
+      {p : A → Bool}
+      {x : A}
+      {xs : List A}
+    → x ∈ xs
+    → T (p x)
+    → T (any p xs)
+  any/intro {p = p} member proof =
+    AnyP.any⁺ p (Any.map (λ { refl → proof }) member)
+
+  all/member :
+    ∀ {A : Set}
+      {p : A → Bool}
+      {x : A}
+      {xs : List A}
+    → T (all p xs)
+    → x ∈ xs
+    → T (p x)
+  all/member {p = p} {xs = xs} proof = All.lookup (AllP.all⁺ p xs proof)
+
+  any/witness :
+    ∀ {A : Set}
+      {p : A → Bool}
+      {xs : List A}
+    → T (any p xs)
+    → Σ[ x ∈ A ] x ∈ xs × T (p x)
+  any/witness {p = p} {xs} proof = find∈ (AnyP.any⁻ p xs proof)
+
+  related/refine :
+    ∀ {G} (relation : Matrix G) (s t : State G)
+    → related G (refine G relation) s t
+        ≡ refineAt G relation s t
+  related/refine {G} relation s t =
+    trans
+      (cong
+        (λ row → lookup row t)
+        (Vec.lookup∘tabulate
+          (λ s′ → tabulate (refineAt G relation s′)) s))
+      (Vec.lookup∘tabulate (refineAt G relation s) t)
+
+  refine⇒at :
+    ∀ {G}
+      {relation : Matrix G}
+      {s t : State G}
+    → T (related G (refine G relation) s t)
+    → T (refineAt G relation s t)
+  refine⇒at {G} {relation} {s} {t} =
+    subst T (related/refine {G = G} relation s t)
+
+  at⇒refine :
+    ∀ {G}
+      {relation : Matrix G}
+      {s t : State G}
+    → T (refineAt G relation s t)
+    → T (related G (refine G relation) s t)
+  at⇒refine {G} {relation} {s} {t} =
+    subst T (sym (related/refine {G = G} relation s t))
+
+  Included : (G : Graph) → Matrix G → Matrix G → Set
+  Included G left right =
+    ∀ s t
+    → T (related G left s t)
+    → T (related G right s t)
+
+  refine/descending :
+    ∀ {G} {relation : Matrix G}
+    → Included G (refine G relation) relation
+  refine/descending {G} {relation} s t refined =
+    proj₁ (to T-∧ (refine⇒at {G = G} {relation = relation} refined))
+
+  Symmetric : (G : Graph) → Matrix G → Set
+  Symmetric G relation =
+    ∀ s t
+    → T (related G relation s t)
+    → T (related G relation t s)
+
+  refine/symmetric :
+    ∀ {G}
+      {relation : Matrix G}
+    → Symmetric G relation
+    → Symmetric G (refine G relation)
+  refine/symmetric {G} {relation} symmetric s t refined =
+    let r , sims =
+          to (T-∧ {related G relation s t})
+            (refine⇒at {G = G} {relation = relation} refined)
+        st , ts = to (T-∧ {simulates G relation s t}) sims
+    in
+    at⇒refine {G = G} {relation = relation}
+      (from (T-∧ {related G relation t s})
+        (symmetric s t r , from (T-∧ {simulates G relation t s}) (ts , st)))
+
+  iterate/symmetric :
+    ∀ {G} fuel
+      {relation : Matrix G}
+    → Symmetric G relation
+    → Symmetric G (iterate fuel (refine G) relation)
+  iterate/symmetric zero symmetric =
+    symmetric
+  iterate/symmetric {G} (suc fuel) {relation} symmetric =
+    iterate/symmetric {G} fuel
+      {relation = refine G relation}
+      (refine/symmetric {G} {relation} symmetric)
+
+  related/top :
+    ∀ {G} (s t : State G)
+    → related G (top G) s t ≡ true
+  related/top {G} s t =
+    trans
+      (cong
+        (λ row → lookup row t)
+        (Vec.lookup-replicate s
+          (replicate (size G) true)))
+      (Vec.lookup-replicate t true)
+
+  SemanticContained : (G : Graph) → Matrix G → Set
+  SemanticContained G relation =
+    ∀ {s t}
+    → BTheory._~_ (graphTheory G) s t
+    → T (related G relation s t)
+
+  top/contains : ∀ {G} → SemanticContained G (top G)
+  top/contains {G} {s} {t} equivalent =
+    subst T (sym (related/top {G} s t)) tt
+
+  top/symmetric : ∀ {G} → Symmetric G (top G)
+  top/symmetric {G} s t related =
+    subst T (sym (related/top {G} t s)) tt
+
+  approximation/symmetric :
+    ∀ {G} → Symmetric G (approximation G)
+  approximation/symmetric {G} =
+    subst (Symmetric G) (sym (approximation/iterate {G}))
+      (iterate/symmetric {G} (size G * size G)
+        (top/symmetric {G = G}))
+
+  matrixWeight : ∀ {m n} → Vec (Vec Bool n) m → ℕ
+  matrixWeight V.[] = zero
+  matrixWeight (row V.∷ rows) =
+    wt row + matrixWeight rows
+
+  RowsIncluded :
+    ∀ {m n}
+    → Vec (Vec Bool n) m
+    → Vec (Vec Bool n) m
+    → Set
+  RowsIncluded left right =
+    ∀ i → Incl (lookup left i) (lookup right i)
+
+  matrixWeight/mono :
+    ∀ {m n}
+      {left right : Vec (Vec Bool n) m}
+    → RowsIncluded left right
+    → matrixWeight left ≤ matrixWeight right
+  matrixWeight/mono {left = V.[]} {V.[]} included =
+    z≤n
+  matrixWeight/mono
+    {left = left V.∷ lefts}
+    {right V.∷ rights}
+    included =
+    Nat.+-mono-≤
+      (wt/mono {left = left} {right = right}
+        (included Fin.zero))
+      (matrixWeight/mono {left = lefts} {right = rights} λ i →
+        included (Fin.suc i))
+
+  matrixWeight/strict :
+    ∀ {m n}
+      {left right : Vec (Vec Bool n) m}
+    → RowsIncluded left right
+    → left ≢ right
+    → matrixWeight left < matrixWeight right
+  matrixWeight/strict {left = V.[]} {V.[]} included unequal =
+    ⊥-elim (unequal refl)
+  matrixWeight/strict
+    {left = left V.∷ lefts}
+    {right V.∷ rights}
+    included unequal
+    with Vec.≡-dec Bool._≟_ left right
+  ... | yes refl =
+    Nat.+-monoʳ-< (wt right)
+      (matrixWeight/strict
+        {left = lefts} {right = rights}
+        (λ i → included (Fin.suc i))
+        (λ equal → unequal (cong (right V.∷_) equal)))
+  ... | no row≢ =
+    Nat.+-mono-<-≤
+      (wt/strict
+        {left = left} {right = right}
+        (included Fin.zero) row≢)
+      (matrixWeight/mono {left = lefts} {right = rights} λ i →
+        included (Fin.suc i))
+
+  refine/weight< :
+    ∀ {G} {relation : Matrix G}
+    → refine G relation ≢ relation
+    → matrixWeight (refine G relation) < matrixWeight relation
+  refine/weight< {G} {relation} unequal =
+    matrixWeight/strict
+      {left = refine G relation} {right = relation}
+      (refine/descending {G} {relation}) unequal
+
+  matrixWeight/replicate :
+    ∀ {n} m (row : Vec Bool n)
+    → matrixWeight (replicate m row) ≡ m * wt row
+  matrixWeight/replicate zero row = refl
+  matrixWeight/replicate (suc m) row =
+    cong (wt row +_) (matrixWeight/replicate m row)
+
+  top/weight :
+    ∀ {G} → matrixWeight (top G) ≡ size G * size G
+  top/weight {G} =
+    trans
+      (matrixWeight/replicate (size G)
+        (replicate (size G) true))
+      (cong (size G *_) (wt/true (size G)))
+
+  Stable : (G : Graph) → Matrix G → Set
+  Stable G relation = refine G relation ≡ relation
+
+  iterate/fixed :
+    ∀ {G} fuel
+      {relation : Matrix G}
+    → Stable G relation
+    → iterate fuel (refine G) relation ≡ relation
+  iterate/fixed zero stable = refl
+  iterate/fixed {G} (suc fuel) {relation} stable
+    rewrite stable =
+    iterate/fixed {G} fuel stable
+
+  stable/iterate :
+    ∀ {G} fuel
+      {relation : Matrix G}
+    → Stable G relation
+    → Stable G (iterate fuel (refine G) relation)
+  stable/iterate {G} fuel {relation} stable =
+    let fixed = iterate/fixed {G} fuel stable
+    in
+    trans
+      (cong (refine G) fixed)
+      (trans stable (sym fixed))
+
+  stabilize :
+    ∀ {G} fuel
+      {relation : Matrix G}
+    → matrixWeight relation ≤ fuel
+    → Stable G (iterate fuel (refine G) relation)
+  stabilize {G} zero {relation} bounded
+    with matrix≟ G (refine G relation) relation
+  ... | yes stable = stable
+  ... | no unstable =
+    ⊥-elim
+      (Nat.n≮0
+        (Nat.<-≤-trans
+          (refine/weight< {G} {relation} unstable)
+          bounded))
+  stabilize {G} (suc fuel) {relation} bounded
+    with matrix≟ G (refine G relation) relation
+  ... | yes stable =
+    stable/iterate {G} (suc fuel) stable
+  ... | no unstable =
+    stabilize {G} fuel
+      {relation = refine G relation}
+      (Nat.≤-pred
+        (Nat.<-≤-trans
+          (refine/weight< {G} {relation} unstable)
+          bounded))
+
+  approximation/stable :
+    ∀ {G} → Stable G (approximation G)
+  approximation/stable {G} =
+    subst (Stable G) (sym (approximation/iterate {G}))
+      (stabilize {G} (size G * size G)
+        {relation = top G}
+        (subst
+          (λ weight → weight ≤ size G * size G)
+          (sym (top/weight {G}))
+          Nat.≤-refl))
+
+  stable⇒refined :
+    ∀ {G}
+      {relation : Matrix G}
+      {s t : State G}
+    → Stable G relation
+    → T (related G relation s t)
+    → T (refineAt G relation s t)
+  stable⇒refined {G} {relation} {s} {t} stable holds =
+    refine⇒at {G = G} {relation = relation}
+      (subst T
+        (sym
+          (cong
+            (λ candidate → related G candidate s t)
+            stable))
+        holds)
+
+  actionMatches/refl : ∀ α → T (actionMatches α α)
+  actionMatches/refl α = fromWitness refl
+
+  actionMatches⇒equal :
+    ∀ {α β} → T (actionMatches α β) → α ≡ β
+  actionMatches⇒equal = toWitness
+
+  semantic/forth :
+    ∀ {G}
+      {relation : Matrix G}
+      {s t : State G}
+    → SemanticContained G relation
+    → BTheory._~_ (graphTheory G) s t
+    → T (simulates G relation s t)
+  semantic/forth {G} {relation} {s} {t} contained equivalent =
+    all/intro
+      {p = λ edge →
+        any (edgeMatches {G} relation edge) (edges G t)}
+      {xs = edges G s}
+      λ where
+      (α , u) member →
+        let v , gr , later =
+              Semantic.forth G equivalent
+                (listed⇒step member)
+        in
+        any/intro
+          {p = edgeMatches {G} relation (α , u)}
+          (step⇒listed gr)
+          (from T-∧ (actionMatches/refl α , contained later))
+
+  semantic/back :
+    ∀ {G}
+      {relation : Matrix G}
+      {s t : State G}
+    → SemanticContained G relation
+    → BTheory._~_ (graphTheory G) s t
+    → T (simulates G relation t s)
+  semantic/back {G} {relation} {s} {t} contained equivalent =
+    semantic/forth
+      {G} {relation} {s = t} {t = s}
+      contained
+      (Semantic.symmetric G equivalent)
+
+  semantic/refine :
+    ∀ {G}
+      {relation : Matrix G}
+    → SemanticContained G relation
+    → SemanticContained G (refine G relation)
+  semantic/refine {G} {relation} contained
+    {s} {t} equivalent =
+    at⇒refine {G = G} {relation = relation}
+      (from (T-∧ {related G relation s t})
+        ( contained equivalent
+        , from (T-∧ {simulates G relation s t})
+            ( semantic/forth {G} {relation} {s} {t} contained equivalent
+            , semantic/back {G} {relation} {s} {t} contained equivalent )))
+
+  iterate/contains :
+    ∀ {G} fuel
+      {relation : Matrix G}
+    → SemanticContained G relation
+    → SemanticContained G
+        (iterate fuel (refine G) relation)
+  iterate/contains zero contained =
+    contained
+  iterate/contains {G} (suc fuel) {relation} contained =
+    iterate/contains {G} fuel
+      {relation = refine G relation}
+      (semantic/refine {G} {relation} contained)
+
+  approximation/complete :
+    ∀ {G} → SemanticContained G (approximation G)
+  approximation/complete {G} =
+    subst (SemanticContained G) (sym (approximation/iterate {G}))
+      (iterate/contains {G} (size G * size G)
+        (top/contains {G = G}))
+
+  semantic⇒bisimilar :
+    ∀ {G s t}
+    → BTheory._~_ (graphTheory G) s t
+    → Bisimilar G s t
+  semantic⇒bisimilar {G} = approximation/complete {G = G}
+
+  module Sound (G : Graph) where
+    open BTheory (graphTheory G)
+    open _≲_
+
+    match :
+      ∀ (relation : Matrix G)
+        {s t : State G}
+        {α : Action}
+        {u : State G}
+      → Stable G relation
+      → T (related G relation s t)
+      → BTheory._-<_>->_ (graphTheory G) s α u
+      → Σ[ v ∈ State G ]
+          BTheory._-<_>->_ (graphTheory G) t α v
+            × T (related G relation u v)
+    match relation {s} {t} {α} {u} stable holds gr =
+      find
+        (any/witness
+          (all/member forward
+            (step⇒listed gr)))
+      where
+        refined =
+          stable⇒refined
+            {G} {relation} {s} {t} stable holds
+
+        simulations = proj₂ (to (T-∧ {related G relation s t}) refined)
+
+        forward : T (simulates G relation s t)
+        forward = proj₁ (to T-∧ simulations)
+
+        find :
+          Σ[ edge ∈ Edge (size G) ]
+            edge ∈ edges G t
+              × T (edgeMatches {G} relation (α , u) edge)
+          → Σ[ v ∈ State G ]
+              BTheory._-<_>->_ (graphTheory G) t α v
+                × T (related G relation u v)
+        find ((β , v) , member , matches) =
+          let m , rel = to T-∧ matches
+              equal = actionMatches⇒equal m
+          in
+          v
+          , subst
+              (λ action →
+                BTheory._-<_>->_
+                  (graphTheory G) t action v)
+              (sym equal)
+              (listed⇒step member)
+          , rel
+
+    mutual
+      fromStable :
+        ∀ (relation : Matrix G)
+        → Stable G relation
+        → Symmetric G relation
+        → ∀ {s t}
+        → T (related G relation s t)
+        → s ~ t
+      fromStable relation stable symmetric {s} {t} holds =
+        fromStable/forward relation stable symmetric holds
+        , fromStable/forward relation stable symmetric
+            (symmetric s t holds)
+
+      fromStable/forward :
+        ∀ (relation : Matrix G)
+        → Stable G relation
+        → Symmetric G relation
+        → ∀ {s t}
+        → T (related G relation s t)
+        → s ≲ t
+      simulate
+        (fromStable/forward relation stable symmetric holds)
+        gr
+        with match relation stable holds gr
+      ... | v , gr′ , later =
+        v , gr′
+          , fromStable relation stable symmetric later
+
+  approximation/sound :
+    ∀ {G s t}
+    → Bisimilar G s t
+    → BTheory._~_ (graphTheory G) s t
+  approximation/sound {G} =
+    Sound.fromStable G
+      (approximation G)
+      (approximation/stable {G})
+      (approximation/symmetric {G})
+
+  record BisimulationCorrect (G : Graph) : Set where
+    field
+      sound :
+        ∀ {s t}
+        → Bisimilar G s t
+        → BTheory._~_ (graphTheory G) s t
+
+      complete :
+        ∀ {s t}
+        → BTheory._~_ (graphTheory G) s t
+        → Bisimilar G s t
+
+  open BisimulationCorrect public
+
+  bisimulationCorrect : (G : Graph) → BisimulationCorrect G
+  bisimulationCorrect G =
+    record
+      { sound = approximation/sound {G = G}
+      ; complete = semantic⇒bisimilar {G = G}
+      }

@@ -1,163 +1,240 @@
 open import Data.Empty using (⊥-elim)
-open import Data.Fin using (Fin; zero; suc) renaming (_≟_ to _≟f_)
-open import Data.Fin.Subset using (Subset)
-open import Data.Nat using (ℕ ; zero; suc) renaming (_+_ to _+ℕ_)
-open import Data.Product using (Σ-syntax; ∃-syntax; _,_; _×_; proj₁; proj₂)
+open import Data.Fin using (Fin) renaming (_≟_ to _≟f_)
+open import Data.Fin.Subset using (_∈_; _∉_; ⁅_⁆)
+open import Data.Fin.Subset.Properties using (_∈?_; x∈⁅x⁆; x∈⁅y⁆⇒x≡y)
+open import Data.Maybe using (Maybe; just; nothing) renaming (map to mapᵐ)
+open import Data.Maybe.Properties using (just-injective)
+open import Data.Nat using (ℕ; suc)
+open import Data.Product using (_,_; _×_; ∃-syntax)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
-open import Data.Vec using (Vec ; []; _∷_; lookup ; map; tabulate; _[_]≔_)
-open import Data.Vec.Properties using (lookup-map; lookup∘update;
-  lookup∘update′; lookup∘tabulate)
-open import Function  using (_∘_)
-open import Relation.Binary.PropositionalEquality using (_≡_; _≢_; refl; cong;
-  cong₂; sym; subst; ≢-sym)
-open import Relation.Nullary using (Dec; ¬_; ¬?; yes; no; contraposition)
-open import Relation.Nullary.Decidable using (False; toWitnessFalse; True;
-  toWitness)
-
-open import Utils.Fin
-
-open import Definitions.Guard
-open import Definitions.Expr
+open import Data.Vec using (Vec; lookup; tabulate; map)
+import Data.Vec.Properties as VecP
+open import Relation.Binary.PropositionalEquality
+  using (_≡_; _≢_; refl; sym; trans; cong)
+open import Relation.Nullary using (Dec; ¬_; ¬?; yes; no)
+open import Relation.Nullary.Decidable using (_×-dec_; _→-dec_)
+import Data.Fin.Properties as FinP
+open import Definitions.Expr using (Sort)
 
 module Definitions.Actions (N : ℕ) where
   open import Definitions.Common(N)
 
-  record HeadAct : Set where
-    constructor _⟶_#_
+  record Choice : Set where
+    constructor _<_>
     field
-      psender : Part
-      preceiver : Part
       {nchoices} : ℕ
-      -- valid-ch : Subset nchoices
-      sorts : Vec Sort (suc nchoices)
+      label : Fin (suc nchoices)
+      sort : Sort
 
-  open HeadAct
+  infix 5 _<_>
 
-  choice : HeadAct → Set
-  choice x = Fin (suc (x .nchoices))
+  -- A send to a set of receivers, or a receive from one sender.  `？` is
+  -- U+FF1F.
+  data Shape : Set where
+    !_ : PartSet → Shape
+    ？_ : Part → Shape
 
-  data _∈pr_ P (α : HeadAct) : Set where
-    ∈S : psender   α ≡ P → P ∈pr α
-    ∈R : preceiver α ≡ P → P ∈pr α
+  infix 6 !_ ？_
 
-  _∉pr_ : Part → HeadAct → Set
-  P ∉pr α = ¬ (P ∈pr α)
+  record Event : Set where
+    constructor _#_
+    field
+      shape : Shape
+      choice : Choice
 
-  _∈pr?_ : ∀ P α → Dec (P ∈pr α)
-  P ∈pr? α with psender α ≟f P
-  ... | yes x = yes (∈S x)
-  ... | no  x with preceiver α ≟f P
-  ...         | yes y = yes (∈R y)
-  ...         | no  y = no λ{ (∈S z) → x z ; (∈R z) → y z }
+  -- Between _≡_ (4) and _<_> (5), so `e ≡ (! Qs) # i < S >` parses.
+  infix 4.5 _#_
 
-  _∉pr?_ : ∀ P α → Dec (¬ (P ∈pr α))
-  P ∉pr? α = ¬? (P ∈pr? α)
-
-  _⋏_ : HeadAct → HeadAct → Set
-  α ⋏ α' = psender α ∈pr α' ⊎ preceiver α ∈pr α'
-
-  _⋏?_ : ∀ α α' → Dec (α ⋏ α')
-  (P ⟶ Q # _) ⋏? α with P ∈pr? α
-  ... | yes p = yes (inj₁ p)
-  ... | no ¬p with Q ∈pr? α
-  ... | yes q = yes (inj₂ q)
-  ... | no ¬q = no (λ{ (inj₁ x) → ¬p x ; (inj₂ y) → ¬q y })
-
-  ⋏sym : ∀ {α α'} → α ⋏ α' → α' ⋏ α
-  ⋏sym (inj₁ (∈S x)) = inj₁ (∈S (sym x))
-  ⋏sym (inj₁ (∈R x)) = inj₂ (∈S (sym x))
-  ⋏sym (inj₂ (∈S x)) = inj₁ (∈R (sym x))
-  ⋏sym (inj₂ (∈R x)) = inj₂ (∈R (sym x))
-
-  _⋔_ : ∀ (α α' : HeadAct) → Set
-  α ⋔ α' = ¬ (α ⋏ α')
-
-  data _∥ₕ_ (α α' : HeadAct) : Set where
-    ii-≡snd : psender α ≡ psender α' → preceiver α ≢ preceiver α' → α ∥ₕ α'
-    ii-disj : α ⋔ α' → α ∥ₕ α'
-
-  ii-snd? : ∀ {α α'}
-    → {t1 : True (psender α ≟f psender α')}
-    → {t2 : False (preceiver α ≟f preceiver α')}
-    → α ∥ₕ α'
-  ii-snd? {α}{_} {t}{t'} = ii-≡snd (toWitness t) (toWitnessFalse t')
-
-  ii-disj? : ∀ {α α'} → {t : False (α ⋏? α')} → α ∥ₕ α'
-  ii-disj? {α} {α′} {t} = ii-disj (toWitnessFalse t)
-
-  disj?f : ∀ α α' → {t : False (α ⋏? α')} → α ⋔ α'
-  disj?f α α′ {t} = toWitnessFalse t
-
-  _∥h?_ : ∀ α α' → Dec (α ∥ₕ α')
-  α ∥h? α' with psender α ≟f psender α'
-  α ∥h? α' | yes refl with preceiver α ≟f preceiver α'
-  ... | yes refl
-    = no (λ{ (ii-≡snd refl x₁) → x₁ refl ; (ii-disj x) → x (inj₂ (∈R refl)) })
-  ... | no ¬eq = yes (ii-≡snd refl ¬eq)
-  α ∥h? α' | no S≢S with psender α ≟f preceiver α'
-  ... | yes refl
-    = no (λ{ (ii-≡snd refl x₁) → S≢S refl ; (ii-disj x) → x (inj₁ (∈R refl)) })
-  ... | no S≢R with preceiver α ∈pr? α'
-  ... | yes R∈α' = no (λ{ (ii-≡snd x x₁) → S≢S x ; (ii-disj x) → x (inj₂ R∈α')})
-  ... | no R∉α' = yes (ii-disj (λ{ (inj₁ (∈S x)) → S≢S (sym x)
-                                 ; (inj₁ (∈R x)) → S≢R (sym x)
-                                 ; (inj₂ y) → R∉α' y }))
-
-  ⋔sym : ∀ {p p'} → p ⋔ p' → p' ⋔ p
-  ⋔sym d (inj₁ (∈S x)) = d (inj₁ (∈S (sym x)))
-  ⋔sym d (inj₁ (∈R x)) = d (inj₂ (∈S (sym x)))
-  ⋔sym d (inj₂ (∈S x)) = d (inj₁ (∈R (sym x)))
-  ⋔sym d (inj₂ (∈R x)) = d (inj₂ (∈R (sym x)))
-
-  ∥sym : ∀ {p p'} → p ∥ₕ p' → p' ∥ₕ p
-  ∥sym (ii-≡snd x x₁) = ii-≡snd (sym x) (≢-sym x₁)
-  ∥sym (ii-disj x) = ii-disj (⋔sym x)
-
+  -- One event per participant.
   Action : Set
-  Action = Σ[ p ∈ HeadAct ] choice p
+  Action = Vec (Maybe Event) N
 
-  label : Action → Label
-  label (p , i) = p .nchoices , i
+  Comm : Set
+  Comm = Vec (Maybe Shape) N
 
-  sender : Action → Part
-  sender x = (proj₁ x) .psender
+  ev : Action → Part → Maybe Event
+  ev α P = lookup α P
 
-  receiver : Action → Part
-  receiver x = (proj₁ x) .preceiver
+  comm : Action → Comm
+  comm = map (mapᵐ Event.shape)
 
-  h/sort : (α : HeadAct) → Fin (suc (nchoices α)) → Sort
-  h/sort p  i = lookup (sorts p) i
+  nchoices : Event → ℕ
+  nchoices e = Choice.nchoices (Event.choice e)
 
-  α/sort : Action → Sort
-  α/sort α = h/sort (proj₁ α) (proj₂ α)
+  private
+    nothing≢just : ∀ {A : Set} {x : A} → nothing ≢ just x
+    nothing≢just ()
+
+    maybe-cases : ∀ {A : Set} (m : Maybe A) → m ≡ nothing ⊎ ∃[ x ] m ≡ just x
+    maybe-cases nothing  = inj₁ refl
+    maybe-cases (just x) = inj₂ (x , refl)
+
+  infix 4 _∈α_ _∉α_
 
   _∈α_ : Part → Action → Set
-  p ∈α α = p ∈pr proj₁ α
+  P ∈α α = ∃[ e ] ev α P ≡ just e
 
   _∉α_ : Part → Action → Set
-  P ∉α α = ¬ (P ∈pr proj₁ α)
+  P ∉α α = ev α P ≡ nothing
 
-  _∈α?_ : ∀ P α → Dec (P ∈α α)
-  P ∈α? α with sender α ≟f P
-  ... | yes x = yes (∈S x)
-  ... | no  x with receiver α ≟f P
-  ...         | yes y = yes (∈R y)
-  ...         | no  y = no λ{ (∈S z) → x z ; (∈R z) → y z }
+  ∉α→¬∈α : ∀ {P α} → P ∉α α → ¬ P ∈α α
+  ∉α→¬∈α P∉ (e , eq) = nothing≢just (trans (sym P∉) eq)
 
-  _∥_ : Action → Action → Set
-  α ∥ α' = (α .proj₁) ∥ₕ (α' .proj₁)
+  ¬∈α→∉α : ∀ {P α} → ¬ P ∈α α → P ∉α α
+  ¬∈α→∉α {P} {α} ¬∈ with maybe-cases (ev α P)
+  ... | inj₁ eq = eq
+  ... | inj₂ p  = ⊥-elim (¬∈ p)
 
-  _∦_ : Action → Action → Set
-  α ∦ α' = ¬ (α .proj₁) ∥ₕ (α' .proj₁)
+  _∈α?_ : (P : Part) → (α : Action) → Dec (P ∈α α)
+  P ∈α? α with maybe-cases (ev α P)
+  ... | inj₁ eq = no (∉α→¬∈α {P} {α} eq)
+  ... | inj₂ p  = yes p
 
-  -- Indep/gen : ∀{P Q I i α}{S : Vec Sort (suc I)} → (P ⟶ Q # S , i) ∥ α
-  --     → ∀ I (i : Fin (suc I)) S → (P ⟶ Q # S , i) ∥ α
+  _∉α?_ : (P : Part) → (α : Action) → Dec (P ∉α α)
+  P ∉α? α with maybe-cases (ev α P)
+  ... | inj₁ eq = yes eq
+  ... | inj₂ p  = no (λ eq → ∉α→¬∈α {P} {α} eq p)
 
-  -- Indep/in : ∀{P Q α α'} → P ∈pr α → Q ∈pr α → α ∥ₕ α'
-  --   → ∀ I (i : Fin (suc I)) (S : Vec Sort (suc I)) → (P ⟶ Q # S) ∥ₕ α'
+  -- A role of `Ps` takes part; no role of `Ps` does.
+  _∈αˢ_ : PartSet → Action → Set
+  Ps ∈αˢ α = ∃[ P ] P ∈ Ps × P ∈α α
 
-  nacts : Action → ℕ
-  nacts (α , _) = nchoices α
+  _∉αˢ_ : PartSet → Action → Set
+  Ps ∉αˢ α = ∀ P → P ∈ Ps → P ∉α α
 
-  α-sorts : ∀ α → Vec Sort (suc (nacts α))
-  α-sorts = sorts ∘ proj₁
+  infix 4 _∈αˢ_ _∉αˢ_
+
+  ∉αˢ→¬∈αˢ : ∀ {Ps α} → Ps ∉αˢ α → ¬ Ps ∈αˢ α
+  ∉αˢ→¬∈αˢ {α = α} Ps∉ (P , P∈ , P∈α) = ∉α→¬∈α {P} {α} (Ps∉ P P∈) P∈α
+
+  ¬∈αˢ→∉αˢ : ∀ {Ps α} → ¬ Ps ∈αˢ α → Ps ∉αˢ α
+  ¬∈αˢ→∉αˢ {α = α} ¬∈ P P∈ = ¬∈α→∉α {P} {α} λ P∈α → ¬∈ (P , P∈ , P∈α)
+
+  _∈αˢ?_ : (Ps : PartSet) → (α : Action) → Dec (Ps ∈αˢ α)
+  Ps ∈αˢ? α = FinP.any? λ P → (P ∈? Ps) ×-dec (P ∈α? α)
+
+  _∉αˢ?_ : (Ps : PartSet) → (α : Action) → Dec (Ps ∉αˢ α)
+  Ps ∉αˢ? α = FinP.all? λ P → (P ∈? Ps) →-dec (P ∉α? α)
+
+  -- A single role is the singleton set.
+  ∈α→∈αˢ⁅⁆ : ∀ {P α} → P ∈α α → ⁅ P ⁆ ∈αˢ α
+  ∈α→∈αˢ⁅⁆ {P} P∈α = P , x∈⁅x⁆ P , P∈α
+
+  ∉α→∉αˢ⁅⁆ : ∀ {P α} → P ∉α α → ⁅ P ⁆ ∉αˢ α
+  ∉α→∉αˢ⁅⁆ {P} P∉ X X∈ with x∈⁅y⁆⇒x≡y P X∈
+  ... | refl = P∉
+
+  -- An action in which `P` acts differs from one in which it does not.
+  ∈∉→≢ : ∀ {P α β} → P ∈α α → P ∉α β → α ≢ β
+  ∈∉→≢ {P} {α} P∈α P∉β refl = ∉α→¬∈α {P} {α} P∉β P∈α
+
+  Recv : Action → Part → Set
+  Recv α Q = ∃[ P ] ∃[ c ] ev α Q ≡ just ((？ P) # c)
+
+  Recv? : (α : Action) → (Q : Part) → Dec (Recv α Q)
+  Recv? α Q with ev α Q
+  ... | nothing           = no λ { (_ , _ , ()) }
+  ... | just ((？ P) # c)  = yes (P , c , refl)
+  ... | just ((! Qs) # c) = no λ { (_ , _ , ()) }
+
+  Recv→∈α : ∀ {α Q} → Recv α Q → Q ∈α α
+  Recv→∈α (_ , _ , eq) = _ , eq
+
+  Send : Action → Part → Set
+  Send α S = ∃[ Qs ] ∃[ c ] ev α S ≡ just ((! Qs) # c)
+
+  Send? : (α : Action) → (S : Part) → Dec (Send α S)
+  Send? α S with ev α S
+  ... | nothing           = no λ { (_ , _ , ()) }
+  ... | just ((! Qs) # c) = yes (Qs , c , refl)
+  ... | just ((？ P) # c)  = no λ { (_ , _ , ()) }
+
+  -- `α` is sent by a role outside `Q`.
+  Foreign : PartSet → Action → Set
+  Foreign Q α = ∃[ S ] S ∉ Q × Send α S
+
+  Foreign? : (Q : PartSet) → (α : Action) → Dec (Foreign Q α)
+  Foreign? Q α = FinP.any? λ S → ¬? (S ∈? Q) ×-dec Send? α S
+
+  infix 4 _⋄_
+
+  -- Independence: distinct actions, no receiver of either taking part in
+  -- the other.
+  _⋄_ : Action → Action → Set
+  α ⋄ β = α ≢ β × (∀ Q → Recv α Q → Q ∉α β) × (∀ Q → Recv β Q → Q ∉α α)
+
+  -- The balanced multicast: P sends c to every Q ∈ Qs, each receives it.
+  ⟶-at : Part → PartSet → Choice → Part → Maybe Event
+  ⟶-at P Qs c R with R ≟f P
+  ... | yes _ = just ((! Qs) # c)
+  ... | no _ with R ∈? Qs
+  ...   | yes _ = just ((？ P) # c)
+  ...   | no _  = nothing
+
+  -- Likewise, so `α ≡ P ⟶ Qs # i < S >` parses.
+  infix 4.5 _⟶_#_
+
+  _⟶_#_ : Part → PartSet → Choice → Action
+  P ⟶ Qs # c = tabulate (⟶-at P Qs c)
+
+  private
+    at-sender : ∀ {P Qs c} → ⟶-at P Qs c P ≡ just ((! Qs) # c)
+    at-sender {P} with P ≟f P
+    ... | yes _  = refl
+    ... | no P≢P = ⊥-elim (P≢P refl)
+
+    at-recv : ∀ {P Qs c R} → R ≢ P → R ∈ Qs → ⟶-at P Qs c R ≡ just ((？ P) # c)
+    at-recv {P} {Qs} {R = R} R≢P R∈ with R ≟f P
+    ... | yes R≡P = ⊥-elim (R≢P R≡P)
+    ... | no _ with R ∈? Qs
+    ...   | yes _  = refl
+    ...   | no R∉ = ⊥-elim (R∉ R∈)
+
+    at-other : ∀ {P Qs c R} → R ≢ P → R ∉ Qs → ⟶-at P Qs c R ≡ nothing
+    at-other {P} {Qs} {R = R} R≢P R∉ with R ≟f P
+    ... | yes R≡P = ⊥-elim (R≢P R≡P)
+    ... | no _ with R ∈? Qs
+    ...   | yes R∈ = ⊥-elim (R∉ R∈)
+    ...   | no _   = refl
+
+    at-inv : ∀ {P Qs c R e} → ⟶-at P Qs c R ≡ just e
+           → (R ≡ P × e ≡ (! Qs) # c) ⊎ (R ≢ P × R ∈ Qs × e ≡ (？ P) # c)
+    at-inv {P} {Qs} {R = R} eq with R ≟f P
+    ... | yes R≡P = inj₁ (R≡P , sym (just-injective eq))
+    ... | no R≢P with R ∈? Qs
+    ...   | yes R∈ = inj₂ (R≢P , R∈ , sym (just-injective eq))
+    ...   | no _   = ⊥-elim (nothing≢just eq)
+
+    ev-⟶ : ∀ {P Qs c} R → ev (P ⟶ Qs # c) R ≡ ⟶-at P Qs c R
+    ev-⟶ {P} {Qs} {c} R = VecP.lookup∘tabulate (⟶-at P Qs c) R
+
+  ev-sender : ∀ {P Qs c} → ev (P ⟶ Qs # c) P ≡ just ((! Qs) # c)
+  ev-sender {P} {Qs} {c} = trans (ev-⟶ P) (at-sender {P} {Qs} {c})
+
+  ev-recv : ∀ {P Qs c R} → R ≢ P → R ∈ Qs
+          → ev (P ⟶ Qs # c) R ≡ just ((？ P) # c)
+  ev-recv {R = R} R≢P R∈ = trans (ev-⟶ R) (at-recv R≢P R∈)
+
+  ev-other : ∀ {P Qs c R} → R ≢ P → R ∉ Qs → ev (P ⟶ Qs # c) R ≡ nothing
+  ev-other {R = R} R≢P R∉ = trans (ev-⟶ R) (at-other R≢P R∉)
+
+  ev-inv : ∀ {P Qs c R e} → ev (P ⟶ Qs # c) R ≡ just e
+         → (R ≡ P × e ≡ (! Qs) # c) ⊎ (R ≢ P × R ∈ Qs × e ≡ (？ P) # c)
+  ev-inv {R = R} eq = at-inv (trans (sym (ev-⟶ R)) eq)
+
+  private
+    shape-just : ∀ (m : Maybe Event) {sh}
+               → mapᵐ Event.shape m ≡ just sh → ∃[ c ] m ≡ just (sh # c)
+    shape-just (just (sh # c)) refl = c , refl
+
+  comm-ev : ∀ {α α′ Q sh c} → comm α ≡ comm α′ → ev α Q ≡ just (sh # c)
+          → ∃[ c′ ] ev α′ Q ≡ just (sh # c′)
+  comm-ev {α} {α′} {Q} ceq eq = shape-just (ev α′ Q)
+    (trans (sym (VecP.lookup-map Q _ α′))
+    (trans (cong (λ v → lookup v Q) (sym ceq))
+    (trans (VecP.lookup-map Q _ α)
+           (cong (mapᵐ Event.shape) eq))))
+
+  comm-∈α : ∀ {α α′ Q} → comm α ≡ comm α′ → Q ∈α α → Q ∈α α′
+  comm-∈α ceq ((sh # c) , eq) with comm-ev ceq eq
+  ... | c′ , eq′ = (sh # c′) , eq′

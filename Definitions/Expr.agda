@@ -1,49 +1,64 @@
 module Definitions.Expr where
 
-open import Data.Empty using (⊥-elim)
-open import Data.Product
-open import Data.Sum
+open import Data.Product using (∃-syntax ; _,_)
+open import Data.Sum using (_⊎_ ; inj₁ ; inj₂)
 open import Data.Bool using (Bool ; true ; false)
-open import Data.Nat using (ℕ ; zero ; suc ; less ; equal ; greater)
+open import Data.Nat using (ℕ ; zero ; suc)
 open import Data.Fin using (Fin ; zero ; suc ; punchOut ; punchIn) renaming (_≟_ to _≟f_)
-open import Data.Vec using (Vec ; [] ; _[_]=_ ; lookup; _∷_) renaming (removeAt to _-_)
+open import Data.Vec using (Vec ; [] ; lookup) renaming (removeAt to _-_)
 open import Data.Vec.Properties using (removeAt-punchOut)
-open import Relation.Nullary using (Dec; yes; no ; ¬_)
-open import Relation.Binary.PropositionalEquality using (_≡_ ; refl ; sym ; _≢_ ; ≢-sym)
+open import Relation.Nullary using (Dec; yes; no)
+open import Relation.Binary.PropositionalEquality using (_≡_ ; refl ; sym ; trans)
 
 -- Expressions
 
 data Sort : Set where
   s/bool s/nat s/unit : Sort
 
+_≟Sort_ : (S S′ : Sort) → Dec (S ≡ S′)
+s/bool ≟Sort s/bool = yes refl
+s/bool ≟Sort s/nat = no λ ()
+s/bool ≟Sort s/unit = no λ ()
+s/nat ≟Sort s/bool = no λ ()
+s/nat ≟Sort s/nat = yes refl
+s/nat ≟Sort s/unit = no λ ()
+s/unit ≟Sort s/bool = no λ ()
+s/unit ≟Sort s/nat = no λ ()
+s/unit ≟Sort s/unit = yes refl
+
 data Value : Set where
-  v/bool : Bool -> Value
-  v/nat : ℕ -> Value
+  v/bool : Bool → Value
+  v/nat : ℕ → Value
   v/unit : Value
 
-data Exp (γ : ℕ) : Set where
-  val : Value -> Exp γ
-  minus1 : Exp γ -> Exp γ
-  is-zero : Exp γ -> Exp γ
-  var : Fin γ -> Exp γ
+sort/value : Value → Sort
+sort/value (v/bool _) = s/bool
+sort/value (v/nat _) = s/nat
+sort/value v/unit = s/unit
 
-weaken/exp : ∀{γ} -> Exp γ -> Fin (suc γ) -> Exp (suc γ)
+data Exp (γ : ℕ) : Set where
+  val : Value → Exp γ
+  minus1 : Exp γ → Exp γ
+  is-zero : Exp γ → Exp γ
+  var : Fin γ → Exp γ
+
+weaken/exp : ∀{γ} → Exp γ → Fin (suc γ) → Exp (suc γ)
 weaken/exp (val V) x = val V
 weaken/exp (minus1 E) x = minus1 (weaken/exp E x)
 weaken/exp (is-zero E) x = is-zero (weaken/exp E x)
 weaken/exp (var y) x = var (punchIn x y)
 
--- of expressions
-data _⇓_ : Exp 0 -> Value -> Set where
-  e/minus1/z : ∀{E} -> E ⇓ (v/nat 0) -> minus1 E ⇓ (v/nat 0)
-  e/minus1/s : ∀{E N} -> E ⇓ (v/nat (suc N)) -> minus1 E ⇓ v/nat N
+-- Evaluation.
+data _⇓_ : Exp 0 → Value → Set where
+  e/minus1/z : ∀{E} → E ⇓ (v/nat 0) → minus1 E ⇓ (v/nat 0)
+  e/minus1/s : ∀{E N} → E ⇓ (v/nat (suc N)) → minus1 E ⇓ v/nat N
 
-  e/is-zero/s : ∀{E N} -> E ⇓ v/nat (suc N) -> is-zero E ⇓ v/bool false
-  e/is-zero/z : ∀{E} -> E ⇓ v/nat 0 -> is-zero E ⇓ v/bool true
+  e/is-zero/s : ∀{E N} → E ⇓ v/nat (suc N) → is-zero E ⇓ v/bool false
+  e/is-zero/z : ∀{E} → E ⇓ v/nat 0 → is-zero E ⇓ v/bool true
 
-  e/val : ∀{V} -> val V ⇓ V
+  e/val : ∀{V} → val V ⇓ V
 
-[_/_]exp : ∀{γ} -> Exp γ -> Fin (suc γ) -> Exp (suc γ) -> Exp γ
+[_/_]exp : ∀{γ} → Exp γ → Fin (suc γ) → Exp (suc γ) → Exp γ
 [ E / y ]exp (val V) = val V
 [ E / y ]exp (minus1 E') = minus1 ([ E / y ]exp E')
 [ E / y ]exp (is-zero E') = is-zero ([ E / y ]exp E')
@@ -51,28 +66,37 @@ data _⇓_ : Exp 0 -> Value -> Set where
 [ E / y ]exp (var x) | yes refl = E
 [ E / y ]exp (var x) | no eq = var (punchOut eq)
 
-[E/x]exp-x : ∀{γ x}(E : Exp γ) -> [ E / x ]exp (var x) ≡ E
-[E/x]exp-x {_}{x} E with x ≟f x
-[E/x]exp-x {_}{x} E | yes refl = refl
-[E/x]exp-x {_}{x} E | no eq = ⊥-elim (eq refl)
-
-[E/y]exp-x : ∀{γ x y}{E : Exp γ} -> (y≢x : y ≢ x) -> [ E / y ]exp (var x) ≡ var (punchOut y≢x)
-[E/y]exp-x {_}{x}{y} prf with y ≟f x
-[E/y]exp-x prf | yes refl = ⊥-elim (prf refl)
-[E/y]exp-x prf | no eq = refl
-
-data ⊢v_∶_ : Value -> Sort -> Set where
-  tv/bool : {b : Bool} -> ⊢v (v/bool b) ∶ s/bool
-  tv/nat : {n : ℕ} -> ⊢v (v/nat n) ∶ s/nat
+data ⊢v_∶_ : Value → Sort → Set where
+  tv/bool : {b : Bool} → ⊢v (v/bool b) ∶ s/bool
+  tv/nat : {n : ℕ} → ⊢v (v/nat n) ∶ s/nat
   tv/unit : ⊢v (v/unit) ∶ s/unit
 
-data _⊢e_∶_ {γ : ℕ} (Γ : Vec Sort γ) : Exp γ -> Sort -> Set where
-  te/val : ∀{V S} -> ⊢v V ∶ S -> Γ ⊢e val V ∶ S
-  te/minus1 : ∀{E} ->  Γ ⊢e E ∶ s/nat -> Γ ⊢e minus1 E ∶ s/nat
-  te/is-zero : ∀{E} ->  Γ ⊢e E ∶ s/nat -> Γ ⊢e is-zero E ∶ s/bool
-  te/var : ∀{x} ->  Γ ⊢e var x ∶ (lookup Γ x) -- TODO make {x} explicit
+sort/value-typed : ∀ {V S} → ⊢v V ∶ S → S ≡ sort/value V
+sort/value-typed tv/bool = refl
+sort/value-typed tv/nat = refl
+sort/value-typed tv/unit = refl
 
-exp-subst : ∀{γ}{Γ : Vec Sort (suc γ)}{E E' S x} -> Γ ⊢e E ∶ S -> (Γ - x) ⊢e E' ∶ lookup Γ x -> (Γ - x) ⊢e [ E' / x ]exp E ∶ S
+value/sort : ∀ V → ⊢v V ∶ sort/value V
+value/sort (v/bool _) = tv/bool
+value/sort (v/nat _)  = tv/nat
+value/sort v/unit     = tv/unit
+
+data _⊢e_∶_ {γ : ℕ} (Γ : Vec Sort γ) : Exp γ → Sort → Set where
+  te/val : ∀{V S} → ⊢v V ∶ S → Γ ⊢e val V ∶ S
+  te/minus1 : ∀{E} →  Γ ⊢e E ∶ s/nat → Γ ⊢e minus1 E ∶ s/nat
+  te/is-zero : ∀{E} →  Γ ⊢e E ∶ s/nat → Γ ⊢e is-zero E ∶ s/bool
+  te/var : ∀{x} →  Γ ⊢e var x ∶ (lookup Γ x)
+
+-- Expression typing assigns at most one sort.
+⊢e-unique : ∀ {γ} {Γ : Vec Sort γ} {E : Exp γ} {S S′}
+  → Γ ⊢e E ∶ S → Γ ⊢e E ∶ S′ → S ≡ S′
+⊢e-unique (te/val vd) (te/val vd′) =
+  trans (sort/value-typed vd) (sym (sort/value-typed vd′))
+⊢e-unique (te/minus1 _) (te/minus1 _) = refl
+⊢e-unique (te/is-zero _) (te/is-zero _) = refl
+⊢e-unique te/var te/var = refl
+
+exp-subst : ∀{γ}{Γ : Vec Sort (suc γ)}{E E' S x} → Γ ⊢e E ∶ S → (Γ - x) ⊢e E' ∶ lookup Γ x → (Γ - x) ⊢e [ E' / x ]exp E ∶ S
 exp-subst (te/val x) td' = te/val x
 exp-subst (te/minus1 td) td' = te/minus1 (exp-subst td td')
 exp-subst (te/is-zero td) td' = te/is-zero (exp-subst td td')
@@ -80,14 +104,7 @@ exp-subst {x = x} (te/var {y}) td' with x ≟f y
 exp-subst {x = x} (te/var {y}) td' | yes refl = td'
 exp-subst {Γ = Γ}{x = x} (te/var {y}) td' | no neq rewrite sym(removeAt-punchOut Γ neq) = te/var
 
-exp-str : ∀{γ}{Γ : Vec Sort γ}{S S' E}
-  → Γ ⊢e E ∶ S → (S' ∷ Γ) ⊢e weaken/exp E zero ∶ S
-exp-str (te/val x) = te/val x
-exp-str (te/minus1 x) = te/minus1 (exp-str x)
-exp-str (te/is-zero x) = te/is-zero (exp-str x)
-exp-str te/var = te/var
-
-exp-pres : ∀{E S V} -> [] ⊢e E ∶ S -> E ⇓ V -> ⊢v V ∶ S
+exp-pres : ∀{E S V} → [] ⊢e E ∶ S → E ⇓ V → ⊢v V ∶ S
 exp-pres (te/val td) e/val = td
 exp-pres (te/minus1 td) (e/minus1/z rd) = tv/nat
 exp-pres (te/minus1 td) (e/minus1/s rd) = tv/nat

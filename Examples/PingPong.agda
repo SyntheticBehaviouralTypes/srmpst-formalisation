@@ -1,120 +1,133 @@
 {-# OPTIONS --guardedness #-}
-open import Data.Empty using (⊥ ; ⊥-elim)
-open import Data.Unit using (⊤ ; tt)
-open import Data.Sum using (_⊎_ ; inj₁ ; inj₂)
-open import Data.Bool
-open import Data.Nat
-open import Data.Fin hiding (_+_ ; _-_)
-open import Data.Vec hiding (_++_)
-open import Data.Product
-open import Relation.Binary.PropositionalEquality hiding ([_])
-open import Relation.Nullary.Decidable
-  using (True ; False ; toWitnessFalse ; fromWitnessFalse ; fromWitness ; toWitness)
 
-open import Utils
-open import Definitions
-
+-- `A` sends a bool to `B`, `B` replies with a nat; once, and in a loop.
+-- Partitions {A} {B} and {A,B}.
 
 module Examples.PingPong where
-  open import Examples.SimpleGT(2)
 
-  A : Part
-  A = zero
+open import Data.Fin using (Fin; zero; suc)
+open import Data.Vec using ([]; _∷_)
+open import Data.Bool using (true)
+open import Data.Product using (proj₁; ∃-syntax; _×_)
+open import Data.List using (length)
+open import Relation.Binary.PropositionalEquality using (_≡_)
+open import Data.Sum using (_⊎_)
+open import Relation.Nullary.Decidable using (toWitness)
 
-  B : Part
-  B = suc zero
+open import Definitions.Expr using (s/bool; s/nat; val; v/bool; v/nat)
+open import Check
 
-  module NonRecursive where
-    -- Non recursive ping pong
-    ping-pong : Global 0 ng
-    ping-pong = >> (A ⟶ B ∶[ 0 , tt ] ((s/bool ·· (>> (B ⟶ A ∶[ 0 , tt ] ((s/nat ·· end) ∷ [])))) ∷ []))
+open import Definitions.Graph.Algebra 2
+open import Data.Fin.Subset using (⁅_⁆)
+open import Definitions.Actions 2 renaming (_<_> to mkChoice)
+open import Definitions.Proc 2
 
-    choicesAB : Vec Sort 1
-    choicesAB = s/bool ∷ []
+A B : Fin 2
+A = zero
+B = suc zero
 
-    choicesBA : Vec Sort 1
-    choicesBA = s/nat ∷ []
+here : Fin 1
+here = zero
 
-    p1 : Global 0 ng
-    p1 = >> (B ⟶ A ∶[ 0 , tt ] ((s/nat ·· end) ∷ []))
+-- {A,B}: one process.
+Ρ/AB : Assignment 1
+Ρ/AB = byOwner λ _ → zero
 
-    pp/step-1 : ping-pong  -< A ⟶ B # [ s/bool ] , zero >-> p1
-    pp/step-1 = step/i zero
+module NonRecursive where
+  -- A --bool--> B --nat--> A, end
+  ping-pong : OpenGraph 0
+  ping-pong =
+    (A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙
+    ((B ⟶ ⁅ A ⁆ # mkChoice here s/nat) ∙ end)
 
-    pp/step-2 : p1  -< B ⟶ A # [ s/nat ] , zero >-> end
-    pp/step-2 = step/i zero
+  wbg : WBGraph {N = 2}
+  wbg = buildG ping-pong
 
-    p/A : Proc 0 0
-    p/A = B ! 0 , zero < val (v/bool true) >∙ (Σ B ？[ [ s/nat ] ]· (∅ ∷ []))
+  s₀ = initial (proj₁ wbg)
 
-    p/B : Proc 0 0
-    p/B = Σ A ？[ [ s/bool ] ]· ((A ! 0 , zero < (val (v/nat zero)) >∙ ∅) ∷ [])
+  open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module Global)
 
-    M : Session
-    M = p/A ∷ p/B ∷ []
-
-    td/A : [] & [] / ping-pong ↑ A ⊢p< ng > p/A
-    td/A = t/send (step/i zero)  (te/val tv/bool) (t/recv R[ step/i zero ] cont/typ)
-      where
-        cont/typ : ∀ {i} {G'} →
-          p1 -< (B ⟶ A # [ s/nat ]) , i >-> G' →
-          (α/sort ((B ⟶ A # [ s/nat ]) , i) ∷ []) & [] / G' ↑ A ⊢p< ng > lookup (∅ ∷ []) i
-        cont/typ {zero} (step/i .zero) = tt/end
-        cont/typ {zero} (step/tl/I x x₁) = ⊥-elim (x (inj₂ (_∈pr_.∈R refl)))
-
-    td/B : [] & [] / ping-pong ↑ B ⊢p< ng > p/B
-    td/B = t/recv R[ step/i zero ] cont/typ
-      where
-        cont/typ : ∀ {i} {G'} →
-           ping-pong -< (A ⟶ B # [ s/bool ]) , i >-> G' →
-           (α/sort ((A ⟶ B # [ s/bool ]) , i) ∷ []) & [] / G' ↑ B ⊢p< ng >
-           lookup ((A ! 0 , zero < val (v/nat zero) >∙ ∅) ∷ []) i
-        cont/typ {zero} (step/i .zero) = t/send (step/i zero) (te/val tv/nat) tt/end
-        cont/typ {zero} (step/tl/I x x₁) = ⊥-elim (x (inj₂ (_∈pr_.∈R refl)))
-
-    td/S : ⊢s M ∶ ping-pong
-    td/S zero = td/A
-    td/S (suc zero) = td/B
-
-  module Recursive where
-    -- Recursive ping pong
-    ping-pong : Global 0 ng
-    ping-pong = μ (A ⟶ B ∶[ 0 , tt ] ((s/bool ·· (>> (B ⟶ A ∶[ 0 , tt ] ((s/nat ·· var zero) ∷ [])))) ∷ []))
-
-    p1 : Global 0 ng
-    p1 = >> (B ⟶ A ∶[ 0 , tt ] ((s/nat ·· ping-pong) ∷ []))
-
-    choicesAB : Vec Sort 1
-    choicesAB = s/bool ∷ []
-
-    choicesBA : Vec Sort 1
-    choicesBA = s/nat ∷ []
-
-    pp/step-1 : ping-pong  -< A ⟶ B # [ s/bool ] , zero >-> p1
-    pp/step-1 = step/unfold (step/i zero)
-
-    pp/step-2 : p1  -< B ⟶ A # [ s/nat ] , zero >-> ping-pong
-    pp/step-2 = step/i zero
-
-    p/A : Proc 0 0
-    p/A = rec (B ! 0 , zero < val (v/bool true) >∙ (Σ B ？[ [ s/nat ] ]· (v zero ∷ [])))
-
-    p/B : Proc 0 0
-    p/B = rec (Σ A ？[ [ s/bool ] ]· ((A ! 0 , zero < (val (v/nat zero)) >∙ v zero) ∷ []))
+  -- {A} {B}
+  module A∣B where
+    Ρ = singletons
+    open Over Ρ
+    open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = p/A ∷ p/B ∷ []
+    M = (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ (A ⇐ B ？· (∅ ∷ [])))
+      ∷ (B ⇐ A ？· ((B ⇒ ⁅ A ⁆ ! here < val (v/nat 0) >∙ ∅) ∷ []))
+      ∷ []
 
-    td/A : [] & [] / ping-pong ↑ A ⊢p< ng > p/A
-    td/A = tt/rec (t/send (_-<_>->_.step/unfold (_-<_>->_.step/i zero))
-      (te/val tv/bool)
-      (t/recvhd λ{ zero → tt/var }))
+    M-typed : ⊢s[ Ρ ] M ∶ s₀
+    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
 
-    td/B : [] & [] / ping-pong ↑ B ⊢p< ng > p/B
-    td/B = t/bisim (~sym ~unfold) (tt/rec
-      (t/recvhd λ{ zero →
-        t/send (_-<_>->_.step/i zero) (te/val tv/nat) (tt/var/unfold) }))
+    M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
+           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
+                     × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
+    M-safe = safety Ρ M-typed
 
-    td/S : ⊢s M ∶ ping-pong
-    td/S zero = td/A
-    td/S (suc zero) = td/B
+  -- {A,B}
+  module AB where
+    Ρ = Ρ/AB
+    open Over Ρ
+    open Global Ρ using (_-[_]->ᵍ_)
+
+    M : Session
+    M = ∅ ∷ []
+
+    M-typed : ⊢s[ Ρ ] M ∶ s₀
+    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+
+    M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
+           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
+                     × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
+    M-safe = safety Ρ M-typed
+
+module Recursive where
+  -- μ (A --bool--> B --nat--> loop)
+  ping-pong : OpenGraph 0
+  ping-pong =
+    μ ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ ((B ⟶ ⁅ A ⁆ # mkChoice here s/nat) ∙ var zero))
+
+  wbg : WBGraph {N = 2}
+  wbg = buildG ping-pong
+
+  s₀ = initial (proj₁ wbg)
+
+  open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module Global)
+
+  -- {A} {B}
+  module A∣B where
+    Ρ = singletons
+    open Over Ρ
+    open Global Ρ using (_-[_]->ᵍ_)
+
+    M : Session
+    M = rec (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ (A ⇐ B ？· (v zero ∷ [])))
+      ∷ rec (B ⇐ A ？· ((B ⇒ ⁅ A ⁆ ! here < val (v/nat 0) >∙ v zero) ∷ []))
+      ∷ []
+
+    M-typed : ⊢s[ Ρ ] M ∶ s₀
+    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+
+    M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
+           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
+                     × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
+    M-safe = safety Ρ M-typed
+
+  -- {A,B}: an internal loop.
+  module AB where
+    Ρ = Ρ/AB
+    open Over Ρ
+    open Global Ρ using (_-[_]->ᵍ_)
+
+    M : Session
+    M = ∅ ∷ []
+
+    M-typed : ⊢s[ Ρ ] M ∶ s₀
+    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+
+    M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
+           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
+                     × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
+    M-safe = safety Ρ M-typed
