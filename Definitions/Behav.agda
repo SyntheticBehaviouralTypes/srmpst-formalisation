@@ -20,6 +20,7 @@ module Definitions.Behav where
 
   record BTheory (N : ℕ) : Set₁ where
     open Definitions.Actions N
+    open Action
     open Definitions.Common N
 
     field
@@ -233,6 +234,7 @@ module Definitions.Behav where
 
   record BT-Prop {N : ℕ} (B : BTheory N) : Set₁ where
     open Definitions.Actions N
+    open Action
     open Definitions.Common N
     open BTheory B
 
@@ -244,7 +246,7 @@ module Definitions.Behav where
         → G -< α  >-> G′
         → G -< α′ >-> G″
         → receiver α ∈α α′
-        → Action.comm α ≡ Action.comm α′
+        → comm α ≡ comm α′
 
       sender≢receiver :
         ∀ {G G′ α}
@@ -258,25 +260,22 @@ module Definitions.Behav where
         → G′ ≡ G″
 
       step-sort-deterministic :
-        ∀ {G G′ G″ P Q I}
+        ∀ {G G′ G″ α I S T}
           {i : Fin (suc I)}
-          {S T : Sort}
-        → G -< P ⟶ Q # i < S > >-> G′
-        → G -< P ⟶ Q # i < T > >-> G″
+        → G -< α # i < S > >-> G′
+        → G -< α # i < T > >-> G″
         → S ≡ T
 
       step-arity-deterministic :
-        ∀ {G G′ G″ P Q I J}
+        ∀ {G G′ G″ α I J S T}
           {i : Fin (suc I)}
           {j : Fin (suc J)}
-          {S T : Sort}
-        → G -< P ⟶ Q # i < S > >-> G′
-        → G -< P ⟶ Q # j < T > >-> G″
+        → G -< α # i < S > >-> G′
+        → G -< α # j < T > >-> G″
         → I ≡ J
 
       no-new-branch/step :
-        ∀ {G G′ Gᵢ Gⱼ′ β γ}
-          {cᵢ cⱼ : Choice}
+        ∀ {G G′ Gᵢ Gⱼ′ β γ cᵢ cⱼ}
         → G -< β >-> G′
         → Comm.receiver γ ∉α β
         → G  -< γ # cᵢ >-> Gᵢ
@@ -287,12 +286,11 @@ module Definitions.Behav where
       -- becomes available.
       no-new-comm/step :
         ∀ {G G′ Gγ β γ}
-          {c : Choice}
         → G -< β >-> G′
-        → Comm.sender γ ∉α β
-        → Comm.receiver γ ∉α β
-        → G′ -< γ # c >-> Gγ
-        → ∃[ Gγ′ ] G -< γ # c >-> Gγ′
+        → sender γ ∉α β
+        → receiver γ ∉α β
+        → G′ -< γ >-> Gγ
+        → ∃[ Gγ′ ] G -< γ >-> Gγ′
 
       -- Bisimulation stepback
 

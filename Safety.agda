@@ -1,5 +1,7 @@
 {-# OPTIONS --guardedness #-}
 
+open import Data.Unit using (⊤; tt)
+
 open import Data.Empty using (⊥; ⊥-elim)
 
 open import Data.Nat using (ℕ; _+_; _<_; _≤_; _⊔_; s≤s; suc)
@@ -30,7 +32,7 @@ open import Data.Vec.Properties
 
 open import Data.Product using (∃-syntax; _,_; _×_; proj₁; proj₂)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
-open import Data.Maybe.Base using (just; nothing)
+open import Data.Maybe.Base using (Maybe; just; nothing)
 open import Function     using (_∘_)
 
 open import Relation.Nullary using (¬_; yes; no)
@@ -110,37 +112,6 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     t/unskip tr (t/rec/unfold td)
 
 
-  subject-reduction/τ :
-    ∀ {G M'}
-    → (M : Session)
-    → ⊢s M ∶ G
-    → M [ nothing ]⇒ M'
-    → ⊢s M' ∶ G
-
-  subject-reduction/τ M M⊢G (s/if/true P Ptt e⇓true)
-    with t/if/inv refl (td/lookup M⊢G Ptt)
-  ... | _ , ptd-then , _ =
-    ⊢s-update M M⊢G ptd-then
-
-  subject-reduction/τ M M⊢G (s/if/false P Ptt e⇓false)
-    with t/if/inv refl (td/lookup M⊢G Ptt)
-  ... | _ , _ , ptd-else =
-    ⊢s-update M M⊢G ptd-else
-
-  subject-reduction/τ M M⊢G (s/rec P Prec) =
-    ⊢s-update M M⊢G (t/rec/unfold (td/lookup M⊢G Prec))
-
-  subject-reduction/τ* :
-    ∀ {G M M'}
-    → ⊢s M ∶ G
-    → M τ⇒ M'
-    → ⊢s M' ∶ G
-
-  subject-reduction/τ* M⊢G s/zero =
-    M⊢G
-  subject-reduction/τ* M⊢G (s/more st tr) =
-    subject-reduction/τ* (subject-reduction/τ _ M⊢G st) tr
-
   permute/unskip :
     ∀ {γ P Pr G G′}
       {Γ : Vec Sort γ}
@@ -170,6 +141,35 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   permute/unskip tr (t/var {X = ()} _)
   permute/unskip tr (t/end done) =
     t/end (done ∘ unskip/∈T-back tr)
+
+
+  ⊢s-comm-update :
+    ∀ (M : Session)
+      {G G′ P Q I}
+      {i : Fin (suc I)}
+      {S : Sort}
+      {Pr Pr′}
+    → (gr : G -< P ⟶ Q # i < S > >-> G′)
+    → ⊢s M ∶ G
+    → [] & [] ⊢p P ◂ Pr  ∶ G′
+    → [] & [] ⊢p Q ◂ Pr′ ∶ G′
+    → ⊢s M [ P ]≔ Pr [ Q ]≔ Pr′ ∶ G′
+
+  ⊢s-comm-update M {P = P} {Q = Q} {Pr = Pr} {Pr′ = Pr′} gr M⊢G Ptd Qtd R
+    with R ≟f Q
+  ... | yes refl
+    rewrite lookup∘update Q (M [ P ]≔ Pr) Pr′ =
+    Qtd
+  ... | no R≢Q
+    rewrite lookup∘update′ R≢Q (M [ P ]≔ Pr) Pr′
+    with R ≟f P
+  ...   | yes refl
+    rewrite lookup∘update P M Pr =
+    Ptd
+  ...   | no R≢P
+    rewrite lookup∘update′ R≢P M Pr =
+    permute/unskip (unskip/one gr (R≢P , R≢Q)) (M⊢G R)
+
 
   data TypingHead {γ}
     (Γ : Vec Sort γ)
@@ -274,6 +274,207 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
 
   td/head tr (t/end done) =
     h/end (done ∘ unskip/∈T-back tr)
+
+  t/send/cont-branch :
+    ∀ {G G′ G″ P Q I}
+      {i : Fin (suc I)}
+      {S T : Sort}
+      {E : Exp 0}
+      {Pr : Proc 0 0}
+    → [] ⊢e E ∶ T
+    → [] & [] ⊢p P ◂ Pr ∶ G″
+    → G -< P ⟶ Q # i < S > >-> G′
+    → G -< P ⟶ Q # i < T > >-> G″
+    → [] ⊢e E ∶ S × [] & [] ⊢p P ◂ Pr ∶ G′
+  t/send/cont-branch etd td gr gr₀
+    with step-sort-deterministic gr gr₀
+  ... | refl
+    rewrite step-deterministic gr gr₀ =
+    etd , td
+
+  t/send/cont :
+    ∀ {G G′ P Q I}
+      {i : Fin (suc I)}
+      {S : Sort}
+      {E : Exp 0}
+      {Pr : Proc 0 0}
+    → [] & [] ⊢p P ◂ Q ! i < E >∙ Pr ∶ G
+    → G -< P ⟶ Q # i < S > >-> G′
+    → [] ⊢e E ∶ S × [] & [] ⊢p P ◂ Pr ∶ G′
+
+  t/send/cont td gr
+    with td/head unskip/refl td
+  ... | h/send gr₀ etd td′ =
+    t/send/cont-branch
+      etd
+      td′
+      gr
+      gr₀
+  ... | h/skip _ na _ =
+    ⊥-elim (∉c→¬∈c (na gr) (∈S refl))
+
+  t/comm/ready/head :
+    ∀ {G P Q I}
+      {i : Fin (suc I)}
+      {E : Exp 0}
+      {Pr : Proc 0 0}
+      {S : Vec Sort (suc I)}
+      {Br : Vec (Proc 1 0) (suc I)}
+    → TypingHead [] P (Q ! i < E >∙ Pr) G
+    → TypingHead [] Q (Σ P ？[ S ]· Br) G
+    → ∃[ T ] ∃[ G′ ] G -< P ⟶ Q # i < T > >-> G′
+
+  t/comm/ready/head (h/send gr _ _) (h/skip _ Q∉G _) =
+    ⊥-elim (∉c→¬∈c (Q∉G gr) (∈R refl))
+
+  t/comm/ready/head (h/send gr _ _) _ =
+    _ , _ , gr
+
+  t/comm/ready/head (h/skip _ P∉G _) (h/recv gr _) =
+    ⊥-elim (∉c→¬∈c (P∉G gr) (∈S refl))
+
+  t/comm/ready/head
+    (h/skip grα P∉G headP)
+    (h/skip _ Q∉G headQ) =
+    let headP′ = headP grα
+        headQ′ = headQ grα
+        T , _ , grβ = t/comm/ready/head headP′ headQ′
+        G′ , gr =
+          no-new-comm/step
+            grα
+            (P∉G grα)
+            (Q∉G grα)
+            grβ
+    in T , G′ , gr
+
+  t/comm/ready :
+    ∀ {G P Q I}
+      {i : Fin (suc I)}
+      {E : Exp 0}
+      {Pr : Proc 0 0}
+      {S : Vec Sort (suc I)}
+      {Br : Vec (Proc 1 0) (suc I)}
+    → [] & [] ⊢p P ◂ Q ! i < E >∙ Pr ∶ G
+    → [] & [] ⊢p Q ◂ Σ P ？[ S ]· Br ∶ G
+    → ∃[ T ] ∃[ G′ ] G -< P ⟶ Q # i < T > >-> G′
+
+  t/comm/ready ptd qtd =
+    t/comm/ready/head
+      (td/head unskip/refl ptd)
+      (td/head unskip/refl qtd)
+
+
+  t/recv/cont :
+    ∀ {G G′ P Q I}
+      {i : Fin (suc I)}
+      {T : Sort}
+      {S : Vec Sort (suc I)}
+      {Br : Vec (Proc 1 0) (suc I)}
+    → [] & [] ⊢p Q ◂ Σ P ？[ S ]· Br ∶ G
+    → (gr : G -< P ⟶ Q # i < T > >-> G′)
+    → (T ∷ []) & [] ⊢p Q ◂ lookup Br i ∶ G′
+
+  t/recv/cont td gr
+    with td/head unskip/refl td
+  ... | h/recv _ conts =
+    conts gr
+  ... | h/skip _ na _ =
+    ⊥-elim (∉c→¬∈c (na gr) (∈R refl))
+
+
+  preservation/τ :
+    ∀ {G M'}
+    → (M : Session)
+    → ⊢s M ∶ G
+    → M [ nothing ]⇒ M'
+    → ⊢s M' ∶ G
+
+  preservation/τ M M⊢G (s/if/true P Ptt e⇓true)
+    with t/if/inv refl (td/lookup M⊢G Ptt)
+  ... | _ , ptd-then , _ =
+    ⊢s-update M M⊢G ptd-then
+
+  preservation/τ M M⊢G (s/if/false P Ptt e⇓false)
+    with t/if/inv refl (td/lookup M⊢G Ptt)
+  ... | _ , _ , ptd-else =
+    ⊢s-update M M⊢G ptd-else
+
+  preservation/τ M M⊢G (s/rec P Prec) =
+    ⊢s-update M M⊢G (t/rec/unfold (td/lookup M⊢G Prec))
+
+
+  preservation/sync :
+    ∀ (M : Session)
+      {G P Q I}
+      {i : Fin (suc I)}
+      {S : Vec Sort (suc I)}
+      {E V Pr Br}
+    → ⊢s M ∶ G
+    → [] & [] ⊢p P ◂ Q ! i < E >∙ Pr ∶ G
+    → [] & [] ⊢p Q ◂ Σ P ？[ S ]· Br ∶ G
+    → E ⇓ V
+    → ∃[ G′ ]
+        G -< P ⟶ Q # i < sort/value V > >-> G′
+      × ⊢s M [ P ]≔ Pr [ Q ]≔ ([ val V / zero ]e lookup Br i) ∶ G′
+
+  preservation/sync M M⊢G ptd qtd e⇓v
+    with t/comm/ready ptd qtd
+  ... | T , G′ , gr =
+    let etd , ptd′ = t/send/cont ptd gr
+        vtd = exp-pres etd e⇓v
+    in
+    G′ ,
+    subst
+      (λ U → _ -< _ ⟶ _ # _ < U > >-> _)
+      (sort/value-typed vtd)
+      gr ,
+    ⊢s-comm-update M gr M⊢G ptd′
+      (proc-subst-lemma-expr
+        (te/val vtd)
+        (t/recv/cont qtd gr))
+
+
+  preservation/comm :
+    ∀ (M : Session)
+      {G M' α}
+    → ⊢s M ∶ G
+    → M [ just α ]⇒ M'
+    → ∃[ G' ] G -< α >-> G' × ⊢s M' ∶ G'
+
+  preservation/comm M std (s/comm P Q Psnd e⇓v Precv) =
+    preservation/sync
+      M
+      std
+      (td/lookup std Psnd)
+      (td/lookup std Precv)
+      e⇓v
+
+  Step : Behav → Maybe Action → Behav → Set
+  Step G (just α) G′ = G -< α >-> G′
+  Step G nothing G′ = G ≡ G′
+
+  preservation :
+    ∀ {G M' α}
+      (M : Session)
+    → ⊢s M ∶ G
+    → M [ α ]⇒ M'
+    → ∃[ G' ] Step G α G' × ⊢s M' ∶ G'
+  preservation {α = just x} M td sr =
+    preservation/comm M td sr
+  preservation {G = G} {α = nothing} M td sr =
+    _ , refl , preservation/τ M td sr
+
+  preservation/τ* :
+    ∀ {G M M'}
+    → ⊢s M ∶ G
+    → M τ⇒ M'
+    → ⊢s M' ∶ G
+
+  preservation/τ* M⊢G s/zero =
+    M⊢G
+  preservation/τ* M⊢G (s/more st tr) =
+    preservation/τ* (preservation/τ _ M⊢G st) tr
+
 
   data ProcessStatus
     (G : Behav)
@@ -583,120 +784,6 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
       ; (fsuc i) → done i
       }
 
-  ⊢s-comm-update :
-    ∀ (M : Session)
-      {G G′ P Q I}
-      {i : Fin (suc I)}
-      {S : Sort}
-      {Pr Pr′}
-    → (gr : G -< P ⟶ Q # i < S > >-> G′)
-    → ⊢s M ∶ G
-    → [] & [] ⊢p P ◂ Pr  ∶ G′
-    → [] & [] ⊢p Q ◂ Pr′ ∶ G′
-    → ⊢s M [ P ]≔ Pr [ Q ]≔ Pr′ ∶ G′
-
-  ⊢s-comm-update M {P = P} {Q = Q} {Pr = Pr} {Pr′ = Pr′} gr M⊢G Ptd Qtd R
-    with R ≟f Q
-  ... | yes refl
-    rewrite lookup∘update Q (M [ P ]≔ Pr) Pr′ =
-    Qtd
-  ... | no R≢Q
-    rewrite lookup∘update′ R≢Q (M [ P ]≔ Pr) Pr′
-    with R ≟f P
-  ...   | yes refl
-    rewrite lookup∘update P M Pr =
-    Ptd
-  ...   | no R≢P
-    rewrite lookup∘update′ R≢P M Pr =
-    permute/unskip (unskip/one gr (R≢P , R≢Q)) (M⊢G R)
-
-  t/send/cont-branch :
-    ∀ {G G′ G″ P Q I}
-      {i : Fin (suc I)}
-      {S T : Sort}
-      {E : Exp 0}
-      {Pr : Proc 0 0}
-    → [] ⊢e E ∶ T
-    → [] & [] ⊢p P ◂ Pr ∶ G″
-    → G -< P ⟶ Q # i < S > >-> G′
-    → G -< P ⟶ Q # i < T > >-> G″
-    → [] ⊢e E ∶ S × [] & [] ⊢p P ◂ Pr ∶ G′
-  t/send/cont-branch etd td gr gr₀
-    with step-sort-deterministic gr gr₀
-  ... | refl
-    rewrite step-deterministic gr gr₀ =
-    etd , td
-
-  t/send/cont :
-    ∀ {G G′ P Q I}
-      {i : Fin (suc I)}
-      {S : Sort}
-      {E : Exp 0}
-      {Pr : Proc 0 0}
-    → [] & [] ⊢p P ◂ Q ! i < E >∙ Pr ∶ G
-    → G -< P ⟶ Q # i < S > >-> G′
-    → [] ⊢e E ∶ S × [] & [] ⊢p P ◂ Pr ∶ G′
-
-  t/send/cont td gr
-    with td/head unskip/refl td
-  ... | h/send gr₀ etd td′ =
-    t/send/cont-branch
-      etd
-      td′
-      gr
-      gr₀
-  ... | h/skip _ na _ =
-    ⊥-elim (∉c→¬∈c (na gr) (∈S refl))
-
-  t/comm/ready/head :
-    ∀ {G P Q I}
-      {i : Fin (suc I)}
-      {E : Exp 0}
-      {Pr : Proc 0 0}
-      {S : Vec Sort (suc I)}
-      {Br : Vec (Proc 1 0) (suc I)}
-    → TypingHead [] P (Q ! i < E >∙ Pr) G
-    → TypingHead [] Q (Σ P ？[ S ]· Br) G
-    → ∃[ T ] ∃[ G′ ] G -< P ⟶ Q # i < T > >-> G′
-
-  t/comm/ready/head (h/send gr _ _) (h/skip _ Q∉G _) =
-    ⊥-elim (∉c→¬∈c (Q∉G gr) (∈R refl))
-
-  t/comm/ready/head (h/send gr _ _) _ =
-    _ , _ , gr
-
-  t/comm/ready/head (h/skip _ P∉G _) (h/recv gr _) =
-    ⊥-elim (∉c→¬∈c (P∉G gr) (∈S refl))
-
-  t/comm/ready/head
-    (h/skip grα P∉G headP)
-    (h/skip _ Q∉G headQ) =
-    let headP′ = headP grα
-        headQ′ = headQ grα
-        T , _ , grβ = t/comm/ready/head headP′ headQ′
-        G′ , gr =
-          no-new-comm/step
-            grα
-            (P∉G grα)
-            (Q∉G grα)
-            grβ
-    in T , G′ , gr
-
-  t/comm/ready :
-    ∀ {G P Q I}
-      {i : Fin (suc I)}
-      {E : Exp 0}
-      {Pr : Proc 0 0}
-      {S : Vec Sort (suc I)}
-      {Br : Vec (Proc 1 0) (suc I)}
-    → [] & [] ⊢p P ◂ Q ! i < E >∙ Pr ∶ G
-    → [] & [] ⊢p Q ◂ Σ P ？[ S ]· Br ∶ G
-    → ∃[ T ] ∃[ G′ ] G -< P ⟶ Q # i < T > >-> G′
-
-  t/comm/ready ptd qtd =
-    t/comm/ready/head
-      (td/head unskip/refl ptd)
-      (td/head unskip/refl qtd)
 
   all-parts/end :
     ∀ {G}
@@ -1124,7 +1211,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
             {M = M [ P ]≔ Pr}
             {P = P}
             Pr
-            (subject-reduction/τ M M⊢G st)
+            (preservation/τ M M⊢G st)
             (lookup∘update P M Pr)
             donePr
     in M′ , s/more st tr , ended
@@ -1135,7 +1222,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
             {M = M [ P ]≔ Pr′}
             {P = P}
             Pr′
-            (subject-reduction/τ M M⊢G st)
+            (preservation/τ M M⊢G st)
             (lookup∘update P M Pr′)
             donePr′
     in M′ , s/more st tr , ended
@@ -1157,7 +1244,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
            {M = M′}
            {P = P}
            (M′ [ P ]s)
-           (subject-reduction/τ* M⊢G tr)
+           (preservation/τ* M⊢G tr)
            refl
            (still-done* tr doneM P)
   ...   | M″ , tr′ , endedP =
@@ -1207,71 +1294,30 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
       M′ , inj₂ (α , s/one st)
     ... | inj₂ (nothing , M′ , st)
       with go
-             (subject-reduction/τ M M⊢G st)
+             (preservation/τ M M⊢G st)
              (rs (τ-depth/decrease M⊢G st))
     ...   | M″ , inj₁ (tr , finishedM″) =
       M″ , inj₁ (s/more st tr , finishedM″)
     ...   | M″ , inj₂ (α , tr) =
       M″ , inj₂ (α , s/more st tr)
 
-  t/recv/cont :
-    ∀ {G G′ P Q I}
-      {i : Fin (suc I)}
-      {T : Sort}
-      {S : Vec Sort (suc I)}
-      {Br : Vec (Proc 1 0) (suc I)}
-    → [] & [] ⊢p Q ◂ Σ P ？[ S ]· Br ∶ G
-    → (gr : G -< P ⟶ Q # i < T > >-> G′)
-    → (T ∷ []) & [] ⊢p Q ◂ lookup Br i ∶ G′
-
-  t/recv/cont td gr
-    with td/head unskip/refl td
-  ... | h/recv _ conts =
-    conts gr
-  ... | h/skip _ na _ =
-    ⊥-elim (∉c→¬∈c (na gr) (∈R refl))
-
-  session-fidelity/comm :
-    ∀ (M : Session)
-      {G P Q I}
-      {i : Fin (suc I)}
-      {S : Vec Sort (suc I)}
-      {E V Pr Br}
+  no-infinite-τ-reductions :
+    ∀ M {G}
     → ⊢s M ∶ G
-    → [] & [] ⊢p P ◂ Q ! i < E >∙ Pr ∶ G
-    → [] & [] ⊢p Q ◂ Σ P ？[ S ]· Br ∶ G
-    → E ⇓ V
-    → ∃[ G′ ]
-        G -< P ⟶ Q # i < sort/value V > >-> G′
-      × ⊢s M [ P ]≔ Pr [ Q ]≔ ([ val V / zero ]e lookup Br i) ∶ G′
+    → M ⇏∞
 
-  session-fidelity/comm M M⊢G ptd qtd e⇓v
-    with t/comm/ready ptd qtd
-  ... | T , G′ , gr =
-    let etd , ptd′ = t/send/cont ptd gr
-        vtd = exp-pres etd e⇓v
-    in
-    G′ ,
-    subst
-      (λ U → _ -< _ ⟶ _ # _ < U > >-> _)
-      (sort/value-typed vtd)
-      gr ,
-    ⊢s-comm-update M gr M⊢G ptd′
-      (proc-subst-lemma-expr
-        (te/val vtd)
-        (t/recv/cont qtd gr))
-
-  session-fidelity :
-    ∀ (M : Session)
-      {G M' α}
-    → ⊢s M ∶ G
-    → M [ just α ]⇒ M'
-    → ∃[ G' ] G -< α >-> G' × ⊢s M' ∶ G'
-
-  session-fidelity M std (s/comm P Q Psnd e⇓v Precv) =
-    session-fidelity/comm
-      M
-      std
-      (td/lookup std Psnd)
-      (td/lookup std Precv)
-      e⇓v
+  no-infinite-τ-reductions M td sr =
+    go td sr (<-wellFounded (τ-depth/session M))
+    where
+    go :
+      ∀ {M G}
+      → ⊢s M ∶ G
+      → M ⇒∞
+      → Acc _<_ (τ-depth/session M)
+      → ⊥
+    go {M = M} M⊢G td (acc rs) =
+      let open _⇒∞ td in
+      go
+        (preservation/τ M M⊢G ∞-step)
+        ∞-next
+        (rs (τ-depth/decrease M⊢G ∞-step))
