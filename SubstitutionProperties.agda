@@ -166,17 +166,17 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   transport-proc = subst (λ x → _ & _ ⊢p _ ◂ x ∶ _)
 
 
-  unskip/bisim :
+  skip/bisim :
     ∀ {G G′ H P}
     → G′ ~ H
     → G -[¬ P ]->* G′
     → ∃[ H₀ ] (G ~ H₀) × (H₀ -[¬ P ]->* H)
-  unskip/bisim G~H unskip/refl =
-    _ , G~H , unskip/refl
-  unskip/bisim G′~H (unskip/step gr P∉α tr) =
-    let _ , G₁~H₁ , H₁↝H = unskip/bisim G′~H tr
+  skip/bisim G~H skip/refl =
+    _ , G~H , skip/refl
+  skip/bisim G′~H (skip/step gr P∉α tr) =
+    let _ , G₁~H₁ , H₁↝H = skip/bisim G′~H tr
         _ , G~H₀  , H₀↝H₁ = stepback/~ G₁~H₁ gr
-    in _ , G~H₀ , unskip/step H₀↝H₁ P∉α H₁↝H
+    in _ , G~H₀ , skip/step H₀↝H₁ P∉α H₁↝H
 
 
   td/bisim :
@@ -196,7 +196,7 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     t/skip (~L→ G~G′ gr) (na ∘ ~R→ G~G′) λ gr′ →
       td/bisim Δ~Δ′ (~R→~ G~G′ gr′) (ktd (~R→ G~G′ gr′))
   td/bisim Δ~Δ′ G~G′ (t/unskip tr td)
-    with unskip/bisim G~G′ tr
+    with skip/bisim G~G′ tr
   ... | _ , G₀~G₀′ , tr′ =
     t/unskip tr′ (td/bisim Δ~Δ′ G₀~G₀′ td)
   td/bisim Δ~Δ′ G~G′ (t/if etd td td₁) =

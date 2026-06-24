@@ -36,33 +36,33 @@ module Definitions.Behav where
     infix 4 _-[¬_]->*_
 
     data _-[¬_]->*_ (G : Behav) (P : Part) : Behav → Set where
-      unskip/refl :
+      skip/refl :
         G -[¬ P ]->* G
 
-      unskip/step :
+      skip/step :
         ∀ {G′ G″ α}
         → G -< α >-> G′
         → P ∉α α
         → G′ -[¬ P ]->* G″
         → G -[¬ P ]->* G″
 
-    unskip/one :
+    skip/one :
       ∀ {G G′ P α}
       → G -< α >-> G′
       → P ∉α α
       → G -[¬ P ]->* G′
-    unskip/one gr P∉α =
-      unskip/step gr P∉α unskip/refl
+    skip/one gr P∉α =
+      skip/step gr P∉α skip/refl
 
-    unskip/cat :
+    skip/cat :
       ∀ {G G′ G″ P}
       → G -[¬ P ]->* G′
       → G′ -[¬ P ]->* G″
       → G -[¬ P ]->* G″
-    unskip/cat unskip/refl tr′ =
+    skip/cat skip/refl tr′ =
       tr′
-    unskip/cat (unskip/step gr P∉α tr) tr′ =
-      unskip/step gr P∉α (unskip/cat tr tr′)
+    skip/cat (skip/step gr P∉α tr) tr′ =
+      skip/step gr P∉α (skip/cat tr tr′)
 
     data _∈T_ P : Behav → Set where
       in/α :
@@ -85,15 +85,15 @@ module Definitions.Behav where
     in/recv gr =
       in/α gr (∈R refl)
 
-    unskip/∈T-back :
+    skip/∈T-back :
       ∀ {G G′ P Q}
       → G -[¬ P ]->* G′
       → Q ∈T G′
       → Q ∈T G
-    unskip/∈T-back unskip/refl Q∈T =
+    skip/∈T-back skip/refl Q∈T =
       Q∈T
-    unskip/∈T-back (unskip/step gr _ tr) Q∈T =
-      in/later gr (unskip/∈T-back tr Q∈T)
+    skip/∈T-back (skip/step gr _ tr) Q∈T =
+      in/later gr (skip/∈T-back tr Q∈T)
 
     ended : Behav → Set
     ended G =
@@ -331,52 +331,52 @@ module Definitions.Behav where
               (sym (recv-overlap⇒same-comm grβ grα rβ∈α))
               P∈α))
 
-    unskip/advance :
+    skip/advance :
       ∀ {G G′ Gα P α}
       → G -[¬ P ]->* G′
       → G -< α >-> Gα
       → P ∈α α
       → ∃[ G′α ] G′ -< α >-> G′α × Gα -[¬ P ]->* G′α
-    unskip/advance unskip/refl grα _ =
-      _ , grα , unskip/refl
-    unskip/advance (unskip/step grβ P∉β tr) grα P∈α
+    skip/advance skip/refl grα _ =
+      _ , grα , skip/refl
+    skip/advance (skip/step grβ P∉β tr) grα P∈α
       with step-diamond grα grβ (active-inactive/⋄ grα grβ P∈α P∉β)
     ... | G◇ , Gα↝G◇ , Gβ↝G◇
-      with unskip/advance tr Gβ↝G◇ P∈α
+      with skip/advance tr Gβ↝G◇ P∈α
     ... | G′α , G′↝G′α , G◇↝G′α =
-      G′α , G′↝G′α , unskip/step Gα↝G◇ P∉β G◇↝G′α
+      G′α , G′↝G′α , skip/step Gα↝G◇ P∉β G◇↝G′α
 
-    unskip/advance-step :
+    skip/advance-step :
       ∀ {G G′ Gα P α}
       → (tr  : G -[¬ P ]->* G′)
       → (grα : G -< α >-> Gα)
       → (P∈α : P ∈α α)
-      → G′ -< α >-> proj₁ (unskip/advance tr grα P∈α)
-    unskip/advance-step tr grα P∈α =
-      proj₁ (proj₂ (unskip/advance tr grα P∈α))
+      → G′ -< α >-> proj₁ (skip/advance tr grα P∈α)
+    skip/advance-step tr grα P∈α =
+      proj₁ (proj₂ (skip/advance tr grα P∈α))
 
-    unskip/advance-trace :
+    skip/advance-trace :
       ∀ {G G′ Gα P α}
       → (tr  : G -[¬ P ]->* G′)
       → (grα : G -< α >-> Gα)
       → (P∈α : P ∈α α)
-      → Gα -[¬ P ]->* proj₁ (unskip/advance tr grα P∈α)
-    unskip/advance-trace tr grα P∈α =
-      proj₂ (proj₂ (unskip/advance tr grα P∈α))
+      → Gα -[¬ P ]->* proj₁ (skip/advance tr grα P∈α)
+    skip/advance-trace tr grα P∈α =
+      proj₂ (proj₂ (skip/advance tr grα P∈α))
 
-    no-new-branch/unskip :
+    no-new-branch/skip :
       ∀ {G G′ Gᵢ Gⱼ′ γ}
         {cᵢ cⱼ : Choice}
       → G -[¬ Comm.receiver γ ]->* G′
       → G  -< γ # cᵢ >-> Gᵢ
       → G′ -< γ # cⱼ >-> Gⱼ′
       → ∃[ Gⱼ ] G -< γ # cⱼ >-> Gⱼ
-    no-new-branch/unskip unskip/refl grᵢ grⱼ =
+    no-new-branch/skip skip/refl grᵢ grⱼ =
       _ , grⱼ
-    no-new-branch/unskip (unskip/step grβ recvγ∉β tr) grᵢ grⱼ′
+    no-new-branch/skip (skip/step grβ recvγ∉β tr) grᵢ grⱼ′
       with step-diamond grᵢ grβ (active-inactive/⋄ grᵢ grβ (∈R refl) recvγ∉β)
     ... | _ , _ , grᵢ′
-      with no-new-branch/unskip tr grᵢ′ grⱼ′
+      with no-new-branch/skip tr grᵢ′ grⱼ′
     ... | _ , grⱼ =
       no-new-branch/step grβ recvγ∉β grᵢ grⱼ
 
@@ -390,9 +390,9 @@ module Definitions.Behav where
           (G -< γ # cⱼ >-> Gⱼ)
         × (Gⱼ -[¬ Comm.receiver γ ]->* Gⱼ′)
     branch/before tr grᵢ grⱼ′
-      with no-new-branch/unskip tr grᵢ grⱼ′
+      with no-new-branch/skip tr grᵢ grⱼ′
     ... | Gⱼ , grⱼ
-      with unskip/advance tr grⱼ (∈R refl)
+      with skip/advance tr grⱼ (∈R refl)
     ... | _ , grⱼ″ , trⱼ
       rewrite step-deterministic grⱼ″ grⱼ′ =
       Gⱼ , grⱼ , trⱼ

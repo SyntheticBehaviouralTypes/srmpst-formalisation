@@ -119,20 +119,20 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → Γ & [] ⊢p P ◂ Pr ∶ G
     → Γ & [] ⊢p P ◂ Pr ∶ G′
   permute/unskip tr (t/unskip tr′ td) =
-    permute/unskip (unskip/cat tr′ tr) td
-  permute/unskip unskip/refl td =
+    permute/unskip (skip/cat tr′ tr) td
+  permute/unskip skip/refl td =
     td
   permute/unskip tr (t/send gr etd td) =
     t/send
-      (unskip/advance-step tr gr (∈S refl))
+      (skip/advance-step tr gr (∈S refl))
       etd
-      (permute/unskip (unskip/advance-trace tr gr (∈S refl)) td)
+      (permute/unskip (skip/advance-trace tr gr (∈S refl)) td)
   permute/unskip tr (t/recv gr conts) =
-    t/recv (unskip/advance-step tr gr (∈R refl)) λ gr″ →
+    t/recv (skip/advance-step tr gr (∈R refl)) λ gr″ →
       permute/unskip
         (branch/before-trace tr gr gr″)
         (conts (branch/before-step tr gr gr″))
-  permute/unskip (unskip/step gr _ tr) (t/skip _ _ ktd) =
+  permute/unskip (skip/step gr _ tr) (t/skip _ _ ktd) =
     permute/unskip tr (ktd gr)
   permute/unskip tr (t/if etd ttd ftd) =
     t/if etd (permute/unskip tr ttd) (permute/unskip tr ftd)
@@ -140,7 +140,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     t/unskip tr td
   permute/unskip tr (t/var {X = ()} _)
   permute/unskip tr (t/end done) =
-    t/end (done ∘ unskip/∈T-back tr)
+    t/end (done ∘ skip/∈T-back tr)
 
 
   ⊢s-comm-update :
@@ -168,7 +168,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     Ptd
   ...   | no R≢P
     rewrite lookup∘update′ R≢P M Pr =
-    permute/unskip (unskip/one gr (R≢P , R≢Q)) (M⊢G R)
+    permute/unskip (skip/one gr (R≢P , R≢Q)) (M⊢G R)
 
 
   data TypingHead {γ}
@@ -244,24 +244,24 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → TypingHead Γ P Pr G′
 
   td/head tr (t/unskip tr′ td) =
-    td/head (unskip/cat tr′ tr) td
+    td/head (skip/cat tr′ tr) td
 
   td/head tr (t/send gr etd td) =
     h/send
-      (unskip/advance-step tr gr (∈S refl))
+      (skip/advance-step tr gr (∈S refl))
       etd
-      (permute/unskip (unskip/advance-trace tr gr (∈S refl)) td)
+      (permute/unskip (skip/advance-trace tr gr (∈S refl)) td)
 
   td/head tr (t/recv gr conts) =
-    h/recv (unskip/advance-step tr gr (∈R refl)) λ gr″ →
+    h/recv (skip/advance-step tr gr (∈R refl)) λ gr″ →
       permute/unskip
         (branch/before-trace tr gr gr″)
         (conts (branch/before-step tr gr gr″))
 
-  td/head unskip/refl (t/skip gr na ktd) =
-    h/skip gr na (td/head unskip/refl ∘ ktd)
+  td/head skip/refl (t/skip gr na ktd) =
+    h/skip gr na (td/head skip/refl ∘ ktd)
 
-  td/head (unskip/step gr _ tr) (t/skip _ _ ktd) =
+  td/head (skip/step gr _ tr) (t/skip _ _ ktd) =
     td/head tr (ktd gr)
 
   td/head tr (t/if etd ttd ftd) =
@@ -273,7 +273,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   td/head _ (t/var {X = ()} _)
 
   td/head tr (t/end done) =
-    h/end (done ∘ unskip/∈T-back tr)
+    h/end (done ∘ skip/∈T-back tr)
 
   t/send/cont-branch :
     ∀ {G G′ G″ P Q I}
@@ -303,7 +303,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → [] ⊢e E ∶ S × [] & [] ⊢p P ◂ Pr ∶ G′
 
   t/send/cont td gr
-    with td/head unskip/refl td
+    with td/head skip/refl td
   ... | h/send gr₀ etd td′ =
     t/send/cont-branch
       etd
@@ -360,8 +360,8 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
 
   t/comm/ready ptd qtd =
     t/comm/ready/head
-      (td/head unskip/refl ptd)
-      (td/head unskip/refl qtd)
+      (td/head skip/refl ptd)
+      (td/head skip/refl qtd)
 
 
   t/recv/cont :
@@ -375,7 +375,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → (T ∷ []) & [] ⊢p Q ◂ lookup Br i ∶ G′
 
   t/recv/cont td gr
-    with td/head unskip/refl td
+    with td/head skip/refl td
   ... | h/recv _ conts =
     conts gr
   ... | h/skip _ na _ =
@@ -525,7 +525,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → [] & [] ⊢p P ◂ Pr ∶ G
     → ProcessStatus G P Pr
   process/status =
-    process/status/head ∘ td/head unskip/refl
+    process/status/head ∘ td/head skip/refl
 
   message-guarded/∈T/head :
     ∀ {γ G P Pr}
@@ -555,15 +555,15 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → Γ & Δ ⊢p P ◂ Pr ∶ G
     → P ∈T G′
   message-guarded/∈T/unskip tr mg/send (t/send gr _ _) =
-    in/send (unskip/advance-step tr gr (∈S refl))
+    in/send (skip/advance-step tr gr (∈S refl))
   message-guarded/∈T/unskip tr mg/recv (t/recv gr _) =
-    in/recv (unskip/advance-step tr gr (∈R refl))
-  message-guarded/∈T/unskip unskip/refl guarded (t/skip gr _ ktd) =
-    in/later gr (message-guarded/∈T/unskip unskip/refl guarded (ktd gr))
-  message-guarded/∈T/unskip (unskip/step gr _ tr) guarded (t/skip _ _ ktd) =
+    in/recv (skip/advance-step tr gr (∈R refl))
+  message-guarded/∈T/unskip skip/refl guarded (t/skip gr _ ktd) =
+    in/later gr (message-guarded/∈T/unskip skip/refl guarded (ktd gr))
+  message-guarded/∈T/unskip (skip/step gr _ tr) guarded (t/skip _ _ ktd) =
     message-guarded/∈T/unskip tr guarded (ktd gr)
   message-guarded/∈T/unskip tr guarded (t/unskip tr′ td) =
-    message-guarded/∈T/unskip (unskip/cat tr′ tr) guarded td
+    message-guarded/∈T/unskip (skip/cat tr′ tr) guarded td
   message-guarded/∈T/unskip tr (mg/if guarded _) (t/if _ ttd _) =
     message-guarded/∈T/unskip tr guarded ttd
 
@@ -595,7 +595,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → [] & [] ⊢p P ◂ Pr ∶ G
     → done/proc Pr
   not-in-type/done P∉G td =
-    not-in-type/done/head P∉G (td/head unskip/refl td)
+    not-in-type/done/head P∉G (td/head skip/refl td)
 
   data SendView
     (P : Part)
@@ -659,7 +659,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → [] & [] ⊢p P ◂ Pr ∶ G
     → SendView P G Pr
   send/view gr td =
-    send/view/head gr (td/head unskip/refl td)
+    send/view/head gr (td/head skip/refl td)
 
   data RecvView
     (P Q : Part)
@@ -723,7 +723,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → [] & [] ⊢p Q ◂ Pr ∶ G
     → RecvView P Q i G Pr
   recv/view gr td =
-    recv/view/head gr (td/head unskip/refl td)
+    recv/view/head gr (td/head skip/refl td)
 
   data SessionStatus
     (M : Session)
