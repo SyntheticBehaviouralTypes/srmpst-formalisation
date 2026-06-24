@@ -14,7 +14,7 @@ open import Data.Fin.Properties
   using (punchIn-punchOut)
 
 open import Data.Vec
-  using (Vec; []; _∷_; _++_; _[_]=_; insertAt)
+  using (Vec; []; _∷_; _++_; _[_]=_; insertAt; cast)
   renaming (lookup to lu; removeAt to _-_)
 
 open import Data.Vec.Properties
@@ -31,6 +31,7 @@ open import Data.Vec.Properties
 open import Data.Vec.Relation.Unary.Any using (Any)
 
 open import Data.Product using (∃-syntax; _,_; _×_; proj₁; proj₂)
+open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Function     using (_∘_)
 
 open import Relation.Nullary using (False; ¬_; yes; no)
@@ -48,6 +49,250 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   open module M = Definitions.MPST(BP)
   open M
   open M.Subst
+
+  private
+    variable
+      γ δ ξ ξ′ : ℕ
+
+  lookup/prepend :
+    ∀ {G}
+      {Ξ : Vec Behav ξ}
+    → (Ξ′ : Vec Behav ξ′)
+    → ∃[ X ] lu Ξ X ≡ G
+    → ∃[ X′ ] lu (Ξ′ ++ Ξ) X′ ≡ G
+
+  lookup/prepend [] (X , eq) =
+    X , eq
+
+  lookup/prepend (_ ∷ Ξ′) (X , eq)
+    with lookup/prepend Ξ′ (X , eq)
+  ... | X′ , eq′ =
+    suc X′ , eq′
+
+
+  lookup/swap :
+    ∀ {G H H′}
+      {Ξ : Vec Behav ξ}
+      {Ξ′ : Vec Behav ξ′}
+    → ∃[ X ] lu (Ξ′ ++ (H′ ∷ H ∷ Ξ)) X ≡ G
+    → ∃[ X′ ] lu (Ξ′ ++ (H ∷ H′ ∷ Ξ)) X′ ≡ G
+
+  lookup/swap {Ξ′ = []} (zero , eq) =
+    suc zero , eq
+
+  lookup/swap {Ξ′ = []} (suc zero , eq) =
+    zero , eq
+
+  lookup/swap {Ξ′ = []} (suc (suc X) , eq) =
+    suc (suc X) , eq
+
+  lookup/swap {Ξ′ = _ ∷ Ξ′} (zero , eq) =
+    zero , eq
+
+  lookup/swap {Ξ′ = _ ∷ Ξ′} (suc X , eq)
+    with lookup/swap {Ξ′ = Ξ′} (X , eq)
+  ... | X′ , eq′ =
+    suc X′ , eq′
+
+
+  lookup/insert :
+    ∀ {G H}
+      {Ξ : Vec Behav ξ}
+      {Ξ′ : Vec Behav ξ′}
+    → ∃[ X ] lu (Ξ′ ++ (H ∷ Ξ)) X ≡ G
+    → H ≡ G ⊎ ∃[ X′ ] lu (Ξ′ ++ Ξ) X′ ≡ G
+
+  lookup/insert {Ξ′ = []} (zero , eq) =
+    inj₁ eq
+
+  lookup/insert {Ξ′ = []} (suc X , eq) =
+    inj₂ (X , eq)
+
+  lookup/insert {Ξ′ = _ ∷ Ξ′} (zero , eq) =
+    inj₂ (zero , eq)
+
+  lookup/insert {Ξ′ = _ ∷ Ξ′} (suc X , eq)
+    with lookup/insert {Ξ′ = Ξ′} (X , eq)
+  ... | inj₁ eq′ =
+    inj₁ eq′
+  ... | inj₂ (X′ , eq′) =
+    inj₂ (suc X′ , eq′)
+
+
+  lookup/float :
+    ∀ {G H}
+      {Ξ : Vec Behav ξ}
+      {Ξ′ : Vec Behav ξ′}
+    → ∃[ X ] lu (Ξ′ ++ (H ∷ Ξ)) X ≡ G
+    → ∃[ X′ ] lu (H ∷ (Ξ′ ++ Ξ)) X′ ≡ G
+
+  lookup/float {H = H} {Ξ = Ξ} {Ξ′ = Ξ′} lookup
+    with lookup/insert {H = H} {Ξ = Ξ} {Ξ′ = Ξ′} lookup
+  ... | inj₁ eq =
+    zero , eq
+  ... | inj₂ (X′ , eq′) =
+    suc X′ , eq′
+
+
+  transport-behav :
+    ∀ {P Pr G G′}
+      {Γ : Vec Sort γ}
+      {Δ : Vec Behav δ}
+      {Ξ : Vec Behav ξ}
+    → G ≡ G′
+    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
+    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G′
+  transport-behav = subst (λ G → _ & _ & _ ⊢p _ ◂ _ ∶ G)
+
+
+  swap/visited :
+    ∀ {P Pr G H H′}
+      {Γ : Vec Sort γ}
+      {Δ : Vec Behav δ}
+      {Ξ : Vec Behav ξ}
+      {Ξ′ : Vec Behav ξ′}
+    → Γ & Δ & (Ξ′ ++ (H′ ∷ H ∷ Ξ)) ⊢p P ◂ Pr ∶ G
+    → Γ & Δ & (Ξ′ ++ (H ∷ H′ ∷ Ξ)) ⊢p P ◂ Pr ∶ G
+
+  swap/visited (t/send gr etd td) =
+    t/send gr etd td
+  swap/visited (t/recv gr conts) =
+    t/recv gr conts
+  swap/visited {Ξ′ = Ξ′} (t/skip gr na ktd) =
+    t/skip gr na λ gr′ →
+      swap/visited {Ξ′ = _ ∷ Ξ′} (ktd gr′)
+  swap/visited {G = G} {H = H} {H′ = H′} {Ξ = Ξ} {Ξ′ = Ξ′}
+    (t/skip-cycle {X = X} eq P∈G)
+    with lookup/swap {G = G} {H = H} {H′ = H′} {Ξ = Ξ} {Ξ′ = Ξ′}
+           (X , eq)
+  ... | X′ , eq′ =
+    t/skip-cycle {X = X′} eq′ P∈G
+  swap/visited (t/unskip tr td) =
+    t/unskip tr td
+  swap/visited (t/if etd ttd ftd) =
+    t/if etd ttd ftd
+  swap/visited (t/rec guarded td) =
+    t/rec guarded td
+  swap/visited (t/var eq) =
+    t/var eq
+  swap/visited (t/end done) =
+    t/end done
+
+
+  float/visited :
+    ∀ {P Pr G H}
+      {Γ : Vec Sort γ}
+      {Δ : Vec Behav δ}
+      {Ξ : Vec Behav ξ}
+      {Ξ′ : Vec Behav ξ′}
+    → Γ & Δ & (Ξ′ ++ (H ∷ Ξ)) ⊢p P ◂ Pr ∶ G
+    → Γ & Δ & (H ∷ (Ξ′ ++ Ξ)) ⊢p P ◂ Pr ∶ G
+
+  float/visited (t/send gr etd td) =
+    t/send gr etd td
+  float/visited (t/recv gr conts) =
+    t/recv gr conts
+  float/visited {Ξ′ = Ξ′} (t/skip gr na ktd) =
+    t/skip gr na λ gr′ →
+      swap/visited {Ξ′ = []}
+        (float/visited {Ξ′ = _ ∷ Ξ′} (ktd gr′))
+  float/visited {G = G} {H = H} {Ξ = Ξ} {Ξ′ = Ξ′}
+    (t/skip-cycle {X = X} eq P∈G)
+    with lookup/float {G = G} {H = H} {Ξ = Ξ} {Ξ′ = Ξ′}
+           (X , eq)
+  ... | X′ , eq′ =
+    t/skip-cycle {X = X′} eq′ P∈G
+  float/visited (t/unskip tr td) =
+    t/unskip tr td
+  float/visited (t/if etd ttd ftd) =
+    t/if etd ttd ftd
+  float/visited (t/rec guarded td) =
+    t/rec guarded td
+  float/visited (t/var eq) =
+    t/var eq
+  float/visited (t/end done) =
+    t/end done
+
+
+  strengthen/visited :
+    ∀ {P Pr G}
+      {Γ : Vec Sort γ}
+      {Δ : Vec Behav δ}
+      {Ξ : Vec Behav ξ}
+    → (Ξ′ : Vec Behav ξ′)
+    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
+    → Γ & Δ & (Ξ′ ++ Ξ) ⊢p P ◂ Pr ∶ G
+
+  strengthen/visited Ξ′ (t/send gr etd td) =
+    t/send gr etd td
+  strengthen/visited Ξ′ (t/recv gr conts) =
+    t/recv gr conts
+  strengthen/visited Ξ′ (t/skip gr na ktd) =
+    t/skip gr na λ gr′ →
+      float/visited (strengthen/visited Ξ′ (ktd gr′))
+  strengthen/visited Ξ′ (t/skip-cycle {X = X} eq P∈G)
+    with lookup/prepend Ξ′ (X , eq)
+  ... | X′ , eq′ =
+    t/skip-cycle {X = X′} eq′ P∈G
+  strengthen/visited Ξ′ (t/unskip tr td) =
+    t/unskip tr td
+  strengthen/visited Ξ′ (t/if etd ttd ftd) =
+    t/if etd ttd ftd
+  strengthen/visited Ξ′ (t/rec guarded td) =
+    t/rec guarded td
+  strengthen/visited Ξ′ (t/var eq) =
+    t/var eq
+  strengthen/visited Ξ′ (t/end done) =
+    t/end done
+
+
+  unfold/tskip :
+    ∀ {P Pr G H}
+      {Γ : Vec Sort γ}
+      {Δ : Vec Behav δ}
+      {Ξ : Vec Behav ξ}
+    → (Ξ′ : Vec Behav ξ′)
+    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ H
+    → Γ & Δ & (Ξ′ ++ (H ∷ Ξ)) ⊢p P ◂ Pr ∶ G
+    → Γ & Δ & (Ξ′ ++ Ξ) ⊢p P ◂ Pr ∶ G
+
+  unfold/tskip Ξ′ otd (t/send gr etd td) =
+    t/send gr etd td
+  unfold/tskip Ξ′ otd (t/recv gr conts) =
+    t/recv gr conts
+  unfold/tskip Ξ′ otd (t/skip gr na ktd) =
+    t/skip gr na λ gr′ →
+      unfold/tskip (_ ∷ Ξ′) otd (ktd gr′)
+  unfold/tskip Ξ′ otd (t/skip-cycle {X = X} eq P∈G)
+    with lookup/insert {Ξ′ = Ξ′} (X , eq)
+  ... | inj₁ eq′ =
+    transport-behav eq′ (strengthen/visited Ξ′ otd)
+  ... | inj₂ (X′ , eq′) =
+    t/skip-cycle {X = X′} eq′ P∈G
+  unfold/tskip Ξ′ otd (t/unskip tr td) =
+    t/unskip tr td
+  unfold/tskip Ξ′ otd (t/if etd ttd ftd) =
+    t/if etd ttd ftd
+  unfold/tskip Ξ′ otd (t/rec guarded td) =
+    t/rec guarded td
+  unfold/tskip Ξ′ otd (t/var eq) =
+    t/var eq
+  unfold/tskip Ξ′ otd (t/end done) =
+    t/end done
+
+
+  cast-visited :
+    ∀ {P Pr G}
+      {Γ : Vec Sort γ}
+      {Δ : Vec Behav δ}
+      {Ξ : Vec Behav ξ}
+    → (eq : ξ ≡ ξ′)
+    → Γ & Δ & cast eq Ξ ⊢p P ◂ Pr ∶ G
+    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
+
+  cast-visited {Ξ = Ξ} refl td
+    rewrite cast-is-id refl Ξ =
+    td
 
   expr-weaken-lemma :
     ∀ {γ E S S' x}
@@ -156,6 +401,7 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
       (subst-message-guarded mmgr)
 
 
+{-
   transport-proc :
     ∀ {δ γ p p′ P G}
       {Δ : Vec Behav δ}
@@ -505,3 +751,4 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
 
   proc-subst-lemma ptd′ (t/end done₁) =
     t/end done₁
+-}
