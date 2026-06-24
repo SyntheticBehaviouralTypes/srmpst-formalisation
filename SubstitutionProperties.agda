@@ -58,8 +58,8 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     ∀ {G}
       {Ξ : Vec Behav ξ}
     → (Ξ′ : Vec Behav ξ′)
-    → ∃[ X ] lu Ξ X ≡ G
-    → ∃[ X′ ] lu (Ξ′ ++ Ξ) X′ ≡ G
+    → ∃[ X ] lu Ξ X ~ G
+    → ∃[ X′ ] lu (Ξ′ ++ Ξ) X′ ~ G
 
   lookup/prepend [] (X , eq) =
     X , eq
@@ -74,8 +74,8 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     ∀ {G H H′}
       {Ξ : Vec Behav ξ}
       {Ξ′ : Vec Behav ξ′}
-    → ∃[ X ] lu (Ξ′ ++ (H′ ∷ H ∷ Ξ)) X ≡ G
-    → ∃[ X′ ] lu (Ξ′ ++ (H ∷ H′ ∷ Ξ)) X′ ≡ G
+    → ∃[ X ] lu (Ξ′ ++ (H′ ∷ H ∷ Ξ)) X ~ G
+    → ∃[ X′ ] lu (Ξ′ ++ (H ∷ H′ ∷ Ξ)) X′ ~ G
 
   lookup/swap {Ξ′ = []} (zero , eq) =
     suc zero , eq
@@ -99,8 +99,8 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     ∀ {G H}
       {Ξ : Vec Behav ξ}
       {Ξ′ : Vec Behav ξ′}
-    → ∃[ X ] lu (Ξ′ ++ (H ∷ Ξ)) X ≡ G
-    → H ≡ G ⊎ ∃[ X′ ] lu (Ξ′ ++ Ξ) X′ ≡ G
+    → ∃[ X ] lu (Ξ′ ++ (H ∷ Ξ)) X ~ G
+    → H ~ G ⊎ ∃[ X′ ] lu (Ξ′ ++ Ξ) X′ ~ G
 
   lookup/insert {Ξ′ = []} (zero , eq) =
     inj₁ eq
@@ -123,8 +123,8 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     ∀ {G H}
       {Ξ : Vec Behav ξ}
       {Ξ′ : Vec Behav ξ′}
-    → ∃[ X ] lu (Ξ′ ++ (H ∷ Ξ)) X ≡ G
-    → ∃[ X′ ] lu (H ∷ (Ξ′ ++ Ξ)) X′ ≡ G
+    → ∃[ X ] lu (Ξ′ ++ (H ∷ Ξ)) X ~ G
+    → ∃[ X′ ] lu (H ∷ (Ξ′ ++ Ξ)) X′ ~ G
 
   lookup/float {H = H} {Ξ = Ξ} {Ξ′ = Ξ′} lookup
     with lookup/insert {H = H} {Ξ = Ξ} {Ξ′ = Ξ′} lookup
@@ -132,6 +132,71 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     zero , eq
   ... | inj₂ (X′ , eq′) =
     suc X′ , eq′
+
+
+  skip/bisim :
+    ∀ {G G′ H P}
+    → G′ ~ H
+    → G -[¬ P ]->* G′
+    → ∃[ H₀ ] (G ~ H₀) × (H₀ -[¬ P ]->* H)
+  skip/bisim G~H skip/refl =
+    _ , G~H , skip/refl
+  skip/bisim G′~H (skip/step gr P∉α tr) =
+    let _ , G₁~H₁ , H₁↝H = skip/bisim G′~H tr
+        _ , G~H₀  , H₀↝H₁ = stepback/~ G₁~H₁ gr
+    in _ , G~H₀ , skip/step H₀↝H₁ P∉α H₁↝H
+
+
+  td/bisim :
+    ∀ {γ δ ξ G G′ P Pr}
+      {Γ : Vec Sort γ}
+      {Δ Δ′ : Vec Behav δ}
+      {Ξ Ξ′ : Vec Behav ξ}
+    → Δ ~ᵛ Δ′
+    → Ξ ~ᵛ Ξ′
+    → G ~ G′
+    → Γ & Δ  & Ξ  ⊢p P ◂ Pr ∶ G
+    → Γ & Δ′ & Ξ′ ⊢p P ◂ Pr ∶ G′
+  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/send gr etd td) =
+    t/send (~L→ G~G′ gr) etd
+      (td/bisim Δ~Δ′ ~ᵛ/[] (~L→~ G~G′ gr) td)
+  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/recv gr conts) =
+    t/recv (~L→ G~G′ gr) λ gr′ →
+      td/bisim Δ~Δ′ ~ᵛ/[] (~R→~ G~G′ gr′)
+        (conts (~R→ G~G′ gr′))
+  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/skip gr na ktd) =
+    t/skip (~L→ G~G′ gr) (na ∘ ~R→ G~G′) λ gr′ →
+      td/bisim Δ~Δ′ (~ᵛ/∷ G~G′ Ξ~Ξ′) (~R→~ G~G′ gr′)
+        (ktd (~R→ G~G′ gr′))
+  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/skip-cycle {X = X} eq P∈G) =
+    t/skip-cycle
+      (~trans (lookup/~ᵛ Ξ~Ξ′ X eq) G~G′)
+      (∈~ G~G′ P∈G)
+  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/unskip tr td)
+    with skip/bisim G~G′ tr
+  ... | _ , G₀~G₀′ , tr′ =
+    t/unskip tr′ (td/bisim Δ~Δ′ ~ᵛ/[] G₀~G₀′ td)
+  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/if etd td td₁) =
+    t/if etd
+      (td/bisim Δ~Δ′ ~ᵛ/[] G~G′ td)
+      (td/bisim Δ~Δ′ ~ᵛ/[] G~G′ td₁)
+  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/rec mg₁ td) =
+    t/rec mg₁ (td/bisim (~ᵛ/∷ G~G′ Δ~Δ′) ~ᵛ/[] G~G′ td)
+  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/var eq) =
+    t/var (~trans (lookup/~ᵛ Δ~Δ′ _ eq) G~G′)
+  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/end d) =
+    t/end (d ∘ ∈~ (~sym G~G′))
+
+
+  t/bisim :
+    ∀ {δ γ ξ G G′ P Pr}
+      {Γ : Vec Sort γ}
+      {Δ : Vec Behav δ}
+      {Ξ : Vec Behav ξ}
+    → G ~ G′
+    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
+    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G′
+  t/bisim = td/bisim ~ᵛ-refl ~ᵛ-refl
 
 
   transport-behav :
@@ -266,7 +331,7 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   unfold/tskip Ξ′ otd (t/skip-cycle {X = X} eq P∈G)
     with lookup/insert {Ξ′ = Ξ′} (X , eq)
   ... | inj₁ eq′ =
-    transport-behav eq′ (strengthen/visited Ξ′ otd)
+    t/bisim eq′ (strengthen/visited Ξ′ otd)
   ... | inj₂ (X′ , eq′) =
     t/skip-cycle {X = X′} eq′ P∈G
   unfold/tskip Ξ′ otd (t/unskip tr td) =
@@ -651,19 +716,15 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     rewrite removeAt-insertAt Γ x S =
     eq
 
-{-
-  Process-variable substitution still needs a behavior transport for the
-  equal-variable case. With exact `t/skip-cycle` lookup, arbitrary bisimilarity
-  transport is not derivable for visited contexts.
-
   proc-subst-lemma :
-    ∀ {γ δ G G' P Pr Pr'}
+    ∀ {γ δ ξ G G' P Pr Pr'}
       {Γ : Vec Sort γ}
       {Δ : Vec Behav δ}
+      {Ξ : Vec Behav ξ}
       {X : Fin (suc δ)}
-    → Γ & Δ ⊢p P ◂ Pr' ∶ G'
-    → Γ & insertAt Δ X G' ⊢p P ◂ Pr ∶ G
-    → Γ & Δ ⊢p P ◂ [ Pr' / X ]pr Pr ∶ G
+    → Γ & Δ & [] ⊢p P ◂ Pr' ∶ G'
+    → Γ & insertAt Δ X G' & Ξ ⊢p P ◂ Pr ∶ G
+    → Γ & Δ & Ξ ⊢p P ◂ [ Pr' / X ]pr Pr ∶ G
 
   proc-subst-lemma ptd′ (t/send gr etd ptd) =
     t/send gr etd
@@ -678,6 +739,9 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
 
   proc-subst-lemma ptd′ (t/skip gr na ktd) =
     t/skip gr na (proc-subst-lemma ptd′ ∘ ktd)
+
+  proc-subst-lemma ptd′ (t/skip-cycle eq P∈G) =
+    t/skip-cycle eq P∈G
 
   proc-subst-lemma ptd′ (t/unskip tr ptd) =
     t/unskip tr (proc-subst-lemma ptd′ ptd)
@@ -695,8 +759,10 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
         ptd)
 
   proc-subst-lemma
+    {ξ = ξ}
     {G' = G'}
     {Δ = Δ}
+    {Ξ = Ξ}
     {X = X}
     ptd′
     (t/var {X = X′} eq)
@@ -711,8 +777,10 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     t/var eq
   ... | yes refl
     rewrite insertAt-lookup Δ X G' =
-    t/bisim eq ptd′
+    let res = strengthen/visited Ξ (t/bisim eq ptd′)
+        idr = sym (cast-sym (+-identityʳ ξ) (++-identityʳ-eqFree Ξ))
+        res′ = subst (λ Ξ′ → _ & _ & Ξ′ ⊢p _ ◂ _ ∶ _) idr res
+    in cast-visited (sym (+-identityʳ _)) res′
 
   proc-subst-lemma ptd′ (t/end done₁) =
     t/end done₁
--}
