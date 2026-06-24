@@ -400,78 +400,26 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
       (subst-message-guarded mmgl)
       (subst-message-guarded mmgr)
 
-
-{-
   transport-proc :
-    ∀ {δ γ p p′ P G}
+    ∀ {δ γ ξ p p′ P G}
       {Δ : Vec Behav δ}
       {Γ : Vec Sort γ}
+      {Ξ : Vec Behav ξ}
     → p ≡ p′
-    → Γ & Δ ⊢p P ◂ p  ∶ G
-    → Γ & Δ ⊢p P ◂ p′ ∶ G
-  transport-proc = subst (λ x → _ & _ ⊢p _ ◂ x ∶ _)
-
-
-  skip/bisim :
-    ∀ {G G′ H P}
-    → G′ ~ H
-    → G -[¬ P ]->* G′
-    → ∃[ H₀ ] (G ~ H₀) × (H₀ -[¬ P ]->* H)
-  skip/bisim G~H skip/refl =
-    _ , G~H , skip/refl
-  skip/bisim G′~H (skip/step gr P∉α tr) =
-    let _ , G₁~H₁ , H₁↝H = skip/bisim G′~H tr
-        _ , G~H₀  , H₀↝H₁ = stepback/~ G₁~H₁ gr
-    in _ , G~H₀ , skip/step H₀↝H₁ P∉α H₁↝H
-
-
-  td/bisim :
-    ∀ {γ δ G G′ P Pr}
-      {Γ : Vec Sort γ}
-      {Δ Δ′ : Vec Behav δ}
-    → Δ ~ᵛ Δ′
-    → G ~ G′
-    → Γ & Δ  ⊢p P ◂ Pr ∶ G
-    → Γ & Δ′ ⊢p P ◂ Pr ∶ G′
-  td/bisim Δ~Δ′ G~G′ (t/send gr etd td) =
-    t/send (~L→ G~G′ gr) etd (td/bisim Δ~Δ′ (~L→~ G~G′ gr) td)
-  td/bisim Δ~Δ′ G~G′ (t/recv gr conts) =
-    t/recv (~L→ G~G′ gr) λ gr′ →
-      td/bisim Δ~Δ′ (~R→~ G~G′ gr′) (conts (~R→ G~G′ gr′))
-  td/bisim Δ~Δ′ G~G′ (t/skip gr na ktd) =
-    t/skip (~L→ G~G′ gr) (na ∘ ~R→ G~G′) λ gr′ →
-      td/bisim Δ~Δ′ (~R→~ G~G′ gr′) (ktd (~R→ G~G′ gr′))
-  td/bisim Δ~Δ′ G~G′ (t/unskip tr td)
-    with skip/bisim G~G′ tr
-  ... | _ , G₀~G₀′ , tr′ =
-    t/unskip tr′ (td/bisim Δ~Δ′ G₀~G₀′ td)
-  td/bisim Δ~Δ′ G~G′ (t/if etd td td₁) =
-    t/if etd (td/bisim Δ~Δ′ G~G′ td) (td/bisim Δ~Δ′ G~G′ td₁)
-  td/bisim Δ~Δ′ G~G′ (t/rec mg₁ td) =
-    t/rec mg₁ (td/bisim (~ᵛ/∷ G~G′ Δ~Δ′) G~G′ td)
-  td/bisim Δ~Δ′ G~G′ (t/var eq) =
-    t/var (~trans (lookup/~ᵛ Δ~Δ′ _ eq) G~G′)
-  td/bisim Δ~Δ′ G~G′ (t/end d) =
-    t/end (d ∘ ∈~ (~sym G~G′))
-
-  t/bisim :
-    ∀ {δ γ G G′ P Pr}
-      {Γ : Vec Sort γ}
-      {Δ : Vec Behav δ}
-    → G ~ G′
-    → Γ & Δ ⊢p P ◂ Pr ∶ G
-    → Γ & Δ ⊢p P ◂ Pr ∶ G′
-  t/bisim = td/bisim ~ᵛ-refl
+    → Γ & Δ & Ξ ⊢p P ◂ p  ∶ G
+    → Γ & Δ & Ξ ⊢p P ◂ p′ ∶ G
+  transport-proc = subst (λ x → _ & _ & _ ⊢p _ ◂ x ∶ _)
 
 
   proc-subst-lemma-expr :
-    ∀ {γ δ G P E Pr}
+    ∀ {γ δ ξ G P E Pr}
       {Γ : Vec Sort (suc γ)}
       {Δ : Vec Behav δ}
+      {Ξ : Vec Behav ξ}
       {X : Fin (suc γ)}
     → (Γ - X)     ⊢e E                 ∶ lu Γ X
-    → Γ       & Δ ⊢p P ◂ Pr            ∶ G
-    → (Γ - X) & Δ ⊢p P ◂ [ E / X ]e Pr ∶ G
+    → Γ       & Δ & Ξ ⊢p P ◂ Pr            ∶ G
+    → (Γ - X) & Δ & Ξ ⊢p P ◂ [ E / X ]e Pr ∶ G
 
   proc-subst-lemma-expr etd (t/send gr etd′ ptd) =
     t/send gr
@@ -486,6 +434,9 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
 
   proc-subst-lemma-expr etd (t/skip gr na ktd) =
     t/skip gr na (proc-subst-lemma-expr etd ∘ ktd)
+
+  proc-subst-lemma-expr etd (t/skip-cycle eq P∈G) =
+    t/skip-cycle eq P∈G
 
   proc-subst-lemma-expr etd (t/unskip tr ptd) =
     t/unskip tr (proc-subst-lemma-expr etd ptd)
@@ -521,11 +472,12 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     expr-lookup-after-branch-weakening {i = i} Br
 
   proc-weaken-lemma-expr :
-    ∀ {γ δ P Pr G S x}
+    ∀ {γ δ ξ P Pr G S x}
       {Γ : Vec Sort γ}
       {Δ : Vec Behav δ}
-    → Γ & Δ ⊢p P ◂ Pr ∶ G
-    → insertAt Γ x S & Δ ⊢p P ◂ weaken/proc/exp Pr x ∶ G
+      {Ξ : Vec Behav ξ}
+    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
+    → insertAt Γ x S & Δ & Ξ ⊢p P ◂ weaken/proc/exp Pr x ∶ G
 
   proc-weaken-lemma-expr (t/send gr etd ptd) =
     t/send gr
@@ -542,6 +494,9 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   proc-weaken-lemma-expr (t/skip gr na ktd) =
     t/skip gr na
       (proc-weaken-lemma-expr ∘ ktd)
+
+  proc-weaken-lemma-expr (t/skip-cycle eq P∈G) =
+    t/skip-cycle eq P∈G
 
   proc-weaken-lemma-expr (t/unskip tr ptd) =
     t/unskip tr
@@ -598,11 +553,12 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
 
 
   proc-weaken-lemma :
-    ∀ {γ δ G G' P Pr X}
+    ∀ {γ δ ξ G G' P Pr X}
       {Γ : Vec Sort γ}
       {Δ : Vec Behav δ}
-    → Γ & Δ ⊢p P ◂ Pr ∶ G
-    → Γ & insertAt Δ X G' ⊢p P ◂ weaken/proc Pr X ∶ G
+      {Ξ : Vec Behav ξ}
+    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
+    → Γ & insertAt Δ X G' & Ξ ⊢p P ◂ weaken/proc Pr X ∶ G
 
   proc-weaken-lemma (t/send gr etd ptd) =
     t/send gr etd
@@ -618,6 +574,9 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   proc-weaken-lemma (t/skip gr na ktd) =
     t/skip gr na
       (proc-weaken-lemma ∘ ktd)
+
+  proc-weaken-lemma (t/skip-cycle eq P∈G) =
+    t/skip-cycle eq P∈G
 
   proc-weaken-lemma (t/unskip tr ptd) =
     t/unskip tr
@@ -691,6 +650,11 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   ... | eq
     rewrite removeAt-insertAt Γ x S =
     eq
+
+{-
+  Process-variable substitution still needs a behavior transport for the
+  equal-variable case. With exact `t/skip-cycle` lookup, arbitrary bisimilarity
+  transport is not derivable for visited contexts.
 
   proc-subst-lemma :
     ∀ {γ δ G G' P Pr Pr'}
