@@ -9,6 +9,8 @@ open import Data.Vec
 
 open import Relation.Nullary using (¬_)
 
+open import Relation.Binary.PropositionalEquality using (_≡_)
+
 module Definitions where
 
 open import Definitions.Expr public
@@ -33,7 +35,7 @@ module MPST {N : ℕ} {B : BTheory N} (BP : BT-Prop B) where
 
   private
     variable
-      γ δ : ℕ
+      γ δ ξ : ℕ
 
   data MessageGuarded : Proc γ δ → Set where
     mg/send :
@@ -56,11 +58,12 @@ module MPST {N : ℕ} {B : BTheory N} (BP : BT-Prop B) where
       → MessageGuarded Pr'
       → MessageGuarded (ifp E then Pr else Pr')
 
-  infix  4 _&_⊢p_∶_
+  infix  4 _&_&_⊢p_∶_
 
-  data _&_⊢p_∶_
+  data _&_&_⊢p_∶_
     (Γ : Vec Sort γ)
     (Δ : Vec Behav δ)
+    (Ξ : Vec Behav ξ)
     : NProc γ δ → Behav → Set
     where
 
@@ -73,8 +76,8 @@ module MPST {N : ℕ} {B : BTheory N} (BP : BT-Prop B) where
         {S  : Sort}
       → (gr  : G -< P ⟶ Q # i < S > >-> G')
       → (etd : Γ ⊢e E ∶ S)
-      → (td  : Γ & Δ ⊢p P ◂ Pr ∶ G')
-      → Γ & Δ ⊢p P ◂ Q ! i < E >∙ Pr ∶ G
+      → (td  : Γ & Δ & [] ⊢p P ◂ Pr ∶ G')
+      → Γ & Δ & Ξ ⊢p P ◂ Q ! i < E >∙ Pr ∶ G
 
     t/recv :
       ∀ {P Q I}
@@ -87,8 +90,8 @@ module MPST {N : ℕ} {B : BTheory N} (BP : BT-Prop B) where
       → (conts :
           ∀ {j U G″}
           → (gr′ : G -< P ⟶ Q # j < U > >-> G″)
-          → (U ∷ Γ) & Δ ⊢p Q ◂ lu Br j ∶ G″)
-      → Γ & Δ ⊢p Q ◂ Σ P ？[ S ]· Br ∶ G
+          → (U ∷ Γ) & Δ & [] ⊢p Q ◂ lu Br j ∶ G″)
+      → Γ & Δ & Ξ ⊢p Q ◂ Σ P ？[ S ]· Br ∶ G
 
     t/skip :
       ∀ {P Pr α G G'}
@@ -97,27 +100,32 @@ module MPST {N : ℕ} {B : BTheory N} (BP : BT-Prop B) where
       → (ktd :
           ∀ {G″ α}
           → (gr′ : G -< α >-> G″)
-          → Γ & Δ ⊢p P ◂ Pr ∶ G″)
-      → Γ & Δ ⊢p P ◂ Pr ∶ G
+          → Γ & Δ & G ∷ Ξ ⊢p P ◂ Pr ∶ G″)
+      → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
+    
+    t/skip-cycle : 
+      ∀ {P Pr X G}
+      → lu Ξ X ≡ G
+      → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
 
     t/unskip :
       ∀ {P Pr G G'}
       → (tr : G -[¬ P ]->* G')
-      → (td : Γ & Δ ⊢p P ◂ Pr ∶ G)
-      → Γ & Δ ⊢p P ◂ Pr ∶ G'
+      → (td : Γ & Δ & [] ⊢p P ◂ Pr ∶ G)
+      → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G'
 
     t/if :
       ∀ {P E Pr Pr' G}
       → (etd : Γ ⊢e E ∶ s/bool)
-      → (ttd : Γ & Δ ⊢p P ◂ Pr ∶ G)
-      → (ftd : Γ & Δ ⊢p P ◂ Pr' ∶ G)
-      → Γ & Δ ⊢p P ◂ ifp E then Pr else Pr' ∶ G
+      → (ttd : Γ & Δ & [] ⊢p P ◂ Pr ∶ G)
+      → (ftd : Γ & Δ & [] ⊢p P ◂ Pr' ∶ G)
+      → Γ & Δ & Ξ ⊢p P ◂ ifp E then Pr else Pr' ∶ G
 
     t/rec :
       ∀ {P Pr G}
       → (mg : MessageGuarded Pr)
-      → (td : Γ & G ∷ Δ ⊢p P ◂ Pr ∶ G)
-      → Γ & Δ ⊢p P ◂ rec Pr ∶ G
+      → (td : Γ & G ∷ Δ & [] ⊢p P ◂ Pr ∶ G)
+      → Γ & Δ & Ξ ⊢p P ◂ rec Pr ∶ G
 
     t/var :
       ∀ {P X G}
@@ -125,12 +133,12 @@ module MPST {N : ℕ} {B : BTheory N} (BP : BT-Prop B) where
       -- bisimilarity. Something more strict than arbitrary "~" (e.g. "common
       -- history" property and bisimilar?)
       → (eq : lu Δ X ~ G)
-      → Γ & Δ ⊢p P ◂ v X ∶ G
+      → Γ & Δ & Ξ ⊢p P ◂ v X ∶ G
 
     t/end :
       ∀ {P G}
       → (done : ¬ P ∈T G)
-      → Γ & Δ ⊢p P ◂ ∅ ∶ G
+      → Γ & Δ & Ξ ⊢p P ◂ ∅ ∶ G
 
   ⊢s_∶_ : Session → Behav → Set
-  ⊢s M ∶ G = ∀ P → [] & [] ⊢p P ◂ (M [ P ]s) ∶ G
+  ⊢s M ∶ G = ∀ P → [] & [] & [] ⊢p P ◂ (M [ P ]s) ∶ G
