@@ -103,9 +103,10 @@ module MPST {N : ℕ} {B : BTheory N} (BP : BT-Prop B) where
           → Γ & Δ & G ∷ Ξ ⊢p P ◂ Pr ∶ G″)
       → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
     
-    t/skip-cycle : 
+    t/skip-cycle :
       ∀ {P Pr X G}
       → lu Ξ X ≡ G
+      → P ∈T G
       → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
 
     t/unskip :
