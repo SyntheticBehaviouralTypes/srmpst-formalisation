@@ -38,7 +38,7 @@ open import Relation.Nullary using (False; ¬_; yes; no)
 open import Relation.Nullary.Decidable using (toWitness; fromWitness)
 
 open import Relation.Binary.PropositionalEquality
-  using (_≡_; refl; sym; subst; _≢_; cong)
+  using (_≡_; refl; sym; trans; subst; _≢_; cong)
 
 open import Utils.Fin using (refl-is-equal; reflect-lookup)
 open import Utils.Vec using (lookup-not-insertAt)
@@ -134,6 +134,45 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     suc X′ , eq′
 
 
+  lookup/weaken-visited :
+    ∀ {G H}
+      {Ξ : Vec Behav ξ}
+      {Ξ′ : Vec Behav ξ′}
+    → ∃[ X ] lu (Ξ′ ++ Ξ) X ~ G
+    → ∃[ X′ ] lu (Ξ′ ++ (H ∷ Ξ)) X′ ~ G
+
+  lookup/weaken-visited {Ξ′ = []} (X , eq) =
+    suc X , eq
+
+  lookup/weaken-visited {Ξ′ = _ ∷ Ξ′} (zero , eq) =
+    zero , eq
+
+  lookup/weaken-visited {Ξ′ = _ ∷ Ξ′} (suc X , eq)
+    with lookup/weaken-visited {Ξ′ = Ξ′} (X , eq)
+  ... | X′ , eq′ =
+    suc X′ , eq′
+
+
+  skip/weaken-visited :
+    ∀ {m G H PPr}
+      {Leaf : NProc γ δ → Behav → Set}
+      {Ξ : Vec Behav ξ}
+      {Ξ′ : Vec Behav ξ′}
+    → Leaf & Ξ′ ++ Ξ ⊢skip[ m ] PPr ∶ G
+    → Leaf & Ξ′ ++ (H ∷ Ξ) ⊢skip[ m ] PPr ∶ G
+
+  skip/weaken-visited (skip/main td) =
+    skip/main td
+
+  skip/weaken-visited {Ξ′ = Ξ′} (skip/step gr na ktd prod-gr) =
+    skip/step gr na
+      (λ gr′ → _ , skip/weaken-visited {Ξ′ = _ ∷ Ξ′} (ktd gr′ .proj₂))
+      prod-gr
+
+  skip/weaken-visited {H = H} {Ξ = Ξ} {Ξ′ = Ξ′} (skip/cycle eq) =
+    skip/cycle
+      (proj₂ (lookup/weaken-visited {H = H} {Ξ = Ξ} {Ξ′ = Ξ′} (_ , eq)))
+
   skip/bisim :
     ∀ {G G′ H P}
     → G′ ~ H
@@ -146,218 +185,211 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
         _ , G~H₀  , H₀↝H₁ = stepback/~ G₁~H₁ gr
     in _ , G~H₀ , skip/step H₀↝H₁ P∉α H₁↝H
 
+  transport-arg-ktd : 
+    ∀ {B C D : Set}
+      {I I′ : C}
+      {J : D}
+      {A : D → C → Set}
+    → (eq : I ≡ I′)
+    → (ktd : ∀ {I J} → A J I → B)
+    → (x : A J I)
+    → ktd (subst (A J) eq x) ≡ ktd x
+  transport-arg-ktd refl ktd x = refl
 
-  td/bisim :
-    ∀ {γ δ ξ G G′ P Pr}
-      {Γ : Vec Sort γ}
-      {Δ Δ′ : Vec Behav δ}
+
+  selected-step-mode :
+    ∀ {G G′ G″ α}
+    → (mode : ∀ {H β} → G -< β >-> H → Mode)
+    → (G~G′ : G ~ G′)
+    → (gr : G -< α >-> G″)
+    → mode gr ≡ mode (~R→ G~G′ (~L→ G~G′ gr))
+  selected-step-mode {G = G} {α = α} mode G~G′ gr =
+    trans
+      (cong mode (~R-L/id′ G~G′ gr))
+      (transport-arg-ktd
+        {B = Mode}
+        {C = Behav}
+        {D = Action}
+        {J = α}
+        {A = λ β H → G -< β >-> H}
+        (step-deterministic (~R→ G~G′ (~L→ G~G′ gr)) gr)
+        mode
+        (~R→ G~G′ (~L→ G~G′ gr)))
+
+
+  mutual
+
+    skip-td/bisim :
+      ∀ {γ δ ξ m G G′ P Pr}
+        {Γ : Vec Sort γ}
+        {Δ Δ′ : Vec Behav δ}
+        {Ξ Ξ′ : Vec Behav ξ}
+      → Δ ~ᵛ Δ′
+      → Ξ ~ᵛ Ξ′
+      → G ~ G′
+      → Γ & Δ  & Ξ  ⊢skip[ m ] P ◂ Pr ∶ G
+      → Γ & Δ′ & Ξ′ ⊢skip[ m ] P ◂ Pr ∶ G′
+
+    skip-td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (skip/main td) =
+      skip/main (td/bisim Δ~Δ′ G~G′ td)
+
+    skip-td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (skip/step gr na ktd prod-gr) =
+      skip/step
+        (~L→ G~G′ gr)
+        (na ∘ ~R→ G~G′)
+        (λ gr′ →
+          _ ,
+          skip-td/bisim
+            Δ~Δ′
+            (~ᵛ/∷ G~G′ Ξ~Ξ′)
+            (~R→~ G~G′ gr′)
+            (ktd (~R→ G~G′ gr′) .proj₂))
+        (subst (_≡ prod) (selected-step-mode (proj₁ ∘ ktd) G~G′ gr) prod-gr)
+
+    skip-td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (skip/cycle eq) =
+      skip/cycle (~trans (lookup/~ᵛ Ξ~Ξ′ _ eq) G~G′)
+
+    td/bisim :
+      ∀ {γ δ G G′ P Pr}
+        {Γ : Vec Sort γ}
+        {Δ Δ′ : Vec Behav δ}
+      → Δ ~ᵛ Δ′
+      → G ~ G′
+      → Γ & Δ  ⊢p P ◂ Pr ∶ G
+      → Γ & Δ′ ⊢p P ◂ Pr ∶ G′
+
+    td/bisim Δ~Δ′ G~G′ (t/send gr etd ptd) =
+      t/send
+        (~L→ G~G′ gr)
+        etd
+        (td/bisim Δ~Δ′ (~L→~ G~G′ gr) ptd)
+
+    td/bisim Δ~Δ′ G~G′ (t/recv gr conts) =
+      t/recv
+        (~L→ G~G′ gr)
+        (λ gr′ →
+          td/bisim
+            Δ~Δ′
+            (~R→~ G~G′ gr′)
+            (conts (~R→ G~G′ gr′)))
+
+    td/bisim Δ~Δ′ G~G′ (t/skip gr na ktd prod-gr) =
+      t/skip 
+        (~L→ G~G′ gr) 
+        (na ∘ ~R→ G~G′)
+        (λ gr′ → 
+          _ , skip-td/bisim 
+                Δ~Δ′ 
+                (~ᵛ/∷ G~G′ ~ᵛ/[]) 
+                (~R→~ G~G′ gr′) 
+                (ktd (~R→ G~G′ gr′) .proj₂)) 
+        (subst (_≡ prod) (selected-step-mode (proj₁ ∘ ktd) G~G′ gr) prod-gr)
+
+    td/bisim Δ~Δ′ G~G′ (t/unskip tr ptd) =
+      let _ , H~G′ , tr′ = skip/bisim G~G′ tr
+      in t/unskip tr′ (td/bisim Δ~Δ′ H~G′ ptd)
+
+    td/bisim Δ~Δ′ G~G′ (t/if etd ttd ftd) =
+      t/if
+        etd
+        (td/bisim Δ~Δ′ G~G′ ttd)
+        (td/bisim Δ~Δ′ G~G′ ftd)
+
+    td/bisim Δ~Δ′ G~G′ (t/rec guarded td) =
+      t/rec guarded (td/bisim (~ᵛ/∷ G~G′ Δ~Δ′) G~G′ td)
+
+    td/bisim Δ~Δ′ G~G′ (t/var eq) =
+      t/var (~trans (lookup/~ᵛ Δ~Δ′ _ eq) G~G′)
+
+    td/bisim Δ~Δ′ G~G′ (t/end done) =
+      t/end (done ∘ ∈~ (~sym G~G′))
+
+
+  skip-leaf/bisim :
+    ∀ {γ δ ξ m G G′ PPr}
+      {Leaf : NProc γ δ → Behav → Set}
       {Ξ Ξ′ : Vec Behav ξ}
-    → Δ ~ᵛ Δ′
+    → (∀ {PPr G G′} → G ~ G′ → Leaf PPr G → Leaf PPr G′)
     → Ξ ~ᵛ Ξ′
     → G ~ G′
-    → Γ & Δ  & Ξ  ⊢p P ◂ Pr ∶ G
-    → Γ & Δ′ & Ξ′ ⊢p P ◂ Pr ∶ G′
-  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/send gr etd td) =
-    t/send (~L→ G~G′ gr) etd
-      (td/bisim Δ~Δ′ ~ᵛ/[] (~L→~ G~G′ gr) td)
-  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/recv gr conts) =
-    t/recv (~L→ G~G′ gr) λ gr′ →
-      td/bisim Δ~Δ′ ~ᵛ/[] (~R→~ G~G′ gr′)
-        (conts (~R→ G~G′ gr′))
-  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/skip gr na ktd) =
-    t/skip (~L→ G~G′ gr) (na ∘ ~R→ G~G′) λ gr′ →
-      td/bisim Δ~Δ′ (~ᵛ/∷ G~G′ Ξ~Ξ′) (~R→~ G~G′ gr′)
-        (ktd (~R→ G~G′ gr′))
-  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/skip-cycle {X = X} eq P∈G) =
-    t/skip-cycle
-      (~trans (lookup/~ᵛ Ξ~Ξ′ X eq) G~G′)
-      (∈~ G~G′ P∈G)
-  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/unskip tr td)
-    with skip/bisim G~G′ tr
-  ... | _ , G₀~G₀′ , tr′ =
-    t/unskip tr′ (td/bisim Δ~Δ′ ~ᵛ/[] G₀~G₀′ td)
-  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/if etd td td₁) =
-    t/if etd
-      (td/bisim Δ~Δ′ ~ᵛ/[] G~G′ td)
-      (td/bisim Δ~Δ′ ~ᵛ/[] G~G′ td₁)
-  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/rec mg₁ td) =
-    t/rec mg₁ (td/bisim (~ᵛ/∷ G~G′ Δ~Δ′) ~ᵛ/[] G~G′ td)
-  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/var eq) =
-    t/var (~trans (lookup/~ᵛ Δ~Δ′ _ eq) G~G′)
-  td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (t/end d) =
-    t/end (d ∘ ∈~ (~sym G~G′))
+    → Leaf & Ξ ⊢skip[ m ] PPr ∶ G
+    → Leaf & Ξ′ ⊢skip[ m ] PPr ∶ G′
+
+  skip-leaf/bisim leaf/bisim _ G~G′ (skip/main td) =
+    skip/main (leaf/bisim G~G′ td)
+
+  skip-leaf/bisim leaf/bisim Ξ~Ξ′ G~G′ (skip/step gr na ktd prod-gr) =
+    skip/step
+      (~L→ G~G′ gr)
+      (na ∘ ~R→ G~G′)
+      (λ gr′ →
+        _ ,
+        skip-leaf/bisim
+          leaf/bisim
+          (~ᵛ/∷ G~G′ Ξ~Ξ′)
+          (~R→~ G~G′ gr′)
+          (ktd (~R→ G~G′ gr′) .proj₂))
+      (subst (_≡ prod) (selected-step-mode (proj₁ ∘ ktd) G~G′ gr) prod-gr)
+
+  skip-leaf/bisim _ Ξ~Ξ′ G~G′ (skip/cycle eq) =
+    skip/cycle (~trans (lookup/~ᵛ Ξ~Ξ′ _ eq) G~G′)
+
+
+  skip/unfold-cycle :
+    ∀ {γ δ ξ ξ′ m m′ G H PPr}
+      {Leaf : NProc γ δ → Behav → Set}
+      {Ξ : Vec Behav ξ}
+      {Ξ′ : Vec Behav ξ′}
+    → (∀ {PPr G G′} → G ~ G′ → Leaf PPr G → Leaf PPr G′)
+    → Leaf & Ξ′ ++ Ξ ⊢skip[ m ] PPr ∶ G
+    → Leaf & Ξ′ ++ (G ∷ Ξ) ⊢skip[ m′ ] PPr ∶ H
+    → ∃[ n ] (Leaf & Ξ′ ++ Ξ ⊢skip[ n ] PPr ∶ H)
+      × (m′ ≡ prod → n ≡ prod)
+
+  skip/unfold-cycle leaf/bisim base (skip/main td) =
+    prod , skip/main td , λ _ → refl
+
+  skip/unfold-cycle {Ξ = Ξ} {Ξ′ = Ξ′} leaf/bisim base (skip/step {G = H} gr na ktd prod-gr) =
+    let base′ = skip/weaken-visited {H = H} {Ξ = Ξ′ ++ Ξ} {Ξ′ = []} base
+        unfold =
+          λ {β H′} (gr′ : H -< β >-> H′) →
+            skip/unfold-cycle {Ξ′ = H ∷ Ξ′} leaf/bisim base′ (ktd gr′ .proj₂)
+    in
+    prod ,
+    skip/step gr na
+      (λ gr′ → unfold gr′ .proj₁ , unfold gr′ .proj₂ .proj₁)
+      (unfold gr .proj₂ .proj₂ prod-gr) ,
+    λ _ → refl
+
+  skip/unfold-cycle {Ξ = Ξ} {Ξ′ = Ξ′} leaf/bisim base (skip/cycle {X = X} eq)
+    with lookup/insert {Ξ = Ξ} {Ξ′ = Ξ′} (X , eq)
+  ... | inj₁ G~H =
+    _ ,
+    skip-leaf/bisim leaf/bisim ~ᵛ-refl G~H base ,
+    λ ()
+  ... | inj₂ (_ , eq′) =
+    nonprod ,
+    skip/cycle eq′ ,
+    λ ()
 
 
   t/bisim :
-    ∀ {δ γ ξ G G′ P Pr}
+    ∀ {δ γ G G′ P Pr}
       {Γ : Vec Sort γ}
       {Δ : Vec Behav δ}
-      {Ξ : Vec Behav ξ}
     → G ~ G′
-    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
-    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G′
-  t/bisim = td/bisim ~ᵛ-refl ~ᵛ-refl
-
+    → Γ & Δ ⊢p P ◂ Pr ∶ G
+    → Γ & Δ ⊢p P ◂ Pr ∶ G′
+  t/bisim = td/bisim ~ᵛ-refl
 
   transport-behav :
     ∀ {P Pr G G′}
       {Γ : Vec Sort γ}
       {Δ : Vec Behav δ}
-      {Ξ : Vec Behav ξ}
     → G ≡ G′
-    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
-    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G′
-  transport-behav = subst (λ G → _ & _ & _ ⊢p _ ◂ _ ∶ G)
-
-
-  swap/visited :
-    ∀ {P Pr G H H′}
-      {Γ : Vec Sort γ}
-      {Δ : Vec Behav δ}
-      {Ξ : Vec Behav ξ}
-      {Ξ′ : Vec Behav ξ′}
-    → Γ & Δ & (Ξ′ ++ (H′ ∷ H ∷ Ξ)) ⊢p P ◂ Pr ∶ G
-    → Γ & Δ & (Ξ′ ++ (H ∷ H′ ∷ Ξ)) ⊢p P ◂ Pr ∶ G
-
-  swap/visited (t/send gr etd td) =
-    t/send gr etd td
-  swap/visited (t/recv gr conts) =
-    t/recv gr conts
-  swap/visited {Ξ′ = Ξ′} (t/skip gr na ktd) =
-    t/skip gr na λ gr′ →
-      swap/visited {Ξ′ = _ ∷ Ξ′} (ktd gr′)
-  swap/visited {G = G} {H = H} {H′ = H′} {Ξ = Ξ} {Ξ′ = Ξ′}
-    (t/skip-cycle {X = X} eq P∈G)
-    with lookup/swap {G = G} {H = H} {H′ = H′} {Ξ = Ξ} {Ξ′ = Ξ′}
-           (X , eq)
-  ... | X′ , eq′ =
-    t/skip-cycle {X = X′} eq′ P∈G
-  swap/visited (t/unskip tr td) =
-    t/unskip tr td
-  swap/visited (t/if etd ttd ftd) =
-    t/if etd ttd ftd
-  swap/visited (t/rec guarded td) =
-    t/rec guarded td
-  swap/visited (t/var eq) =
-    t/var eq
-  swap/visited (t/end done) =
-    t/end done
-
-
-  float/visited :
-    ∀ {P Pr G H}
-      {Γ : Vec Sort γ}
-      {Δ : Vec Behav δ}
-      {Ξ : Vec Behav ξ}
-      {Ξ′ : Vec Behav ξ′}
-    → Γ & Δ & (Ξ′ ++ (H ∷ Ξ)) ⊢p P ◂ Pr ∶ G
-    → Γ & Δ & (H ∷ (Ξ′ ++ Ξ)) ⊢p P ◂ Pr ∶ G
-
-  float/visited (t/send gr etd td) =
-    t/send gr etd td
-  float/visited (t/recv gr conts) =
-    t/recv gr conts
-  float/visited {Ξ′ = Ξ′} (t/skip gr na ktd) =
-    t/skip gr na λ gr′ →
-      swap/visited {Ξ′ = []}
-        (float/visited {Ξ′ = _ ∷ Ξ′} (ktd gr′))
-  float/visited {G = G} {H = H} {Ξ = Ξ} {Ξ′ = Ξ′}
-    (t/skip-cycle {X = X} eq P∈G)
-    with lookup/float {G = G} {H = H} {Ξ = Ξ} {Ξ′ = Ξ′}
-           (X , eq)
-  ... | X′ , eq′ =
-    t/skip-cycle {X = X′} eq′ P∈G
-  float/visited (t/unskip tr td) =
-    t/unskip tr td
-  float/visited (t/if etd ttd ftd) =
-    t/if etd ttd ftd
-  float/visited (t/rec guarded td) =
-    t/rec guarded td
-  float/visited (t/var eq) =
-    t/var eq
-  float/visited (t/end done) =
-    t/end done
-
-
-  strengthen/visited :
-    ∀ {P Pr G}
-      {Γ : Vec Sort γ}
-      {Δ : Vec Behav δ}
-      {Ξ : Vec Behav ξ}
-    → (Ξ′ : Vec Behav ξ′)
-    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
-    → Γ & Δ & (Ξ′ ++ Ξ) ⊢p P ◂ Pr ∶ G
-
-  strengthen/visited Ξ′ (t/send gr etd td) =
-    t/send gr etd td
-  strengthen/visited Ξ′ (t/recv gr conts) =
-    t/recv gr conts
-  strengthen/visited Ξ′ (t/skip gr na ktd) =
-    t/skip gr na λ gr′ →
-      float/visited (strengthen/visited Ξ′ (ktd gr′))
-  strengthen/visited Ξ′ (t/skip-cycle {X = X} eq P∈G)
-    with lookup/prepend Ξ′ (X , eq)
-  ... | X′ , eq′ =
-    t/skip-cycle {X = X′} eq′ P∈G
-  strengthen/visited Ξ′ (t/unskip tr td) =
-    t/unskip tr td
-  strengthen/visited Ξ′ (t/if etd ttd ftd) =
-    t/if etd ttd ftd
-  strengthen/visited Ξ′ (t/rec guarded td) =
-    t/rec guarded td
-  strengthen/visited Ξ′ (t/var eq) =
-    t/var eq
-  strengthen/visited Ξ′ (t/end done) =
-    t/end done
-
-
-  unfold/tskip :
-    ∀ {P Pr G H}
-      {Γ : Vec Sort γ}
-      {Δ : Vec Behav δ}
-      {Ξ : Vec Behav ξ}
-    → (Ξ′ : Vec Behav ξ′)
-    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ H
-    → Γ & Δ & (Ξ′ ++ (H ∷ Ξ)) ⊢p P ◂ Pr ∶ G
-    → Γ & Δ & (Ξ′ ++ Ξ) ⊢p P ◂ Pr ∶ G
-
-  unfold/tskip Ξ′ otd (t/send gr etd td) =
-    t/send gr etd td
-  unfold/tskip Ξ′ otd (t/recv gr conts) =
-    t/recv gr conts
-  unfold/tskip Ξ′ otd (t/skip gr na ktd) =
-    t/skip gr na λ gr′ →
-      unfold/tskip (_ ∷ Ξ′) otd (ktd gr′)
-  unfold/tskip Ξ′ otd (t/skip-cycle {X = X} eq P∈G)
-    with lookup/insert {Ξ′ = Ξ′} (X , eq)
-  ... | inj₁ eq′ =
-    t/bisim eq′ (strengthen/visited Ξ′ otd)
-  ... | inj₂ (X′ , eq′) =
-    t/skip-cycle {X = X′} eq′ P∈G
-  unfold/tskip Ξ′ otd (t/unskip tr td) =
-    t/unskip tr td
-  unfold/tskip Ξ′ otd (t/if etd ttd ftd) =
-    t/if etd ttd ftd
-  unfold/tskip Ξ′ otd (t/rec guarded td) =
-    t/rec guarded td
-  unfold/tskip Ξ′ otd (t/var eq) =
-    t/var eq
-  unfold/tskip Ξ′ otd (t/end done) =
-    t/end done
-
-
-  cast-visited :
-    ∀ {P Pr G}
-      {Γ : Vec Sort γ}
-      {Δ : Vec Behav δ}
-      {Ξ : Vec Behav ξ}
-    → (eq : ξ ≡ ξ′)
-    → Γ & Δ & cast eq Ξ ⊢p P ◂ Pr ∶ G
-    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
-
-  cast-visited {Ξ = Ξ} refl td
-    rewrite cast-is-id refl Ξ =
-    td
+    → Γ & Δ ⊢p P ◂ Pr ∶ G
+    → Γ & Δ ⊢p P ◂ Pr ∶ G′
+  transport-behav = subst (λ G → _ & _ ⊢p _ ◂ _ ∶ G)
 
   expr-weaken-lemma :
     ∀ {γ E S S' x}
@@ -465,63 +497,87 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
       (subst-message-guarded mmgl)
       (subst-message-guarded mmgr)
 
+
   transport-proc :
-    ∀ {δ γ ξ p p′ P G}
+    ∀ {δ γ p p′ P G}
       {Δ : Vec Behav δ}
       {Γ : Vec Sort γ}
-      {Ξ : Vec Behav ξ}
     → p ≡ p′
-    → Γ & Δ & Ξ ⊢p P ◂ p  ∶ G
-    → Γ & Δ & Ξ ⊢p P ◂ p′ ∶ G
-  transport-proc = subst (λ x → _ & _ & _ ⊢p _ ◂ x ∶ _)
+    → Γ & Δ ⊢p P ◂ p  ∶ G
+    → Γ & Δ ⊢p P ◂ p′ ∶ G
+  transport-proc = subst (λ x → _ & _ ⊢p _ ◂ x ∶ _)
 
 
-  proc-subst-lemma-expr :
-    ∀ {γ δ ξ G P E Pr}
-      {Γ : Vec Sort (suc γ)}
-      {Δ : Vec Behav δ}
-      {Ξ : Vec Behav ξ}
-      {X : Fin (suc γ)}
-    → (Γ - X)     ⊢e E                 ∶ lu Γ X
-    → Γ       & Δ & Ξ ⊢p P ◂ Pr            ∶ G
-    → (Γ - X) & Δ & Ξ ⊢p P ◂ [ E / X ]e Pr ∶ G
+  mutual
 
-  proc-subst-lemma-expr etd (t/send gr etd′ ptd) =
-    t/send gr
-      (exp-subst etd′ etd)
-      (proc-subst-lemma-expr etd ptd)
+    skip-subst-lemma-expr :
+      ∀ {m γ δ ξ G P E Pr}
+        {Γ : Vec Sort (suc γ)}
+        {Δ : Vec Behav δ}
+        {Ξ : Vec Behav ξ}
+        {X : Fin (suc γ)}
+      → (Γ - X)     ⊢e E                 ∶ lu Γ X
+      → Γ       & Δ & Ξ ⊢skip[ m ] P ◂ Pr            ∶ G
+      → (Γ - X) & Δ & Ξ ⊢skip[ m ] P ◂ [ E / X ]e Pr ∶ G
 
-  proc-subst-lemma-expr {Γ = _ ∷ _} etd (t/recv {Br = Br} gr conts) =
-    t/recv gr
-      (transport-proc (subst/lu Br _)
-      ∘ proc-subst-lemma-expr (exp-str etd)
-      ∘ conts)
+    skip-subst-lemma-expr etd (skip/main td) =
+      skip/main (proc-subst-lemma-expr etd td)
 
-  proc-subst-lemma-expr etd (t/skip gr na ktd) =
-    t/skip gr na (proc-subst-lemma-expr etd ∘ ktd)
+    skip-subst-lemma-expr etd (skip/step gr na ktd prod-gr) =
+      skip/step gr na
+        (λ gr′ →
+          proj₁ (ktd gr′) , skip-subst-lemma-expr etd (proj₂ (ktd gr′)))
+        prod-gr
 
-  proc-subst-lemma-expr etd (t/skip-cycle eq P∈G) =
-    t/skip-cycle eq P∈G
+    skip-subst-lemma-expr etd (skip/cycle eq) =
+      skip/cycle eq
 
-  proc-subst-lemma-expr etd (t/unskip tr ptd) =
-    t/unskip tr (proc-subst-lemma-expr etd ptd)
 
-  proc-subst-lemma-expr etd (t/if etd₁ ptd ptd₁) =
-    t/if
-      (exp-subst etd₁ etd)
-      (proc-subst-lemma-expr etd ptd)
-      (proc-subst-lemma-expr etd ptd₁)
+    proc-subst-lemma-expr :
+      ∀ {γ δ G P E Pr}
+        {Γ : Vec Sort (suc γ)}
+        {Δ : Vec Behav δ}
+        {X : Fin (suc γ)}
+      → (Γ - X)     ⊢e E                 ∶ lu Γ X
+      → Γ       & Δ ⊢p P ◂ Pr            ∶ G
+      → (Γ - X) & Δ ⊢p P ◂ [ E / X ]e Pr ∶ G
 
-  proc-subst-lemma-expr etd (t/rec mmg ptd) =
-    t/rec
-      (subst-message-guarded mmg)
-      (proc-subst-lemma-expr etd ptd)
+    proc-subst-lemma-expr etd (t/send gr etd′ ptd) =
+      t/send gr
+        (exp-subst etd′ etd)
+        (proc-subst-lemma-expr etd ptd)
 
-  proc-subst-lemma-expr etd (t/var eq) =
-    t/var eq
+    proc-subst-lemma-expr {Γ = _ ∷ _} etd (t/recv {Br = Br} gr conts) =
+      t/recv gr
+        (transport-proc (subst/lu Br _)
+        ∘ proc-subst-lemma-expr (exp-str etd)
+        ∘ conts)
 
-  proc-subst-lemma-expr etd (t/end done₁) =
-    t/end done₁
+    proc-subst-lemma-expr etd (t/skip gr na ktd prod-gr) =
+      t/skip gr na
+        (λ gr′ →
+          proj₁ (ktd gr′) , skip-subst-lemma-expr etd (proj₂ (ktd gr′)))
+        prod-gr
+
+    proc-subst-lemma-expr etd (t/unskip tr ptd) =
+      t/unskip tr (proc-subst-lemma-expr etd ptd)
+
+    proc-subst-lemma-expr etd (t/if etd₁ ptd ptd₁) =
+      t/if
+        (exp-subst etd₁ etd)
+        (proc-subst-lemma-expr etd ptd)
+        (proc-subst-lemma-expr etd ptd₁)
+
+    proc-subst-lemma-expr etd (t/rec mmg ptd) =
+      t/rec
+        (subst-message-guarded mmg)
+        (proc-subst-lemma-expr etd ptd)
+
+    proc-subst-lemma-expr etd (t/var eq) =
+      t/var eq
+
+    proc-subst-lemma-expr etd (t/end done₁) =
+      t/end done₁
 
 
   expr-lookup-after-branch-weakening :
@@ -536,53 +592,74 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   expr-lookup-after-branch-weakening {i = suc i} (_ ∷ Br) =
     expr-lookup-after-branch-weakening {i = i} Br
 
-  proc-weaken-lemma-expr :
-    ∀ {γ δ ξ P Pr G S x}
-      {Γ : Vec Sort γ}
-      {Δ : Vec Behav δ}
-      {Ξ : Vec Behav ξ}
-    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
-    → insertAt Γ x S & Δ & Ξ ⊢p P ◂ weaken/proc/exp Pr x ∶ G
+  mutual
 
-  proc-weaken-lemma-expr (t/send gr etd ptd) =
-    t/send gr
-      (expr-weaken-lemma etd)
-      (proc-weaken-lemma-expr ptd)
+    skip-weaken-lemma-expr :
+      ∀ {m γ δ ξ P Pr G S x}
+        {Γ : Vec Sort γ}
+        {Δ : Vec Behav δ}
+        {Ξ : Vec Behav ξ}
+      → Γ & Δ & Ξ ⊢skip[ m ] P ◂ Pr ∶ G
+      → insertAt Γ x S & Δ & Ξ ⊢skip[ m ] P ◂ weaken/proc/exp Pr x ∶ G
 
-  proc-weaken-lemma-expr (t/recv {Br = Br} gr conts) =
-    t/recv gr
-      ( transport-proc (expr-lookup-after-branch-weakening Br)
-      ∘ proc-weaken-lemma-expr
-      ∘ conts
-      )
+    skip-weaken-lemma-expr (skip/main td) =
+      skip/main (proc-weaken-lemma-expr td)
 
-  proc-weaken-lemma-expr (t/skip gr na ktd) =
-    t/skip gr na
-      (proc-weaken-lemma-expr ∘ ktd)
+    skip-weaken-lemma-expr (skip/step gr na ktd prod-gr) =
+      skip/step gr na
+        (λ gr′ →
+          proj₁ (ktd gr′) , skip-weaken-lemma-expr (proj₂ (ktd gr′)))
+        prod-gr
 
-  proc-weaken-lemma-expr (t/skip-cycle eq P∈G) =
-    t/skip-cycle eq P∈G
+    skip-weaken-lemma-expr (skip/cycle eq) =
+      skip/cycle eq
 
-  proc-weaken-lemma-expr (t/unskip tr ptd) =
-    t/unskip tr
-      (proc-weaken-lemma-expr ptd)
 
-  proc-weaken-lemma-expr (t/if etd ptd₁ ptd₂) =
-    t/if
-      (expr-weaken-lemma etd)
-      (proc-weaken-lemma-expr ptd₁)
-      (proc-weaken-lemma-expr ptd₂)
+    proc-weaken-lemma-expr :
+      ∀ {γ δ P Pr G S x}
+        {Γ : Vec Sort γ}
+        {Δ : Vec Behav δ}
+      → Γ & Δ ⊢p P ◂ Pr ∶ G
+      → insertAt Γ x S & Δ ⊢p P ◂ weaken/proc/exp Pr x ∶ G
 
-  proc-weaken-lemma-expr (t/rec mg₁ ptd) =
-    t/rec
-      (message-guarded-weaken-expr mg₁)
-      (proc-weaken-lemma-expr ptd)
+    proc-weaken-lemma-expr (t/send gr etd ptd) =
+      t/send gr
+        (expr-weaken-lemma etd)
+        (proc-weaken-lemma-expr ptd)
 
-  proc-weaken-lemma-expr (t/var eq) =
-    t/var eq
+    proc-weaken-lemma-expr (t/recv {Br = Br} gr conts) =
+      t/recv gr
+        ( transport-proc (expr-lookup-after-branch-weakening Br)
+        ∘ proc-weaken-lemma-expr
+        ∘ conts
+        )
 
-  proc-weaken-lemma-expr (t/end done) =
-    t/end done
+    proc-weaken-lemma-expr (t/skip gr na ktd prod-gr) =
+      t/skip gr na
+        (λ gr′ →
+          proj₁ (ktd gr′) , skip-weaken-lemma-expr (proj₂ (ktd gr′)))
+        prod-gr
+
+    proc-weaken-lemma-expr (t/unskip tr ptd) =
+      t/unskip tr
+        (proc-weaken-lemma-expr ptd)
+
+    proc-weaken-lemma-expr (t/if etd ptd₁ ptd₂) =
+      t/if
+        (expr-weaken-lemma etd)
+        (proc-weaken-lemma-expr ptd₁)
+        (proc-weaken-lemma-expr ptd₂)
+
+    proc-weaken-lemma-expr (t/rec mg₁ ptd) =
+      t/rec
+        (message-guarded-weaken-expr mg₁)
+        (proc-weaken-lemma-expr ptd)
+
+    proc-weaken-lemma-expr (t/var eq) =
+      t/var eq
+
+    proc-weaken-lemma-expr (t/end done) =
+      t/end done
 
   proc-lookup-after-branch-weakening :
     ∀ {γ δ I}
@@ -616,57 +693,77 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
       (message-guarded-weaken mmg)
       (message-guarded-weaken mmg₁)
 
+  mutual
 
-  proc-weaken-lemma :
-    ∀ {γ δ ξ G G' P Pr X}
-      {Γ : Vec Sort γ}
-      {Δ : Vec Behav δ}
-      {Ξ : Vec Behav ξ}
-    → Γ & Δ & Ξ ⊢p P ◂ Pr ∶ G
-    → Γ & insertAt Δ X G' & Ξ ⊢p P ◂ weaken/proc Pr X ∶ G
+    skip-weaken-lemma :
+      ∀ {m γ δ ξ G G' P Pr X}
+        {Γ : Vec Sort γ}
+        {Δ : Vec Behav δ}
+        {Ξ : Vec Behav ξ}
+      → Γ & Δ & Ξ ⊢skip[ m ] P ◂ Pr ∶ G
+      → Γ & insertAt Δ X G' & Ξ ⊢skip[ m ] P ◂ weaken/proc Pr X ∶ G
 
-  proc-weaken-lemma (t/send gr etd ptd) =
-    t/send gr etd
-      (proc-weaken-lemma ptd)
+    skip-weaken-lemma (skip/main td) =
+      skip/main (proc-weaken-lemma td)
 
-  proc-weaken-lemma (t/recv {Br = Br} gr conts) =
-    t/recv gr
-      ( transport-proc (proc-lookup-after-branch-weakening Br _ _)
-      ∘ proc-weaken-lemma
-      ∘ conts
-      )
+    skip-weaken-lemma (skip/step gr na ktd prod-gr) =
+      skip/step gr na
+        (λ gr′ →
+          proj₁ (ktd gr′) , skip-weaken-lemma (proj₂ (ktd gr′)))
+        prod-gr
 
-  proc-weaken-lemma (t/skip gr na ktd) =
-    t/skip gr na
-      (proc-weaken-lemma ∘ ktd)
+    skip-weaken-lemma (skip/cycle eq) =
+      skip/cycle eq
 
-  proc-weaken-lemma (t/skip-cycle eq P∈G) =
-    t/skip-cycle eq P∈G
 
-  proc-weaken-lemma (t/unskip tr ptd) =
-    t/unskip tr
-      (proc-weaken-lemma ptd)
+    proc-weaken-lemma :
+      ∀ {γ δ G G' P Pr X}
+        {Γ : Vec Sort γ}
+        {Δ : Vec Behav δ}
+      → Γ & Δ ⊢p P ◂ Pr ∶ G
+      → Γ & insertAt Δ X G' ⊢p P ◂ weaken/proc Pr X ∶ G
 
-  proc-weaken-lemma (t/if etd ptd ptd₁) =
-    t/if etd
-      (proc-weaken-lemma ptd)
-      (proc-weaken-lemma ptd₁)
+    proc-weaken-lemma (t/send gr etd ptd) =
+      t/send gr etd
+        (proc-weaken-lemma ptd)
 
-  proc-weaken-lemma (t/rec mg₁ ptd) =
-    t/rec
-      (message-guarded-weaken mg₁)
-      (proc-weaken-lemma ptd)
+    proc-weaken-lemma (t/recv {Br = Br} gr conts) =
+      t/recv gr
+        ( transport-proc (proc-lookup-after-branch-weakening Br _ _)
+        ∘ proc-weaken-lemma
+        ∘ conts
+        )
 
-  proc-weaken-lemma
-    {G' = G'}
-    {X = X}
-    {Δ = Δ}
-    (t/var {X = Y} eq)
-    rewrite sym (insertAt-punchIn Δ X G' Y) =
-    t/var eq
+    proc-weaken-lemma (t/skip gr na ktd prod-gr) =
+      t/skip gr na
+        (λ gr′ →
+          proj₁ (ktd gr′) , skip-weaken-lemma (proj₂ (ktd gr′)))
+        prod-gr
 
-  proc-weaken-lemma (t/end done₁) =
-    t/end done₁
+    proc-weaken-lemma (t/unskip tr ptd) =
+      t/unskip tr
+        (proc-weaken-lemma ptd)
+
+    proc-weaken-lemma (t/if etd ptd ptd₁) =
+      t/if etd
+        (proc-weaken-lemma ptd)
+        (proc-weaken-lemma ptd₁)
+
+    proc-weaken-lemma (t/rec mg₁ ptd) =
+      t/rec
+        (message-guarded-weaken mg₁)
+        (proc-weaken-lemma ptd)
+
+    proc-weaken-lemma
+      {G' = G'}
+      {X = X}
+      {Δ = Δ}
+      (t/var {X = Y} eq)
+      rewrite sym (insertAt-punchIn Δ X G' Y) =
+      t/var eq
+
+    proc-weaken-lemma (t/end done₁) =
+      t/end done₁
 
   proc-lookup-after-branch-subst :
     ∀ {γ δ I Pr X i}
@@ -699,7 +796,6 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
       (message-guarded-after-proc-subst mg₁)
       (message-guarded-after-proc-subst mg₂)
 
-
   lookup-after-insertAt-punchOut :
     ∀ {A : Set} {γ}
     → (Γ : Vec A γ)
@@ -716,71 +812,90 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     rewrite removeAt-insertAt Γ x S =
     eq
 
-  proc-subst-lemma :
-    ∀ {γ δ ξ G G' P Pr Pr'}
-      {Γ : Vec Sort γ}
-      {Δ : Vec Behav δ}
-      {Ξ : Vec Behav ξ}
-      {X : Fin (suc δ)}
-    → Γ & Δ & [] ⊢p P ◂ Pr' ∶ G'
-    → Γ & insertAt Δ X G' & Ξ ⊢p P ◂ Pr ∶ G
-    → Γ & Δ & Ξ ⊢p P ◂ [ Pr' / X ]pr Pr ∶ G
+  mutual
 
-  proc-subst-lemma ptd′ (t/send gr etd ptd) =
-    t/send gr etd
-      (proc-subst-lemma ptd′ ptd)
+    skip-subst-lemma :
+      ∀ {m γ δ ξ G G' P Pr Pr'}
+        {Γ : Vec Sort γ}
+        {Δ : Vec Behav δ}
+        {Ξ : Vec Behav ξ}
+        {X : Fin (suc δ)}
+      → Γ & Δ ⊢p P ◂ Pr' ∶ G'
+      → Γ & insertAt Δ X G' & Ξ ⊢skip[ m ] P ◂ Pr ∶ G
+      → Γ & Δ & Ξ ⊢skip[ m ] P ◂ [ Pr' / X ]pr Pr ∶ G
 
-  proc-subst-lemma ptd′ (t/recv {Br = Br} gr conts) =
-    t/recv gr
-      ( transport-proc (proc-lookup-after-branch-subst Br)
-      ∘ proc-subst-lemma (proc-weaken-lemma-expr ptd′)
-      ∘ conts
-      )
+    skip-subst-lemma ptd′ (skip/main td) =
+      skip/main (proc-subst-lemma ptd′ td)
 
-  proc-subst-lemma ptd′ (t/skip gr na ktd) =
-    t/skip gr na (proc-subst-lemma ptd′ ∘ ktd)
+    skip-subst-lemma ptd′ (skip/step gr na ktd prod-gr) =
+      skip/step gr na
+        (λ gr′ →
+          proj₁ (ktd gr′) , skip-subst-lemma ptd′ (proj₂ (ktd gr′)))
+        prod-gr
 
-  proc-subst-lemma ptd′ (t/skip-cycle eq P∈G) =
-    t/skip-cycle eq P∈G
+    skip-subst-lemma ptd′ (skip/cycle eq) =
+      skip/cycle eq
 
-  proc-subst-lemma ptd′ (t/unskip tr ptd) =
-    t/unskip tr (proc-subst-lemma ptd′ ptd)
 
-  proc-subst-lemma ptd′ (t/if etd ptd ptd₁) =
-    t/if etd
-      (proc-subst-lemma ptd′ ptd)
-      (proc-subst-lemma ptd′ ptd₁)
+    proc-subst-lemma :
+      ∀ {γ δ G G' P Pr Pr'}
+        {Γ : Vec Sort γ}
+        {Δ : Vec Behav δ}
+        {X : Fin (suc δ)}
+      → Γ & Δ ⊢p P ◂ Pr' ∶ G'
+      → Γ & insertAt Δ X G' ⊢p P ◂ Pr ∶ G
+      → Γ & Δ ⊢p P ◂ [ Pr' / X ]pr Pr ∶ G
 
-  proc-subst-lemma ptd′ (t/rec mg₁ ptd) =
-    t/rec
-      (message-guarded-after-proc-subst mg₁)
-      (proc-subst-lemma
-        (proc-weaken-lemma ptd′)
-        ptd)
+    proc-subst-lemma ptd′ (t/send gr etd ptd) =
+      t/send gr etd
+        (proc-subst-lemma ptd′ ptd)
 
-  proc-subst-lemma
-    {ξ = ξ}
-    {G' = G'}
-    {Δ = Δ}
-    {Ξ = Ξ}
-    {X = X}
-    ptd′
-    (t/var {X = X′} eq)
-    with X ≟f X′
-  ... | no ¬eq
-    rewrite lookup-after-insertAt-punchOut
-              Δ
-              {x = X}
-              {S = G'}
-              {y = X′}
-              ¬eq =
-    t/var eq
-  ... | yes refl
-    rewrite insertAt-lookup Δ X G' =
-    let res = strengthen/visited Ξ (t/bisim eq ptd′)
-        idr = sym (cast-sym (+-identityʳ ξ) (++-identityʳ-eqFree Ξ))
-        res′ = subst (λ Ξ′ → _ & _ & Ξ′ ⊢p _ ◂ _ ∶ _) idr res
-    in cast-visited (sym (+-identityʳ _)) res′
+    proc-subst-lemma ptd′ (t/recv {Br = Br} gr conts) =
+      t/recv gr
+        ( transport-proc (proc-lookup-after-branch-subst Br)
+        ∘ proc-subst-lemma (proc-weaken-lemma-expr ptd′)
+        ∘ conts
+        )
 
-  proc-subst-lemma ptd′ (t/end done₁) =
-    t/end done₁
+    proc-subst-lemma ptd′ (t/skip gr na ktd prod-gr) =
+      t/skip gr na
+        (λ gr′ →
+          proj₁ (ktd gr′) , skip-subst-lemma ptd′ (proj₂ (ktd gr′)))
+        prod-gr
+
+    proc-subst-lemma ptd′ (t/unskip tr ptd) =
+      t/unskip tr (proc-subst-lemma ptd′ ptd)
+
+    proc-subst-lemma ptd′ (t/if etd ptd ptd₁) =
+      t/if etd
+        (proc-subst-lemma ptd′ ptd)
+        (proc-subst-lemma ptd′ ptd₁)
+
+    proc-subst-lemma ptd′ (t/rec mg₁ ptd) =
+      t/rec
+        (message-guarded-after-proc-subst mg₁)
+        (proc-subst-lemma
+          (proc-weaken-lemma ptd′)
+          ptd)
+
+    proc-subst-lemma
+      {G' = G'}
+      {Δ = Δ}
+      {X = X}
+      ptd′
+      (t/var {X = X′} eq)
+      with X ≟f X′
+    ... | no ¬eq
+      rewrite lookup-after-insertAt-punchOut
+                Δ
+                {x = X}
+                {S = G'}
+                {y = X′}
+                ¬eq =
+      t/var eq
+    ... | yes refl
+      rewrite insertAt-lookup Δ X G' =
+      t/bisim eq ptd′
+
+    proc-subst-lemma ptd′ (t/end done₁) =
+      t/end done₁

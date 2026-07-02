@@ -1,6 +1,6 @@
 {-# OPTIONS --guardedness #-}
 
-open import Data.Nat using (ℕ; suc)
+open import Data.Nat using (ℕ; zero; suc)
 open import Data.Fin using (Fin; zero; suc)
 
 open import Data.Vec using (Vec; []; _∷_; lookup)
@@ -63,6 +63,15 @@ module Definitions.Behav where
       tr′
     skip/cat (skip/step gr P∉α tr) tr′ =
       skip/step gr P∉α (skip/cat tr tr′)
+
+    trace-length :
+      ∀ {G G′ P}
+      → G -[¬ P ]->* G′
+      → ℕ
+    trace-length skip/refl =
+      zero
+    trace-length (skip/step _ _ tr) =
+      suc (trace-length tr)
 
     data _∈T_ P : Behav → Set where
       in/α :
@@ -274,6 +283,16 @@ module Definitions.Behav where
         → G -< α # j < T > >-> G″
         → I ≡ J
 
+      -- There should be at most one proof term per transition in your LTS
+      -- This is not fundamental, just an artifact of having G -< α >-> G' as
+      -- argument of lemmas. The best would be to make such proof terms 
+      -- irrelevant, but I'm concerned that agda will not allow me to pattern
+      -- match on it
+      step-is-prop :
+        ∀ {G β G′}
+        → (gr₁ gr₂ : G -< β >-> G′)
+        → gr₁ ≡ gr₂
+
       no-new-branch/step :
         ∀ {G G′ Gᵢ Gⱼ′ β γ cᵢ cⱼ}
         → G -< β >-> G′
@@ -364,6 +383,23 @@ module Definitions.Behav where
     skip/advance-trace tr grα P∈α =
       proj₂ (proj₂ (skip/advance tr grα P∈α))
 
+    skip/advance-trace-length :
+      ∀ {G G′ Gα P α}
+      → (tr  : G -[¬ P ]->* G′)
+      → (grα : G -< α >-> Gα)
+      → (P∈α : P ∈α α)
+      → trace-length (skip/advance-trace tr grα P∈α) ≡ trace-length tr
+    skip/advance-trace-length skip/refl _ _ =
+      refl
+    skip/advance-trace-length (skip/step grβ P∉β tr) grα P∈α
+      with step-diamond grα grβ (active-inactive/⋄ grα grβ P∈α P∉β)
+    ... | _ , _ , Gβ↝G◇
+      with skip/advance tr Gβ↝G◇ P∈α
+         | skip/advance-trace-length tr Gβ↝G◇ P∈α
+    ... | _ , _ , _ | eq
+      rewrite eq =
+      refl
+
     no-new-branch/skip :
       ∀ {G G′ Gᵢ Gⱼ′ γ}
         {cᵢ cⱼ : Choice}
@@ -417,3 +453,58 @@ module Definitions.Behav where
           -[¬ Comm.receiver γ ]->* Gⱼ′
     branch/before-trace tr grᵢ grⱼ′ =
       proj₂ (proj₂ (branch/before tr grᵢ grⱼ′))
+
+    branch/before-trace-length :
+      ∀ {G G′ Gᵢ Gⱼ′ γ}
+        {cᵢ cⱼ : Choice}
+      → (tr   : G -[¬ Comm.receiver γ ]->* G′)
+      → (grᵢ  : G  -< γ # cᵢ >-> Gᵢ)
+      → (grⱼ′ : G′ -< γ # cⱼ >-> Gⱼ′)
+      → trace-length (branch/before-trace tr grᵢ grⱼ′) ≡ trace-length tr
+    branch/before-trace-length tr grᵢ grⱼ′
+      with no-new-branch/skip tr grᵢ grⱼ′
+    ... | Gⱼ , grⱼ
+      with skip/advance tr grⱼ (∈R refl)
+         | skip/advance-trace-length tr grⱼ (∈R refl)
+    ... | Gⱼ′ , grⱼ″ , trⱼ | eq
+      with step-deterministic grⱼ″ grⱼ′
+    ... | refl =
+      eq
+
+    step-is-prop/eq : 
+      ∀ {G G′ G″ α}
+      → (gr : G -< α >-> G′)
+      → (gr′ : G -< α >-> G″)
+      → (eq : G″ ≡ G′)
+      → gr ≡ subst (G -< α >->_) eq gr′
+    step-is-prop/eq gr gr′ refl = step-is-prop gr gr′
+
+    ~R-L/id : 
+      ∀ {G G′ G″ α}
+      → (G~G′ : G ~ G′)
+      → (gr : G -< α >-> G″)
+      → ~R→ G~G′ (~L→ G~G′ gr)
+        ≡ subst 
+            (G -< α >->_)
+            (step-deterministic gr (~R→ G~G′ (~L→ G~G′ gr)))
+            gr
+    ~R-L/id G~G′ gr = 
+      step-is-prop/eq
+        (~R→ G~G′ (~L→ G~G′ gr))
+        gr
+        (step-deterministic gr (~R→ G~G′ (~L→ G~G′ gr)))
+
+    ~R-L/id′ : 
+      ∀ {G G′ G″ α}
+      → (G~G′ : G ~ G′)
+      → (gr : G -< α >-> G″)
+      → gr
+        ≡ subst 
+            (G -< α >->_)
+            (step-deterministic (~R→ G~G′ (~L→ G~G′ gr)) gr)
+            (~R→ G~G′ (~L→ G~G′ gr))
+    ~R-L/id′ G~G′ gr = 
+      step-is-prop/eq 
+        gr 
+        (~R→ G~G′ (~L→ G~G′ gr)) 
+        (step-deterministic (~R→ G~G′ (~L→ G~G′ gr)) gr)
