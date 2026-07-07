@@ -185,7 +185,7 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
         _ , G~H₀  , H₀↝H₁ = stepback/~ G₁~H₁ gr
     in _ , G~H₀ , skip/step H₀↝H₁ P∉α H₁↝H
 
-  transport-arg-ktd : 
+  transport-arg-ktd :
     ∀ {B C D : Set}
       {I I′ : C}
       {J : D}
@@ -340,7 +340,8 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   skip/unfold-cycle leaf/bisim base (skip/main td) =
     prod , skip/main td , λ _ → refl
 
-  skip/unfold-cycle {Ξ = Ξ} {Ξ′ = Ξ′} leaf/bisim base (skip/step {G = H} gr na ktd prod-gr) =
+  skip/unfold-cycle {Ξ = Ξ} {Ξ′ = Ξ′} leaf/bisim base
+    (skip/step {G = H} gr na ktd prod-gr) =
     let base′ = skip/weaken-visited {H = H} {Ξ = Ξ′ ++ Ξ} {Ξ′ = []} base
         unfold =
           λ {β H′} (gr′ : H -< β >-> H′) →

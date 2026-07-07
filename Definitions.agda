@@ -170,8 +170,8 @@ module MPST {N : ℕ} {B : BTheory N} (BP : BT-Prop B) where
       (Δ : Vec Behav δ)
       (Ξ : Vec Behav ξ)
     → Mode
-    → NProc γ δ 
-    → Behav 
+    → NProc γ δ
+    → Behav
     → Set
   Γ & Δ & Ξ ⊢skip[ m ] PPr ∶ G =
     ((_&_⊢p_∶_) Γ Δ) & Ξ ⊢skip[ m ] PPr ∶ G
