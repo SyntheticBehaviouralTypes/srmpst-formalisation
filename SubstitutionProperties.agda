@@ -273,17 +273,8 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
             (~R→~ G~G′ gr′)
             (conts (~R→ G~G′ gr′)))
 
-    td/bisim Δ~Δ′ G~G′ (t/skip gr na ktd prod-gr) =
-      t/skip 
-        (~L→ G~G′ gr) 
-        (na ∘ ~R→ G~G′)
-        (λ gr′ → 
-          _ , skip-td/bisim 
-                Δ~Δ′ 
-                (~ᵛ/∷ G~G′ ~ᵛ/[]) 
-                (~R→~ G~G′ gr′) 
-                (ktd (~R→ G~G′ gr′) .proj₂)) 
-        (subst (_≡ prod) (selected-step-mode (proj₁ ∘ ktd) G~G′ gr) prod-gr)
+    td/bisim Δ~Δ′ G~G′ (t/skip std) =
+      t/skip (skip-td/bisim Δ~Δ′ ~ᵛ/[] G~G′ std)
 
     td/bisim Δ~Δ′ G~G′ (t/unskip tr ptd) =
       let _ , H~G′ , tr′ = skip/bisim G~G′ tr
@@ -553,11 +544,8 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
         ∘ proc-subst-lemma-expr (exp-str etd)
         ∘ conts)
 
-    proc-subst-lemma-expr etd (t/skip gr na ktd prod-gr) =
-      t/skip gr na
-        (λ gr′ →
-          proj₁ (ktd gr′) , skip-subst-lemma-expr etd (proj₂ (ktd gr′)))
-        prod-gr
+    proc-subst-lemma-expr etd (t/skip std) =
+      t/skip (skip-subst-lemma-expr etd std)
 
     proc-subst-lemma-expr etd (t/unskip tr ptd) =
       t/unskip tr (proc-subst-lemma-expr etd ptd)
@@ -634,11 +622,8 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
         ∘ conts
         )
 
-    proc-weaken-lemma-expr (t/skip gr na ktd prod-gr) =
-      t/skip gr na
-        (λ gr′ →
-          proj₁ (ktd gr′) , skip-weaken-lemma-expr (proj₂ (ktd gr′)))
-        prod-gr
+    proc-weaken-lemma-expr (t/skip std) =
+      t/skip (skip-weaken-lemma-expr std)
 
     proc-weaken-lemma-expr (t/unskip tr ptd) =
       t/unskip tr
@@ -734,11 +719,8 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
         ∘ conts
         )
 
-    proc-weaken-lemma (t/skip gr na ktd prod-gr) =
-      t/skip gr na
-        (λ gr′ →
-          proj₁ (ktd gr′) , skip-weaken-lemma (proj₂ (ktd gr′)))
-        prod-gr
+    proc-weaken-lemma (t/skip std) =
+      t/skip (skip-weaken-lemma std)
 
     proc-weaken-lemma (t/unskip tr ptd) =
       t/unskip tr
@@ -857,11 +839,8 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
         ∘ conts
         )
 
-    proc-subst-lemma ptd′ (t/skip gr na ktd prod-gr) =
-      t/skip gr na
-        (λ gr′ →
-          proj₁ (ktd gr′) , skip-subst-lemma ptd′ (proj₂ (ktd gr′)))
-        prod-gr
+    proc-subst-lemma ptd′ (t/skip std) =
+      t/skip (skip-subst-lemma ptd′ std)
 
     proc-subst-lemma ptd′ (t/unskip tr ptd) =
       t/unskip tr (proc-subst-lemma ptd′ ptd)
