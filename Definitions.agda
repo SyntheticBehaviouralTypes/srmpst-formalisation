@@ -7,7 +7,8 @@ open import Data.Vec
   using (Vec; []; _∷_)
   renaming (lookup to lu)
 
-open import Data.Product using (∃-syntax; proj₁; proj₂)
+open import Data.Product using (∃-syntax; _,_; proj₁; proj₂)
+open import Function using (_∘_)
 
 open import Relation.Nullary using (¬_)
 
@@ -175,6 +176,118 @@ module MPST {N : ℕ} {B : BTheory N} (BP : BT-Prop B) where
     → Set
   Γ & Δ & Ξ ⊢skip[ m ] PPr ∶ G =
     ((_&_⊢p_∶_) Γ Δ) & Ξ ⊢skip[ m ] PPr ∶ G
+
+  infix 4 _⊢head_∶_
+
+  data _⊢head_∶_ {γ}
+    (Γ : Vec Sort γ)
+    : NProc γ 0 → Behav → Set
+    where
+
+    h/send :
+      ∀ {P Q I}
+        {i : Fin (suc I)}
+        {S : Sort}
+        {E : Exp γ}
+        {Pr : Proc γ 0}
+        {G G′ : Behav}
+      → G -< P ⟶ Q # i < S > >-> G′
+      → Γ ⊢e E ∶ S
+      → Γ ⊢head P ◂ Pr ∶ G′
+      → Γ ⊢head P ◂ Q ! i < E >∙ Pr ∶ G
+
+    h/recv :
+      ∀ {P Q I}
+        {i : Fin (suc I)}
+        {T : Sort}
+        {S : Vec Sort (suc I)}
+        {Br : Vec (Proc (suc γ) 0) (suc I)}
+        {G G′ : Behav}
+      → G -< Q ⟶ P # i < T > >-> G′
+      → (∀ {j U G″}
+          → G -< Q ⟶ P # j < U > >-> G″
+          → (U ∷ Γ) ⊢head P ◂ lu Br j ∶ G″)
+      → Γ ⊢head P ◂ Σ Q ？[ S ]· Br ∶ G
+
+    h/skip :
+      ∀ {PPr G}
+      → ((_⊢head_∶_) Γ) & [] ⊢skip[ prod ] PPr ∶ G
+      → Γ ⊢head PPr ∶ G
+
+    h/if :
+      ∀ {P}
+        {E : Exp γ}
+        {Pr Pr′ : Proc γ 0}
+        {G : Behav}
+      → Γ ⊢e E ∶ s/bool
+      → Γ ⊢head P ◂ Pr ∶ G
+      → Γ ⊢head P ◂ Pr′ ∶ G
+      → Γ ⊢head P ◂ ifp E then Pr else Pr′ ∶ G
+
+    h/rec :
+      ∀ {P}
+        {Pr : Proc γ 1}
+        {G G′ : Behav}
+      → G -[¬ P ]->* G′
+      → MessageGuarded Pr
+      → Γ & G ∷ [] ⊢p P ◂ Pr ∶ G
+      → Γ ⊢head P ◂ rec Pr ∶ G′
+
+    h/end :
+      ∀ {P}
+        {G : Behav}
+      → ¬ P ∈T G
+      → Γ ⊢head P ◂ ∅ ∶ G
+
+
+  infix  4 _&_⊢hskip[_]_∶_
+
+  _&_⊢hskip[_]_∶_ :
+    ∀ {γ ξ}
+      (Γ : Vec Sort γ)
+      (Ξ : Vec Behav ξ)
+    → Mode
+    → NProc γ 0
+    → Behav
+    → Set
+  Γ & Ξ ⊢hskip[ m ] PPr ∶ G =
+    ((_⊢head_∶_) Γ) & Ξ ⊢skip[ m ] PPr ∶ G
+
+  mutual
+    head/typing :
+      ∀ {γ P Pr G}
+        {Γ : Vec Sort γ}
+      → Γ ⊢head P ◂ Pr ∶ G
+      → Γ & [] ⊢p P ◂ Pr ∶ G
+    head/typing (h/send gr etd td) =
+      t/send gr etd (head/typing td)
+    head/typing (h/recv gr conts) =
+      t/recv gr (head/typing ∘ conts)
+    head/typing (h/skip std) =
+      t/skip (hskip/typing std)
+    head/typing (h/if etd head₁ head₂) =
+      t/if etd (head/typing head₁) (head/typing head₂)
+    head/typing (h/rec tr guarded td) =
+      t/unskip tr (t/rec guarded td)
+    head/typing (h/end done) =
+      t/end done
+
+    hskip/typing :
+      ∀ {γ ξ P Pr G m}
+        {Γ : Vec Sort γ}
+        {Ξ : Vec Behav ξ}
+      → Γ & Ξ ⊢hskip[ m ] P ◂ Pr ∶ G
+      → Γ & [] & Ξ ⊢skip[ m ] P ◂ Pr ∶ G
+    hskip/typing (skip/main td) =
+      skip/main (head/typing td)
+    hskip/typing (skip/step gr na ktd mode-gr) =
+      skip/step gr na
+        (λ gr′ →
+          let mode′ , std′ = ktd gr′
+          in mode′ , hskip/typing std′)
+        mode-gr
+    hskip/typing (skip/cycle x) =
+      skip/cycle x
 
   data MainLeaf
     {γ δ ξ : ℕ}

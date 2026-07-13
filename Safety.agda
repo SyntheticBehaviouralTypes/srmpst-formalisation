@@ -30,7 +30,7 @@ open import Data.Vec
 open import Data.Vec.Properties
   using (lookup∘tabulate; lookup∘update; lookup∘update′)
 
-open import Data.Product using (∃-syntax; Σ-syntax; _,_; _×_; proj₁; proj₂)
+open import Data.Product using (∃-syntax; _,_; _×_; proj₁; proj₂)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.Maybe.Base using (Maybe; just; nothing)
 
@@ -155,116 +155,6 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     skip/rec/unfold (skip/cycle eq) =
       skip/cycle eq
 
-  infix 4 _⊢head_∶_
-
-  data _⊢head_∶_ {γ}
-    (Γ : Vec Sort γ)
-    : NProc γ 0 → Behav → Set
-    where
-
-    h/send :
-      ∀ {P Q I}
-        {i : Fin (suc I)}
-        {S : Sort}
-        {E : Exp γ}
-        {Pr : Proc γ 0}
-        {G G′ : Behav}
-      → G -< P ⟶ Q # i < S > >-> G′
-      → Γ ⊢e E ∶ S
-      → Γ ⊢head P ◂ Pr ∶ G′
-      → Γ ⊢head P ◂ Q ! i < E >∙ Pr ∶ G
-
-    h/recv :
-      ∀ {P Q I}
-        {i : Fin (suc I)}
-        {T : Sort}
-        {S : Vec Sort (suc I)}
-        {Br : Vec (Proc (suc γ) 0) (suc I)}
-        {G G′ : Behav}
-      → G -< Q ⟶ P # i < T > >-> G′
-      → (∀ {j U G″}
-          → G -< Q ⟶ P # j < U > >-> G″
-          → (U ∷ Γ) ⊢head P ◂ lookup Br j ∶ G″)
-      → Γ ⊢head P ◂ Σ Q ？[ S ]· Br ∶ G
-
-    h/skip :
-      ∀ {PPr G}
-      → ((_⊢head_∶_) Γ) & [] ⊢skip[ prod ] PPr ∶ G
-      → Γ ⊢head PPr ∶ G
-
-    h/if :
-      ∀ {P}
-        {E : Exp γ}
-        {Pr Pr′ : Proc γ 0}
-        {G : Behav}
-      → Γ ⊢e E ∶ s/bool
-      → Γ ⊢head P ◂ Pr ∶ G
-      → Γ ⊢head P ◂ Pr′ ∶ G
-      → Γ ⊢head P ◂ ifp E then Pr else Pr′ ∶ G
-
-    h/rec :
-      ∀ {P}
-        {Pr : Proc γ 1}
-        {G G′ : Behav}
-      → G -[¬ P ]->* G′
-      → MessageGuarded Pr
-      → Γ & G ∷ [] ⊢p P ◂ Pr ∶ G
-      → Γ ⊢head P ◂ rec Pr ∶ G′
-
-    h/end :
-      ∀ {P}
-        {G : Behav}
-      → ¬ P ∈T G
-      → Γ ⊢head P ◂ ∅ ∶ G
-
-
-  infix  4 _&_⊢hskip[_]_∶_
-
-  _&_⊢hskip[_]_∶_ :
-    ∀ {γ ξ}
-      (Γ : Vec Sort γ)
-      (Ξ : Vec Behav ξ)
-    → Mode
-    → NProc γ 0
-    → Behav
-    → Set
-  Γ & Ξ ⊢hskip[ m ] PPr ∶ G =
-    ((_⊢head_∶_) Γ) & Ξ ⊢skip[ m ] PPr ∶ G
-
-  mutual
-    head/typing :
-      ∀ {γ P Pr G}
-        {Γ : Vec Sort γ}
-      → Γ ⊢head P ◂ Pr ∶ G
-      → Γ & [] ⊢p P ◂ Pr ∶ G
-    head/typing (h/send gr etd td) =
-      t/send gr etd (head/typing td)
-    head/typing (h/recv gr conts) =
-      t/recv gr (head/typing ∘ conts)
-    head/typing (h/skip std) =
-      t/skip (hskip/typing std)
-    head/typing (h/if etd head₁ head₂) =
-      t/if etd (head/typing head₁) (head/typing head₂)
-    head/typing (h/rec tr guarded td) =
-      t/unskip tr (t/rec guarded td)
-    head/typing (h/end done) =
-      t/end done
-
-    hskip/typing :
-      ∀ {γ ξ P Pr G m}
-        {Γ : Vec Sort γ}
-        {Ξ : Vec Behav ξ}
-      → Γ & Ξ ⊢hskip[ m ] P ◂ Pr ∶ G
-      → Γ & [] & Ξ ⊢skip[ m ] P ◂ Pr ∶ G
-    hskip/typing (skip/main td) =
-      skip/main (head/typing td)
-    hskip/typing (skip/step gr na ktd x) =
-      skip/step gr na
-        (λ gr′ → ktd gr′ .proj₁ , hskip/typing (ktd gr′ .proj₂))
-        x
-    hskip/typing (skip/cycle x) =
-      skip/cycle x
-
   mutual
 
     head/bisim :
@@ -349,28 +239,45 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   ptd/bisim {PPr = P ◂ Pr} =
     td/bisim ~ᵛ-refl
 
-  pskip/unfold-cycle :
-    ∀ {γ ξ m m′ G H P Pr}
+  pskip/unfold :
+    ∀ {γ ξ ξ′ m m′ G H P Pr}
       {Γ : Vec Sort γ}
       {Ξ : Vec Behav ξ}
-    → Γ & [] & Ξ ⊢skip[ m ] P ◂ Pr ∶ G
-    → Γ & [] & G ∷ Ξ ⊢skip[ m′ ] P ◂ Pr ∶ H
-    → ∃[ n ] (Γ & [] & Ξ ⊢skip[ n ] P ◂ Pr ∶ H)
+      {Ξ′ : Vec Behav ξ′}
+    → Γ & [] & Ξ′ ++ Ξ ⊢skip[ m ] P ◂ Pr ∶ G
+    → Γ & [] & Ξ′ ++ G ∷ Ξ ⊢skip[ m′ ] P ◂ Pr ∶ H
+    → ∃[ n ]
+        (Γ & [] & Ξ′ ++ Ξ ⊢skip[ n ] P ◂ Pr ∶ H)
       × (m′ ≡ prod → n ≡ prod)
-  pskip/unfold-cycle {P = P} {Pr = Pr} =
-    skip/unfold-cycle
-      {PPr = P ◂ Pr}
-      {Ξ′ = []}
-      ptd/bisim
+  pskip/unfold {P = P} {Pr = Pr} =
+    skip/unfold-cycle {PPr = P ◂ Pr} ptd/bisim
 
-  pskip/unfold-top-cycle :
+  pskip/unfold/prod :
+    ∀ {γ ξ ξ′ m m′ G H P Pr}
+      {Γ : Vec Sort γ}
+      {Ξ : Vec Behav ξ}
+      {Ξ′ : Vec Behav ξ′}
+    → (base : Γ & [] & Ξ′ ++ Ξ ⊢skip[ m ] P ◂ Pr ∶ G)
+    → (inner : Γ & [] & Ξ′ ++ G ∷ Ξ ⊢skip[ m′ ] P ◂ Pr ∶ H)
+    → m′ ≡ prod
+    → let mode , _ , _ =
+            pskip/unfold {Ξ = Ξ} {Ξ′ = Ξ′} base inner
+      in
+      mode ≡ prod
+  pskip/unfold/prod base inner =
+    let _ , _ , prod-preserved = pskip/unfold base inner
+    in prod-preserved
+
+  pskip/unfold-top :
     ∀ {γ m G H P Pr}
       {Γ : Vec Sort γ}
     → Γ & [] & [] ⊢skip[ prod ] P ◂ Pr ∶ G
     → Γ & [] & G ∷ [] ⊢skip[ m ] P ◂ Pr ∶ H
-    → Γ & [] & []  ⊢skip[ prod ] P ◂ Pr ∶ H
-  pskip/unfold-top-cycle td ktd with pskip/unfold-cycle td ktd
-  ... | prod , td , _ = td
+    → Γ & [] & [] ⊢skip[ prod ] P ◂ Pr ∶ H
+  pskip/unfold-top base inner
+    with pskip/unfold {Ξ = []} {Ξ′ = []} base inner
+  ... | prod , unfolded , _ =
+    unfolded
   ... | nonprod , skip/cycle {X = ()} _ , _
 
 
@@ -391,15 +298,15 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → H -[¬ P ]->* H′
     → Γ ⊢head P ◂ Pr ∶ H′
 
-  skip/~R-trace :
+  skip/bisim-back :
     ∀ {G G′ H′ P}
     → G ~ G′
     → G′ -[¬ P ]->* H′
     → ∃[ H ] (G -[¬ P ]->* H) × (H ~ H′)
-  skip/~R-trace G~G′ skip/refl =
+  skip/bisim-back G~G′ skip/refl =
     _ , skip/refl , G~G′
-  skip/~R-trace G~G′ (skip/step gr P∉α tr) =
-    let _ , tr′ , H~H′ = skip/~R-trace (~R→~ G~G′ gr) tr
+  skip/bisim-back G~G′ (skip/step gr P∉α tr) =
+    let _ , tr′ , H~H′ = skip/bisim-back (~R→~ G~G′ gr) tr
     in _ , skip/step (~R→ G~G′ gr) P∉α tr′ , H~H′
 
   mainLeaf/weaken-visited :
@@ -414,10 +321,11 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   mainLeaf/weaken-visited (skip/main td) main/here =
     main/here
   mainLeaf/weaken-visited (skip/step gr na ktd ok) (main/step gr′ leaf) =
-    main/step gr′ (mainLeaf/weaken-visited (ktd gr′ .proj₂) leaf)
+    let _ , std′ = ktd gr′
+    in main/step gr′ (mainLeaf/weaken-visited std′ leaf)
   mainLeaf/weaken-visited (skip/cycle _) ()
 
-  skip-leaf/head-bisim :
+  leafHead/bisim :
     ∀ {γ ξ m P Pr G G′}
       {Γ : Vec Sort γ}
       {Ξ Ξ′ : Vec Behav ξ}
@@ -426,19 +334,22 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → (std : Γ & [] & Ξ ⊢skip[ m ] P ◂ Pr ∶ G)
     → LeafHead std
     → LeafHead (skip-leaf/bisim ptd/bisim Ξ~Ξ′ G~G′ std)
-  skip-leaf/head-bisim Ξ~Ξ′ G~G′ (skip/main td) leafHead main/here tr =
-    let _ , tr′ , H~H′ = skip/~R-trace G~G′ tr
+  leafHead/bisim Ξ~Ξ′ G~G′ (skip/main td) leafHead main/here tr =
+    let _ , tr′ , H~H′ = skip/bisim-back G~G′ tr
     in head/bisim H~H′ (leafHead main/here tr′)
-  skip-leaf/head-bisim Ξ~Ξ′ G~G′ (skip/step _ _ ktd _)
+  leafHead/bisim Ξ~Ξ′ G~G′ (skip/step _ _ ktd _)
     leafHead (main/step gr′ leaf) tr =
-    skip-leaf/head-bisim
+    let gr″ = ~R→ G~G′ gr′
+        _ , std′ = ktd gr″
+    in
+    leafHead/bisim
       (~ᵛ/∷ G~G′ Ξ~Ξ′)
       (~R→~ G~G′ gr′)
-      (ktd (~R→ G~G′ gr′) .proj₂)
-      (λ leaf′ tr′ → leafHead (main/step (~R→ G~G′ gr′) leaf′) tr′)
+      std′
+      (leafHead ∘ main/step gr″)
       leaf
       tr
-  skip-leaf/head-bisim Ξ~Ξ′ G~G′ (skip/cycle eq) leafHead ()
+  leafHead/bisim Ξ~Ξ′ G~G′ (skip/cycle eq) leafHead ()
 
   skip/head :
     ∀ {γ ξ P Pr G m}
@@ -452,15 +363,17 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   skip/head (skip/step gr na ktd ok) leafHead =
     skip/step gr na
       (λ gr′ →
-        ktd gr′ .proj₁ ,
+        let mode′ , std′ = ktd gr′
+        in
+        mode′ ,
         skip/head
-          (ktd gr′ .proj₂)
-          (λ leaf tr → leafHead (main/step gr′ leaf) tr))
+          std′
+          (leafHead ∘ main/step gr′))
       ok
   skip/head (skip/cycle eq) _ =
     skip/cycle eq
 
-  pskip/unfold-cycle/head :
+  leafHead/unfold :
     ∀ {γ ξ ξ′ m m′ G H P Pr}
       {Γ : Vec Sort γ}
       {Ξ : Vec Behav ξ}
@@ -469,70 +382,81 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → LeafHead base
     → (inner : Γ & [] & Ξ′ ++ G ∷ Ξ ⊢skip[ m′ ] P ◂ Pr ∶ H)
     → LeafHead inner
-    → ∃[ n ]
-        (Σ[ out ∈ Γ & [] & Ξ′ ++ Ξ ⊢skip[ n ] P ◂ Pr ∶ H ]
-          LeafHead out)
-      × (m′ ≡ prod → n ≡ prod)
-  pskip/unfold-cycle/head base baseHead (skip/main td) innerHead =
-    prod ,
-    (skip/main td , (λ { main/here → innerHead main/here })) ,
-    λ _ → refl
-  pskip/unfold-cycle/head {Ξ = Ξ} {Ξ′ = Ξ′}
+    → let _ , unfolded , _ =
+            pskip/unfold {Ξ = Ξ} {Ξ′ = Ξ′} base inner
+      in
+      LeafHead unfolded
+  leafHead/unfold base baseHead (skip/main td) innerHead main/here =
+    innerHead main/here
+  leafHead/unfold {Ξ = Ξ} {Ξ′ = Ξ′}
     base baseHead
     (skip/step {G = H} gr na ktd ok)
-    innerHead =
+    innerHead
+    (main/step gr′ leaf)
+    tr =
     let base′ = skip/weaken-visited {H = H} {Ξ = Ξ′ ++ Ξ} {Ξ′ = []} base
         base′Head : LeafHead base′
-        base′Head leaf tr =
-          baseHead (mainLeaf/weaken-visited base leaf) tr
-        unfold =
-          λ {β H′} (gr′ : H -< β >-> H′) →
-            pskip/unfold-cycle/head
-              {Ξ′ = H ∷ Ξ′}
-              base′
-              base′Head
-              (ktd gr′ .proj₂)
-              (λ leaf tr → innerHead (main/step gr′ leaf) tr)
+        base′Head = baseHead ∘ mainLeaf/weaken-visited base
+        _ , inner′ = ktd gr′
     in
-      prod ,
-      ( skip/step gr na
-          (λ gr′ →
-            let n , (out , _) , _ = unfold gr′
-            in n , out)
-          (proj₂ (proj₂ (unfold gr)) ok)
-      , (λ { (main/step gr′ leaf) →
-            let _ , (_ , outHead) , _ = unfold gr′
-            in outHead leaf
-          })
-      ) ,
-      λ _ → refl
-  pskip/unfold-cycle/head {Ξ = Ξ} {Ξ′ = Ξ′}
-    base baseHead (skip/cycle {X = X} eq) innerHead
+    leafHead/unfold
+      {Ξ′ = H ∷ Ξ′}
+      base′
+      base′Head
+      inner′
+      (innerHead ∘ main/step gr′)
+      leaf
+      tr
+  leafHead/unfold {Ξ = Ξ} {Ξ′ = Ξ′}
+    base baseHead (skip/cycle {X = X} eq) innerHead leaf tr
     with lookup/insert {Ξ = Ξ} {Ξ′ = Ξ′} (X , eq)
   ... | inj₁ G~H =
-    _ ,
-    ( skip-leaf/bisim ptd/bisim ~ᵛ-refl G~H base
-    , skip-leaf/head-bisim ~ᵛ-refl G~H base baseHead
-    ) ,
-    λ ()
-  ... | inj₂ (_ , eq′) =
-    nonprod , (skip/cycle eq′ , λ ()) , λ ()
+    leafHead/bisim ~ᵛ-refl G~H base baseHead leaf tr
+  ... | inj₂ (_ , eq′) with leaf
+  ...   | ()
 
-  pskip/unfold-top-cycle/head :
+  leafHead/unfold-top :
     ∀ {γ m G H P Pr}
       {Γ : Vec Sort γ}
     → (base : Γ & [] & [] ⊢skip[ prod ] P ◂ Pr ∶ G)
     → LeafHead base
     → (inner : Γ & [] & G ∷ [] ⊢skip[ m ] P ◂ Pr ∶ H)
     → LeafHead inner
-    → Σ[ out ∈ Γ & [] & [] ⊢skip[ prod ] P ◂ Pr ∶ H ]
-        LeafHead out
-  pskip/unfold-top-cycle/head base baseHead inner innerHead
-    with pskip/unfold-cycle/head {Ξ = []} {Ξ′ = []}
-      base baseHead inner innerHead
-  ... | prod , out , _ =
-    out
-  ... | nonprod , (skip/cycle {X = ()} _ , _) , _
+    → LeafHead (pskip/unfold-top base inner)
+  leafHead/unfold-top base baseHead inner innerHead
+    with pskip/unfold {Ξ = []} {Ξ′ = []} base inner
+      | leafHead/unfold {Ξ = []} {Ξ′ = []}
+          base
+          baseHead
+          inner
+          innerHead
+  ... | prod , unfolded , _ | unfoldedHead =
+    unfoldedHead
+  ... | nonprod , skip/cycle {X = ()} _ , _ | _
+
+  cancel/unskip :
+    ∀ {γ P Pr G G′}
+      {Γ : Vec Sort γ}
+    → G -[¬ P ]->* G′
+    → (std : Γ & [] & [] ⊢skip[ prod ] P ◂ Pr ∶ G)
+    → LeafHead std
+    → Γ ⊢head P ◂ Pr ∶ G′
+
+  cancel/unskip skip/refl (skip/main _) leafHead =
+    leafHead main/here skip/refl
+  cancel/unskip skip/refl std@(skip/step _ _ _ _) leafHead =
+    h/skip (skip/head std leafHead)
+  cancel/unskip tr@(skip/step _ _ _) (skip/main td) leafHead =
+    leafHead main/here tr
+  cancel/unskip (skip/step gr _ tr) std@(skip/step _ _ ktd _) leafHead =
+    let _ , inner = ktd gr
+        std′ = pskip/unfold-top std inner
+        leafHead′ =
+          leafHead/unfold-top std leafHead
+            inner
+            (leafHead ∘ main/step gr)
+    in
+    cancel/unskip tr std′ leafHead′
 
   mutual
 
@@ -545,33 +469,10 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
 
     mainLeaf/head (skip/main td) main/here tr =
       td/head td tr
-    mainLeaf/head (skip/step _ _ ktd _) (main/step gr′ leaf) tr =
-      mainLeaf/head (ktd gr′ .proj₂) leaf tr
+    mainLeaf/head (skip/step _ _ ktd _) (main/step gr′ leaf) =
+      let _ , std′ = ktd gr′
+      in mainLeaf/head std′ leaf
     mainLeaf/head (skip/cycle _) ()
-
-    cancel/unskip-skip :
-      ∀ {γ P Pr G G′}
-        {Γ : Vec Sort γ}
-      → G -[¬ P ]->* G′
-      → (std : Γ & [] & [] ⊢skip[ prod ] P ◂ Pr ∶ G)
-      → LeafHead std
-      → Γ ⊢head P ◂ Pr ∶ G′
-
-    cancel/unskip-skip skip/refl (skip/main _) leafHead =
-      leafHead main/here skip/refl
-    cancel/unskip-skip skip/refl std@(skip/step _ _ _ _) leafHead =
-      h/skip (skip/head std leafHead)
-    cancel/unskip-skip tr@(skip/step _ _ _) (skip/main td) leafHead =
-      leafHead main/here tr
-    cancel/unskip-skip (skip/step gr _ tr) std@(skip/step _ _ ktd _) leafHead =
-      let out =
-            pskip/unfold-top-cycle/head
-              std
-              leafHead
-              (ktd gr .proj₂)
-              (λ leaf tr′ → leafHead (main/step gr leaf) tr′)
-      in
-      cancel/unskip-skip tr (out .proj₁) (out .proj₂)
 
     td/head :
       ∀ {γ P Pr G G′}
@@ -591,10 +492,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
           (conts (branch/before-step tr gr gr″))
           (branch/before-trace tr gr gr″)
     td/head (t/skip std) tr =
-      cancel/unskip-skip
-        tr
-        std
-        (mainLeaf/head std)
+      cancel/unskip tr std (mainLeaf/head std)
     td/head (t/unskip tr′ td) tr =
       td/head td (skip/cat tr′ tr)
     td/head (t/if etd ttd ftd) tr =
@@ -1093,7 +991,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
       not-in-type/done/head P∉G head
     not-in-type/done/hskip P∉G (skip/step gr _ ktd mode-gr) _ =
       not-in-type/done/hskip
-        (λ P∈G′ → P∉G (in/later gr P∈G′))
+        (P∉G ∘ in/later gr)
         (ktd gr .proj₂)
         mode-gr
     not-in-type/done/hskip P∉G (skip/cycle _) ()
