@@ -824,69 +824,6 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     preservation/τ* (preservation/τ _ M⊢G st) tr
 
 
-  data ProcessStatus
-    (G : Behav)
-    (P : Part)
-    : Proc 0 0 → Set
-    where
-
-    ps/step :
-      ∀ {Pr α G′}
-      → G -< α >-> G′
-      → ProcessStatus G P Pr
-
-    ps/if :
-      ∀ {Pr E Pr′ Pr″}
-      → [] ⊢e E ∶ s/bool
-      → Pr ≡ ifp E then Pr′ else Pr″
-      → ProcessStatus G P Pr
-
-    ps/rec :
-      ∀ {Pr Pr′}
-      → Pr ≡ rec Pr′
-      → ProcessStatus G P Pr
-
-    ps/end :
-      ∀ {Pr}
-      → P ∉T G
-      → ProcessStatus G P Pr
-
-  mutual
-
-    process/status/head :
-      ∀ {G P Pr}
-      → [] ⊢head P ◂ Pr ∶ G
-      → ProcessStatus G P Pr
-    process/status/head (h/send gr _ _) =
-      ps/step gr
-    process/status/head (h/recv gr _) =
-      ps/step gr
-    process/status/head (h/skip std) =
-      process/status/hskip std
-    process/status/head (h/if etd _ _) =
-      ps/if etd refl
-    process/status/head (h/rec _ _ _) =
-      ps/rec refl
-    process/status/head (h/end done) =
-      ps/end done
-
-    process/status/hskip :
-      ∀ {ξ G P Pr}
-        {Ξ : Vec Behav ξ}
-      → [] & Ξ ⊢hskip[ prod ] P ◂ Pr ∶ G
-      → ProcessStatus G P Pr
-    process/status/hskip (skip/main head) =
-      process/status/head head
-    process/status/hskip (skip/step gr _ _ _) =
-      ps/step gr
-
-  process/status :
-    ∀ {G P Pr}
-    → [] & [] ⊢p P ◂ Pr ∶ G
-    → ProcessStatus G P Pr
-  process/status =
-    λ td → process/status/head (td/head td skip/refl)
-
   message-guarded/proc-subst :
     ∀ {γ δ X}
       {Pr′ : Proc γ δ}
@@ -1004,166 +941,6 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   not-in-type/done P∉G td =
     not-in-type/done/head P∉G (td/head td skip/refl)
 
-  data SendView
-    (P : Part)
-    (G : Behav)
-    (Pr : Proc 0 0)
-    : Set
-    where
-
-    sv/send :
-      ∀ {Q I}
-        {i : Fin (suc I)}
-        {S : Sort}
-        {E : Exp 0}
-        {Pr′ : Proc 0 0}
-        {G′ : Behav}
-      → [] ⊢e E ∶ S
-      → G -< P ⟶ Q # i < S > >-> G′
-      → Pr ≡ Q ! i < E >∙ Pr′
-      → SendView P G Pr
-
-    sv/if :
-      ∀ {E Pr′ Pr″}
-      → [] ⊢e E ∶ s/bool
-      → Pr ≡ ifp E then Pr′ else Pr″
-      → SendView P G Pr
-
-    sv/rec :
-      ∀ {Pr′}
-      → Pr ≡ rec Pr′
-      → SendView P G Pr
-
-  mutual
-
-    send/view/head :
-      ∀ {G G′ P Q I}
-        {i : Fin (suc I)}
-        {S : Sort}
-        {Pr : Proc 0 0}
-      → G -< P ⟶ Q # i < S > >-> G′
-      → [] ⊢head P ◂ Pr ∶ G
-      → SendView P G Pr
-    send/view/head _ (h/send gr etd _) =
-      sv/send etd gr refl
-    send/view/head gr (h/recv gr′ _)
-      with recv-overlap⇒same-comm gr′ gr (∈S refl)
-    ... | refl =
-      ⊥-elim (sender≢receiver gr refl)
-    send/view/head gr (h/skip std) =
-      send/view/hskip gr std
-    send/view/head _ (h/if etd _ _) =
-      sv/if etd refl
-    send/view/head _ (h/rec _ _ _) =
-      sv/rec refl
-    send/view/head gr (h/end done) =
-      ⊥-elim (done (in/send gr))
-
-    send/view/hskip :
-      ∀ {ξ G G′ P Q I}
-        {Ξ : Vec Behav ξ}
-        {i : Fin (suc I)}
-        {S : Sort}
-        {Pr : Proc 0 0}
-      → G -< P ⟶ Q # i < S > >-> G′
-      → [] & Ξ ⊢hskip[ prod ] P ◂ Pr ∶ G
-      → SendView P G Pr
-    send/view/hskip gr (skip/main head) =
-      send/view/head gr head
-    send/view/hskip gr (skip/step _ P∉G _ _) =
-      ⊥-elim (∉c→¬∈c (P∉G gr) (∈S refl))
-
-  send/view :
-    ∀ {G G′ P Q I}
-      {i : Fin (suc I)}
-      {S : Sort}
-      {Pr : Proc 0 0}
-    → G -< P ⟶ Q # i < S > >-> G′
-    → [] & [] ⊢p P ◂ Pr ∶ G
-    → SendView P G Pr
-  send/view gr td =
-    send/view/head gr (td/head td skip/refl)
-
-  data RecvView
-    (P Q : Part)
-    {I : ℕ}
-    (i : Fin (suc I))
-    (G : Behav)
-    (Pr : Proc 0 0)
-    : Set
-    where
-
-    rv/recv :
-      ∀ {S : Vec Sort (suc I)}
-        {Br : Vec (Proc 1 0) (suc I)}
-      → Pr ≡ Σ P ？[ S ]· Br
-      → RecvView P Q i G Pr
-
-    rv/if :
-      ∀ {E Pr′ Pr″}
-      → [] ⊢e E ∶ s/bool
-      → Pr ≡ ifp E then Pr′ else Pr″
-      → RecvView P Q i G Pr
-
-    rv/rec :
-      ∀ {Pr′}
-      → Pr ≡ rec Pr′
-      → RecvView P Q i G Pr
-
-  mutual
-
-    recv/view/head :
-      ∀ {G G′ P Q I}
-        {i : Fin (suc I)}
-        {S : Sort}
-        {Pr : Proc 0 0}
-      → G -< P ⟶ Q # i < S > >-> G′
-      → [] ⊢head Q ◂ Pr ∶ G
-      → RecvView P Q i G Pr
-    recv/view/head gr (h/send gr′ _ _)
-      with recv-overlap⇒same-comm gr gr′ (∈S refl)
-    ... | refl =
-      ⊥-elim (sender≢receiver gr refl)
-    recv/view/head gr (h/recv gr′ _)
-      with recv-overlap⇒same-comm gr gr′ (∈R refl)
-    ... | refl
-      with step-arity-deterministic gr gr′
-    ...   | refl =
-      rv/recv refl
-    recv/view/head gr (h/skip std) =
-      recv/view/hskip gr std
-    recv/view/head _ (h/if etd _ _) =
-      rv/if etd refl
-    recv/view/head _ (h/rec _ _ _) =
-      rv/rec refl
-    recv/view/head gr (h/end done) =
-      ⊥-elim (done (in/recv gr))
-
-    recv/view/hskip :
-      ∀ {ξ G G′ P Q I}
-        {Ξ : Vec Behav ξ}
-        {i : Fin (suc I)}
-        {S : Sort}
-        {Pr : Proc 0 0}
-      → G -< P ⟶ Q # i < S > >-> G′
-      → [] & Ξ ⊢hskip[ prod ] Q ◂ Pr ∶ G
-      → RecvView P Q i G Pr
-    recv/view/hskip gr (skip/main head) =
-      recv/view/head gr head
-    recv/view/hskip gr (skip/step _ Q∉G _ _) =
-      ⊥-elim (∉c→¬∈c (Q∉G gr) (∈R refl))
-
-  recv/view :
-    ∀ {G G′ P Q I}
-      {i : Fin (suc I)}
-      {S : Sort}
-      {Pr : Proc 0 0}
-    → G -< P ⟶ Q # i < S > >-> G′
-    → [] & [] ⊢p Q ◂ Pr ∶ G
-    → RecvView P Q i G Pr
-  recv/view gr td =
-    recv/view/head gr (td/head td skip/refl)
-
   data SessionStatus
     (M : Session)
     (G : Behav)
@@ -1192,6 +969,59 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
       (∀ i → lookup Ps i ∉T G)
       → SessionStatus M G Ps
 
+  session/status/cons-end :
+    ∀ {I M G P}
+      {Ps : Vec Part I}
+    → P ∉T G
+    → SessionStatus M G Ps
+    → SessionStatus M G (P ∷ Ps)
+  session/status/cons-end _ (ss/step gr) =
+    ss/step gr
+  session/status/cons-end _ (ss/if etd proc≡) =
+    ss/if etd proc≡
+  session/status/cons-end _ (ss/rec proc≡) =
+    ss/rec proc≡
+  session/status/cons-end P∉G (ss/end done) =
+    ss/end λ
+      { zero     → P∉G
+      ; (fsuc i) → done i
+      }
+
+  mutual
+
+    head/session-status :
+      ∀ {I M G P Pr}
+        {Ps : Vec Part I}
+      → SessionStatus M G Ps
+      → M [ P ]= Pr
+      → [] ⊢head P ◂ Pr ∶ G
+      → SessionStatus M G (P ∷ Ps)
+    head/session-status _ _ (h/send gr _ _) =
+      ss/step gr
+    head/session-status _ _ (h/recv gr _) =
+      ss/step gr
+    head/session-status tail proc≡ (h/skip std) =
+      hskip/session-status tail proc≡ std
+    head/session-status _ proc≡ (h/if etd _ _) =
+      ss/if etd proc≡
+    head/session-status _ proc≡ (h/rec _ _ _) =
+      ss/rec proc≡
+    head/session-status tail _ (h/end done) =
+      session/status/cons-end done tail
+
+    hskip/session-status :
+      ∀ {I ξ M G P Pr}
+        {Ps : Vec Part I}
+        {Ξ : Vec Behav ξ}
+      → SessionStatus M G Ps
+      → M [ P ]= Pr
+      → [] & Ξ ⊢hskip[ prod ] P ◂ Pr ∶ G
+      → SessionStatus M G (P ∷ Ps)
+    hskip/session-status tail proc≡ (skip/main head) =
+      head/session-status tail proc≡ head
+    hskip/session-status _ _ (skip/step gr _ _ _) =
+      ss/step gr
+
   session/status :
     ∀ {I M G}
     → (Ps : Vec Part I)
@@ -1201,27 +1031,11 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   session/status [] M⊢G =
     ss/end λ ()
 
-  session/status {M = M} (P ∷ Ps) M⊢G
-    with process/status (M⊢G P)
-  ... | ps/step gr =
-    ss/step gr
-  ... | ps/if etd eq =
-    ss/if etd (lookup-get eq)
-  ... | ps/rec eq =
-    ss/rec (lookup-get eq)
-  ... | ps/end P∉G
-    with session/status Ps M⊢G
-  ...   | ss/step gr =
-    ss/step gr
-  ...   | ss/if etd luP =
-    ss/if etd luP
-  ...   | ss/rec luP =
-    ss/rec luP
-  ...   | ss/end done =
-    ss/end λ
-      { zero     → P∉G
-      ; (fsuc i) → done i
-      }
+  session/status {M = M} (P ∷ Ps) M⊢G =
+    head/session-status
+      (session/status Ps M⊢G)
+      (lookup-get refl)
+      (td/head (M⊢G P) skip/refl)
 
 
   all-parts/end :
@@ -1247,41 +1061,125 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   ... | inj₂ e⇓false =
     nothing , _ , s/if/false P proc≡ e⇓false
 
-  recv/progress :
-    ∀ {M G G′ P Q I}
-      {i : Fin (suc I)}
-      {S : Sort}
-      {E : Exp 0}
-      {Pr : Proc 0 0}
-    → ⊢s M ∶ G
-    → [] ⊢e E ∶ S
-    → G -< P ⟶ Q # i < S > >-> G′
-    → M [ P ]= Q ! i < E >∙ Pr
-    → RecvView P Q i G (M [ Q ]s)
-    → ∃[ α ] ∃[ M′ ] M [ α ]⇒ M′
-  recv/progress {P = P} {Q = Q} {i = i} M⊢G etd gr send≡ (rv/recv recv≡)
-    with eval-exp etd
-  ... | V , e⇓v =
-    just (P ⟶ Q # i < sort/value V >) , _ ,
-    s/comm P Q send≡ e⇓v (lookup-get recv≡)
-  recv/progress M⊢G etd gr send≡ (rv/if etd′ recv≡) =
-    if/progress etd′ (lookup-get recv≡)
-  recv/progress M⊢G etd gr send≡ (rv/rec recv≡) =
-    nothing , _ , s/rec _ (lookup-get recv≡)
+  mutual
+
+    receiver/head-progress :
+      ∀ {M G G′ P Q I}
+        {i : Fin (suc I)}
+        {S : Sort}
+        {E : Exp 0}
+        {Pr : Proc 0 0}
+        {QPr : Proc 0 0}
+      → ⊢s M ∶ G
+      → [] ⊢e E ∶ S
+      → G -< P ⟶ Q # i < S > >-> G′
+      → M [ P ]= Q ! i < E >∙ Pr
+      → M [ Q ]= QPr
+      → [] ⊢head Q ◂ QPr ∶ G
+      → ∃[ α ] ∃[ M′ ] M [ α ]⇒ M′
+    receiver/head-progress M⊢G etd gr send≡ recv≡ (h/send gr′ _ _)
+      with recv-overlap⇒same-comm gr gr′ (∈S refl)
+    ... | refl =
+      ⊥-elim (sender≢receiver gr refl)
+    receiver/head-progress {P = P} {Q = Q} {i = i}
+      M⊢G etd gr send≡ recv≡ (h/recv gr′ _)
+      with recv-overlap⇒same-comm gr gr′ (∈R refl)
+    ... | refl
+      with step-arity-deterministic gr gr′
+    ...   | refl
+      with eval-exp etd
+    ...     | V , e⇓v =
+      just (P ⟶ Q # i < sort/value V >) , _ ,
+      s/comm P Q send≡ e⇓v recv≡
+    receiver/head-progress M⊢G etd gr send≡ recv≡ (h/skip std) =
+      receiver/hskip-progress M⊢G etd gr send≡ recv≡ std
+    receiver/head-progress M⊢G etd gr send≡ recv≡ (h/if etd′ _ _) =
+      if/progress etd′ recv≡
+    receiver/head-progress {Q = Q} M⊢G etd gr send≡ recv≡
+      (h/rec _ _ _) =
+      nothing , _ , s/rec Q recv≡
+    receiver/head-progress M⊢G etd gr send≡ recv≡ (h/end done) =
+      ⊥-elim (done (in/recv gr))
+
+    receiver/hskip-progress :
+      ∀ {ξ M G G′ P Q I}
+        {Ξ : Vec Behav ξ}
+        {i : Fin (suc I)}
+        {S : Sort}
+        {E : Exp 0}
+        {Pr : Proc 0 0}
+        {QPr : Proc 0 0}
+      → ⊢s M ∶ G
+      → [] ⊢e E ∶ S
+      → G -< P ⟶ Q # i < S > >-> G′
+      → M [ P ]= Q ! i < E >∙ Pr
+      → M [ Q ]= QPr
+      → [] & Ξ ⊢hskip[ prod ] Q ◂ QPr ∶ G
+      → ∃[ α ] ∃[ M′ ] M [ α ]⇒ M′
+    receiver/hskip-progress M⊢G etd gr send≡ recv≡ (skip/main head) =
+      receiver/head-progress M⊢G etd gr send≡ recv≡ head
+    receiver/hskip-progress M⊢G etd gr send≡ recv≡
+      (skip/step _ Q∉G _ _) =
+      ⊥-elim (∉c→¬∈c (Q∉G gr) (∈R refl))
+
+    sender/head-progress :
+      ∀ {M G G′ P Q I}
+        {i : Fin (suc I)}
+        {S : Sort}
+        {Pr : Proc 0 0}
+      → ⊢s M ∶ G
+      → G -< P ⟶ Q # i < S > >-> G′
+      → M [ P ]= Pr
+      → [] ⊢head P ◂ Pr ∶ G
+      → ∃[ β ] ∃[ M′ ] M [ β ]⇒ M′
+    sender/head-progress M⊢G gr send≡ (h/send {Q = Q′} gr′ etd _) =
+      receiver/head-progress
+        M⊢G
+        etd
+        gr′
+        send≡
+        (lookup-get refl)
+        (td/head (M⊢G Q′) skip/refl)
+    sender/head-progress M⊢G gr send≡ (h/recv gr′ _)
+      with recv-overlap⇒same-comm gr′ gr (∈S refl)
+    ... | refl =
+      ⊥-elim (sender≢receiver gr refl)
+    sender/head-progress M⊢G gr send≡ (h/skip std) =
+      sender/hskip-progress M⊢G gr send≡ std
+    sender/head-progress M⊢G gr send≡ (h/if etd _ _) =
+      if/progress etd send≡
+    sender/head-progress {P = P} M⊢G gr send≡ (h/rec _ _ _) =
+      nothing , _ , s/rec P send≡
+    sender/head-progress M⊢G gr send≡ (h/end done) =
+      ⊥-elim (done (in/send gr))
+
+    sender/hskip-progress :
+      ∀ {ξ M G G′ P Q I}
+        {Ξ : Vec Behav ξ}
+        {i : Fin (suc I)}
+        {S : Sort}
+        {Pr : Proc 0 0}
+      → ⊢s M ∶ G
+      → G -< P ⟶ Q # i < S > >-> G′
+      → M [ P ]= Pr
+      → [] & Ξ ⊢hskip[ prod ] P ◂ Pr ∶ G
+      → ∃[ β ] ∃[ M′ ] M [ β ]⇒ M′
+    sender/hskip-progress M⊢G gr send≡ (skip/main head) =
+      sender/head-progress M⊢G gr send≡ head
+    sender/hskip-progress M⊢G gr send≡ (skip/step _ P∉G _ _) =
+      ⊥-elim (∉c→¬∈c (P∉G gr) (∈S refl))
 
   step/progress :
     ∀ {M G G′ α}
     → ⊢s M ∶ G
     → G -< α >-> G′
     → ∃[ β ] ∃[ M′ ] M [ β ]⇒ M′
-  step/progress {α = P ⟶ Q # i < S >} M⊢G gr
-    with send/view gr (M⊢G P)
-  ... | sv/send {Q = Q′} etd gr′ send≡ =
-    recv/progress M⊢G etd gr′ (lookup-get send≡) (recv/view gr′ (M⊢G Q′))
-  ... | sv/if etd send≡ =
-    if/progress etd (lookup-get send≡)
-  ... | sv/rec send≡ =
-    nothing , _ , s/rec P (lookup-get send≡)
+  step/progress {α = P ⟶ Q # i < S >} M⊢G gr =
+    sender/head-progress
+      M⊢G
+      gr
+      (lookup-get refl)
+      (td/head (M⊢G P) skip/refl)
 
   progress :
     ∀ {M G}
