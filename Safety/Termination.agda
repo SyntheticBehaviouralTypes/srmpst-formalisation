@@ -22,7 +22,13 @@ open import Data.Vec
   using (Vec; []; _∷_; _[_]=_; _[_]≔_; lookup; map; sum; tabulate)
 
 open import Data.Vec.Properties
-  using (lookup∘tabulate; lookup∘update; lookup∘update′)
+  using
+    ( []=⇒lookup
+    ; lookup⇒[]=
+    ; lookup∘tabulate
+    ; lookup∘update
+    ; lookup∘update′
+    )
 
 open import Data.Product using (∃-syntax; _,_; _×_; proj₁; proj₂)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
@@ -33,27 +39,17 @@ open import Relation.Nullary using (yes; no)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; subst; sym)
 
-open import Utils.Fin using (lookup-get; reflect-lookup)
 open import Utils.Vec using (sum/map-update<)
 open import Definitions
 
-import SubstitutionProperties
-import Safety.Head
-import Safety.Preservation
-import Safety.Progress
-
 module Safety.Termination {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   private
-    module SP = SubstitutionProperties BP
-    module H = Safety.Head BP
-    module P = Safety.Preservation BP
-    module PR = Safety.Progress BP
-  open SP
-  open SP.M
-  open SP.M.Subst
-  open H
-  open P
-  open PR
+    module M = Definitions.MPST BP
+  open M
+  open M.Subst
+  open import Safety.Head BP
+  open import Safety.Preservation BP
+  open import Safety.Progress BP
 
   τ-depth/proc :
     ∀ {γ δ}
@@ -119,28 +115,28 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
 
   mutual
 
-    t/rec/message-guarded :
+    rec/guarded :
       ∀ {G P Pr}
       → [] & [] ⊢p P ◂ rec Pr ∶ G
       → MessageGuarded Pr
-    t/rec/message-guarded (t/skip std) =
-      skip/rec/message-guarded std refl
-    t/rec/message-guarded (t/unskip _ td) =
-      t/rec/message-guarded td
-    t/rec/message-guarded (t/rec guarded _) =
+    rec/guarded (t/skip std) =
+      rec/guarded-skip std refl
+    rec/guarded (t/unskip _ td) =
+      rec/guarded td
+    rec/guarded (t/rec guarded _) =
       guarded
 
-    skip/rec/message-guarded :
+    rec/guarded-skip :
       ∀ {ξ m G P Pr}
         {Ξ : Vec Behav ξ}
       → [] & [] & Ξ ⊢skip[ m ] P ◂ rec Pr ∶ G
       → m ≡ prod
       → MessageGuarded Pr
-    skip/rec/message-guarded (skip/main td) _ =
-      t/rec/message-guarded td
-    skip/rec/message-guarded (skip/step gr _ ktd mode-gr) _ =
-      skip/rec/message-guarded (ktd gr .proj₂) mode-gr
-    skip/rec/message-guarded (skip/cycle _) ()
+    rec/guarded-skip (skip/main td) _ =
+      rec/guarded td
+    rec/guarded-skip (skip/step gr _ ktd mode-gr) _ =
+      rec/guarded-skip (ktd gr .proj₂) mode-gr
+    rec/guarded-skip (skip/cycle _) ()
 
   τ-depth/session :
     Session
@@ -154,7 +150,7 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → τ-depth/proc Pr′ < τ-depth/proc Pr
     → τ-depth/proc Pr′ < τ-depth/proc (M [ P ]s)
   τ-depth/lookup< proc≡ decrease
-    rewrite reflect-lookup proc≡ =
+    rewrite []=⇒lookup proc≡ =
     decrease
 
   τ-depth/decrease :
@@ -176,7 +172,7 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     sum/map-update< (τ-depth/proc {γ = 0} {δ = 0}) M P
       (τ-depth/lookup< proc≡
         (τ-depth/unfold<rec
-          (t/rec/message-guarded (td/lookup M⊢G proc≡))))
+          (rec/guarded (td/lookup M⊢G proc≡))))
 
   catτ :
     ∀ {M M′ M″}
@@ -194,7 +190,7 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → M [ P ]= Pr
     → done/proc Pr
   lookup-done {P = P} doneM proc≡
-    rewrite sym (reflect-lookup proc≡) =
+    rewrite sym ([]=⇒lookup proc≡) =
     doneM P
 
   still-done :
@@ -247,7 +243,7 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     ended
   ... | yes refl
     rewrite lookup∘update Q M Pr
-          | reflect-lookup proc≡
+          | []=⇒lookup proc≡
     with ended
   ...   | ()
   still-ended {M = M} P
@@ -259,7 +255,7 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     ended
   ... | yes refl
     rewrite lookup∘update Q M Pr′
-          | reflect-lookup proc≡
+          | []=⇒lookup proc≡
     with ended
   ...   | ()
   still-ended {M = M} P (s/rec {Pr = Pr} Q proc≡) ended
@@ -269,7 +265,7 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     ended
   ... | yes refl
     rewrite lookup∘update Q M (unfold/proc Pr)
-          | reflect-lookup proc≡
+          | []=⇒lookup proc≡
     with ended
   ...   | ()
 
@@ -305,11 +301,11 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
              {M = M}
              {P = P}
              M⊢G
-             (lookup-get {V = M} {x = P} proc≡))
+             (lookup⇒[]= P M proc≡))
   ... | etd , _ , _
     with eval-bool etd
   ...   | inj₁ e⇓true =
-    let st = s/if/true P (lookup-get {V = M} {x = P} proc≡) e⇓true
+    let st = s/if/true P (lookup⇒[]= P M proc≡) e⇓true
         M′ , tr , ended =
           final-run/proc
             {M = M [ P ]≔ Pr}
@@ -320,7 +316,7 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
             donePr
     in M′ , s/more st tr , ended
   ...   | inj₂ e⇓false =
-    let st = s/if/false P (lookup-get {V = M} {x = P} proc≡) e⇓false
+    let st = s/if/false P (lookup⇒[]= P M proc≡) e⇓false
         M′ , tr , ended =
           final-run/proc
             {M = M [ P ]≔ Pr′}

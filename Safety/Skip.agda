@@ -44,7 +44,6 @@ module Safety.Skip {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   ... | inj₂ (X′ , eq′) =
     inj₂ (suc X′ , eq′)
 
-
   lookup/weaken-visited :
     ∀ {G H}
       {Ξ : Vec Behav ξ}
@@ -62,7 +61,6 @@ module Safety.Skip {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     with lookup/weaken-visited {Ξ′ = Ξ′} (X , eq)
   ... | X′ , eq′ =
     suc X′ , eq′
-
 
   skip/weaken-visited :
     ∀ {m G H PPr}
@@ -96,17 +94,14 @@ module Safety.Skip {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
         _ , G~H₀  , H₀↝H₁ = stepback/~ G₁~H₁ gr
     in _ , G~H₀ , skip/step H₀↝H₁ P∉α H₁↝H
 
-  transport-arg-ktd :
-    ∀ {B C D : Set}
-      {I I′ : C}
-      {J : D}
-      {A : D → C → Set}
-    → (eq : I ≡ I′)
-    → (ktd : ∀ {I J} → A J I → B)
-    → (x : A J I)
-    → ktd (subst (A J) eq x) ≡ ktd x
-  transport-arg-ktd refl ktd x = refl
-
+  mode/transport :
+    ∀ {G G′ G″ α}
+    → (eq : G′ ≡ G″)
+    → (mode : ∀ {H β} → G -< β >-> H → Mode)
+    → (gr : G -< α >-> G′)
+    → mode (subst (G -< α >->_) eq gr) ≡ mode gr
+  mode/transport refl mode gr =
+    refl
 
   selected-step-mode :
     ∀ {G G′ G″ α}
@@ -117,16 +112,10 @@ module Safety.Skip {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   selected-step-mode {G = G} {α = α} mode G~G′ gr =
     trans
       (cong mode (~R-L/id′ G~G′ gr))
-      (transport-arg-ktd
-        {B = Mode}
-        {C = Behav}
-        {D = Action}
-        {J = α}
-        {A = λ β H → G -< β >-> H}
+      (mode/transport
         (step-deterministic (~R→ G~G′ (~L→ G~G′ gr)) gr)
         mode
         (~R→ G~G′ (~L→ G~G′ gr)))
-
 
   mutual
 
@@ -206,7 +195,6 @@ module Safety.Skip {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     td/bisim Δ~Δ′ G~G′ (t/end done) =
       t/end (done ∘ ∈~ (~sym G~G′))
 
-
   skip-leaf/bisim :
     ∀ {γ δ ξ m G G′ PPr}
       {Leaf : NProc γ δ → Behav → Set}
@@ -235,7 +223,6 @@ module Safety.Skip {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
 
   skip-leaf/bisim _ Ξ~Ξ′ G~G′ (skip/cycle eq) =
     skip/cycle (~trans (lookup/~ᵛ Ξ~Ξ′ _ eq) G~G′)
-
 
   skip/unfold-cycle :
     ∀ {γ δ ξ ξ′ m m′ G H PPr}

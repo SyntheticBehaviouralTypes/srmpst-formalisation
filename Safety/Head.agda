@@ -11,14 +11,13 @@ open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; subst; sym)
 open import Definitions
 
-import SubstitutionProperties
-
 module Safety.Head {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   private
-    module SP = SubstitutionProperties BP
-  open SP
-  open SP.M
-  open SP.M.Subst
+    module M = Definitions.MPST BP
+  open M
+  open M.Subst
+  open import Safety.Skip BP
+  open import Typing.Substitution BP
 
   mutual
 
@@ -80,7 +79,7 @@ module Safety.Head {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
       → [] & [] ⊢p P ◂ unfold/proc Pr ∶ G
 
     t/rec/unfold (t/rec mmg ptd) =
-      proc-subst-lemma (t/rec mmg ptd) ptd
+      typing/subst-proc (t/rec mmg ptd) ptd
 
     t/rec/unfold (t/skip std) =
       t/skip (skip/rec/unfold std)
@@ -211,7 +210,6 @@ module Safety.Head {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   ... | prod , unfolded , _ =
     unfolded
   ... | nonprod , skip/cycle {X = ()} _ , _
-
 
   LeafHead :
     ∀ {γ ξ}
@@ -414,15 +412,14 @@ module Safety.Head {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
       → Γ ⊢head P ◂ Pr ∶ G′
 
     td/head (t/send gr etd td) tr =
-      h/send
-        (skip/advance-step tr gr (∈S refl))
-        etd
-        (td/head td (skip/advance-trace tr gr (∈S refl)))
+      let _ , gr′ , tr′ = skip/advance tr gr (∈S refl)
+      in h/send gr′ etd (td/head td tr′)
     td/head (t/recv gr conts) tr =
-      h/recv (skip/advance-step tr gr (∈R refl)) λ gr″ →
-        td/head
-          (conts (branch/before-step tr gr gr″))
-          (branch/before-trace tr gr gr″)
+      let _ , gr′ , _ = skip/advance tr gr (∈R refl)
+      in
+      h/recv gr′ λ gr″ →
+        let _ , gr₀ , tr₀ = branch/before tr gr gr″
+        in td/head (conts gr₀) tr₀
     td/head (t/skip std) tr =
       cancel/unskip tr std (mainLeaf/head std)
     td/head (t/unskip tr′ td) tr =

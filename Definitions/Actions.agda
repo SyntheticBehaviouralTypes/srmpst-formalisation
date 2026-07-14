@@ -1,23 +1,9 @@
-open import Data.Empty using (⊥-elim)
-open import Data.Fin using (Fin; zero; suc) renaming (_≟_ to _≟f_)
-open import Data.Fin.Subset using (Subset)
-open import Data.Nat using (ℕ ; zero; suc) renaming (_+_ to _+ℕ_)
-open import Data.Product using (Σ-syntax; ∃-syntax; _,_; _×_; proj₁; proj₂)
-open import Data.Sum using (_⊎_; inj₁; inj₂)
-open import Data.Vec using (Vec ; []; _∷_; lookup ; map; tabulate; _[_]≔_)
-open import Data.Vec.Properties using (lookup-map; lookup∘update;
-  lookup∘update′; lookup∘tabulate)
-open import Function  using (_∘_)
-open import Relation.Binary.PropositionalEquality using (_≡_; _≢_; refl; cong;
-  cong₂; sym; subst; ≢-sym)
-open import Relation.Nullary using (Dec; ¬_; ¬?; yes; no; contraposition)
-open import Relation.Nullary.Decidable using (False; toWitnessFalse; True;
-  toWitness)
-
-open import Utils.Fin
-
-open import Definitions.Guard
-open import Definitions.Expr
+open import Data.Fin using (Fin) renaming (_≟_ to _≟f_)
+open import Data.Nat using (ℕ; suc)
+open import Data.Product using (_,_; _×_)
+open import Relation.Binary.PropositionalEquality using (_≡_; _≢_)
+open import Relation.Nullary using (Dec; ¬_; ¬?; yes; no)
+open import Definitions.Expr using (Sort)
 
 module Definitions.Actions (N : ℕ) where
   open import Definitions.Common(N)
@@ -27,7 +13,7 @@ module Definitions.Actions (N : ℕ) where
     field
       sender : Part
       receiver : Part
-  
+
   infix 5 _⟶_
 
   record Choice : Set where
@@ -38,13 +24,13 @@ module Definitions.Actions (N : ℕ) where
       sort : Sort
 
   infix 5 _<_>
-  
+
   record Action : Set where
     constructor _#_
     field
       comm : Comm
       choice : Choice
-  
+
   infix 4 _#_
 
   sender : Action → Part

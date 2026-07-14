@@ -276,7 +276,7 @@ module Definitions.Behav where
 
       -- There should be at most one proof term per transition in your LTS
       -- This is not fundamental, just an artifact of having G -< α >-> G' as
-      -- argument of lemmas. The best would be to make such proof terms 
+      -- argument of lemmas. The best would be to make such proof terms
       -- irrelevant, but I'm concerned that agda will not allow me to pattern
       -- match on it
       step-is-prop :
@@ -356,24 +356,6 @@ module Definitions.Behav where
     ... | G′α , G′↝G′α , G◇↝G′α =
       G′α , G′↝G′α , skip/step Gα↝G◇ P∉β G◇↝G′α
 
-    skip/advance-step :
-      ∀ {G G′ Gα P α}
-      → (tr  : G -[¬ P ]->* G′)
-      → (grα : G -< α >-> Gα)
-      → (P∈α : P ∈α α)
-      → G′ -< α >-> proj₁ (skip/advance tr grα P∈α)
-    skip/advance-step tr grα P∈α =
-      proj₁ (proj₂ (skip/advance tr grα P∈α))
-
-    skip/advance-trace :
-      ∀ {G G′ Gα P α}
-      → (tr  : G -[¬ P ]->* G′)
-      → (grα : G -< α >-> Gα)
-      → (P∈α : P ∈α α)
-      → Gα -[¬ P ]->* proj₁ (skip/advance tr grα P∈α)
-    skip/advance-trace tr grα P∈α =
-      proj₂ (proj₂ (skip/advance tr grα P∈α))
-
     no-new-branch/skip :
       ∀ {G G′ Gᵢ Gⱼ′ γ}
         {cᵢ cⱼ : Choice}
@@ -407,28 +389,7 @@ module Definitions.Behav where
       rewrite step-deterministic grⱼ″ grⱼ′ =
       Gⱼ , grⱼ , trⱼ
 
-    branch/before-step :
-      ∀ {G G′ Gᵢ Gⱼ′ γ}
-        {cᵢ cⱼ : Choice}
-      → (tr   : G -[¬ Comm.receiver γ ]->* G′)
-      → (grᵢ  : G  -< γ # cᵢ >-> Gᵢ)
-      → (grⱼ′ : G′ -< γ # cⱼ >-> Gⱼ′)
-      → G -< γ # cⱼ >-> proj₁ (branch/before tr grᵢ grⱼ′)
-    branch/before-step tr grᵢ grⱼ′ =
-      proj₁ (proj₂ (branch/before tr grᵢ grⱼ′))
-
-    branch/before-trace :
-      ∀ {G G′ Gᵢ Gⱼ′ γ}
-        {cᵢ cⱼ : Choice}
-      → (tr   : G -[¬ Comm.receiver γ ]->* G′)
-      → (grᵢ  : G  -< γ # cᵢ >-> Gᵢ)
-      → (grⱼ′ : G′ -< γ # cⱼ >-> Gⱼ′)
-      → proj₁ (branch/before tr grᵢ grⱼ′)
-          -[¬ Comm.receiver γ ]->* Gⱼ′
-    branch/before-trace tr grᵢ grⱼ′ =
-      proj₂ (proj₂ (branch/before tr grᵢ grⱼ′))
-
-    step-is-prop/eq : 
+    step-is-prop/eq :
       ∀ {G G′ G″ α}
       → (gr : G -< α >-> G′)
       → (gr′ : G -< α >-> G″)
@@ -436,32 +397,17 @@ module Definitions.Behav where
       → gr ≡ subst (G -< α >->_) eq gr′
     step-is-prop/eq gr gr′ refl = step-is-prop gr gr′
 
-    ~R-L/id : 
-      ∀ {G G′ G″ α}
-      → (G~G′ : G ~ G′)
-      → (gr : G -< α >-> G″)
-      → ~R→ G~G′ (~L→ G~G′ gr)
-        ≡ subst 
-            (G -< α >->_)
-            (step-deterministic gr (~R→ G~G′ (~L→ G~G′ gr)))
-            gr
-    ~R-L/id G~G′ gr = 
-      step-is-prop/eq
-        (~R→ G~G′ (~L→ G~G′ gr))
-        gr
-        (step-deterministic gr (~R→ G~G′ (~L→ G~G′ gr)))
-
-    ~R-L/id′ : 
+    ~R-L/id′ :
       ∀ {G G′ G″ α}
       → (G~G′ : G ~ G′)
       → (gr : G -< α >-> G″)
       → gr
-        ≡ subst 
+        ≡ subst
             (G -< α >->_)
             (step-deterministic (~R→ G~G′ (~L→ G~G′ gr)) gr)
             (~R→ G~G′ (~L→ G~G′ gr))
-    ~R-L/id′ G~G′ gr = 
-      step-is-prop/eq 
-        gr 
-        (~R→ G~G′ (~L→ G~G′ gr)) 
+    ~R-L/id′ G~G′ gr =
+      step-is-prop/eq
+        gr
+        (~R→ G~G′ (~L→ G~G′ gr))
         (step-deterministic (~R→ G~G′ (~L→ G~G′ gr)) gr)

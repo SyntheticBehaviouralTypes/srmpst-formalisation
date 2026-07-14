@@ -163,7 +163,6 @@ module MPST {N : ℕ} {B : BTheory N} (BP : BT-Prop B) where
      → (done : ¬ P ∈T G)
      → Γ & Δ ⊢p P ◂ ∅ ∶ G
 
-
   infix 4 _&_&_⊢skip[_]_∶_
 
   _&_&_⊢skip[_]_∶_ :
@@ -238,7 +237,6 @@ module MPST {N : ℕ} {B : BTheory N} (BP : BT-Prop B) where
         {G : Behav}
       → ¬ P ∈T G
       → Γ ⊢head P ◂ ∅ ∶ G
-
 
   infix  4 _&_⊢hskip[_]_∶_
 
@@ -320,7 +318,6 @@ module MPST {N : ℕ} {B : BTheory N} (BP : BT-Prop B) where
       → (gr′ : G -< β >-> H)
       → MainLeaf {Ξ = G ∷ Ξ} td (proj₂ (ktd gr′))
       → MainLeaf td (skip/step gr na ktd ok)
-
 
   ⊢s_∶_ : Session → Behav → Set
   ⊢s M ∶ G = ∀ P → [] & [] ⊢p P ◂ (M [ P ]s) ∶ G

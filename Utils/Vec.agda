@@ -14,8 +14,11 @@ module Utils.Vec where
 cong-suc-fin : ∀ {n} -> (i j : Fin (suc n)) -> (i≢j : suc i ≢ suc j) → i ≢ j
 cong-suc-fin i .i prf refl = ⊥-elim (prf refl)
 
-lookup-not-insertAt : ∀{n}{A : Set}{V : Vec A n}{a : A} ->
-  (i j : Fin (suc n)) -> (i≢j : i ≢ j) -> lookup (insertAt V i a) j ≡ lookup V (punchOut i≢j)
+lookup-not-insertAt :
+  ∀ {n} {A : Set} {V : Vec A n} {a : A}
+  → (i j : Fin (suc n))
+  → (i≢j : i ≢ j)
+  → lookup (insertAt V i a) j ≡ lookup V (punchOut i≢j)
 lookup-not-insertAt zero zero i≢j = ⊥-elim (i≢j refl)
 lookup-not-insertAt zero (suc j) i≢j = refl
 lookup-not-insertAt {V = _ ∷ V} (suc i) zero i≢j = refl
