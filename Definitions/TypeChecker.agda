@@ -1,5 +1,6 @@
 {-# OPTIONS --guardedness #-}
 
+open import Data.Bool using (Bool; true; false; not; T)
 open import Data.Empty using (⊥-elim)
 open import Data.Fin using (Fin)
   renaming (_≟_ to _≟Fin_)
@@ -9,15 +10,18 @@ open import Data.List using (List; []; _∷_)
 open import Data.List.Membership.Propositional using (_∈_)
 import Data.List.Relation.Unary.All as All
 import Data.List.Relation.Unary.Any as Any
-open import Data.Maybe.Base using (Maybe; just; nothing)
-open import Data.Nat using (ℕ; suc; _+_; _*_)
+open import Data.Maybe.Base using (Maybe; just; nothing; is-just)
+open import Data.Nat using (ℕ; zero; suc; _+_; _*_; _≤_)
 import Data.Nat.Properties as Nat
 open import Data.Product
-  using (_×_; Σ-syntax; _,_; proj₁; proj₂)
-open import Data.Vec using (Vec; []; _∷_; lookup)
-open import Relation.Binary.PropositionalEquality using (_≡_; refl; sym; cong; subst)
+  using (_×_; Σ-syntax; ∃-syntax; _,_; proj₁; proj₂)
+open import Data.Unit using (tt)
+open import Data.Vec using (Vec; []; _∷_; lookup; tabulate)
+import Data.Vec.Properties as VecP
+open import Relation.Binary.PropositionalEquality
+  using (_≡_; _≢_; refl; sym; trans; cong; subst)
 open import Relation.Nullary using (Dec; yes; no; ¬_)
-open import Relation.Nullary.Decidable using (T?)
+open import Relation.Nullary.Decidable using (T?; ⌊_⌋; toWitness; fromWitness)
 
 open import Definitions.Behav using (BTheory; WellBehaved)
 open import Definitions.Expr
@@ -71,7 +75,11 @@ module Definitions.TypeChecker where
     open import LTS.Bisimulation N
     open import LTS.Core N
     open import LTS.Decision N using (wellBehaved?)
-    open import LTS.Reachability N using (∈T?)
+    open import LTS.Reachability N
+      using ( ∈T?; reachVia?; reachVia-sound
+            ; PathVia; path/nil; path/cons; pathVia-snoc
+            ; wt; Incl; wt/mono; wt/strict; wt-bound; wt-full
+            ; ≡true→T; T→≡true )
 
     module GraphChecker
       (G : Graph)
@@ -367,23 +375,6 @@ module Definitions.TypeChecker where
       ... | just td | _ = just td
       ... | nothing | result = result
 
-      allMaybe :
-        ∀ {A : Set} {F : A → Set}
-        → (∀ x → Maybe (F x))
-        → (xs : List A)
-        → Maybe (All.All F xs)
-      allMaybe check [] = just All.[]
-      allMaybe check (x ∷ xs)
-        with check x | allMaybe check xs
-      ... | just px | just pxs = just (px All.∷ pxs)
-      ... | _ | _ = nothing
-
-      first :
-        ∀ {A : Set} (xs : List A)
-        → Maybe (Σ[ x ∈ A ] x ∈ xs)
-      first [] = nothing
-      first (x ∷ xs) = just (x , Any.here refl)
-
       InactiveAt : Part → State G → Set
       InactiveAt P s =
         All.All (λ edge → P ∉α proj₁ edge) (edges G s)
@@ -395,72 +386,261 @@ module Definitions.TypeChecker where
           (λ edge → _∉α?_ P (proj₁ edge))
           (edges G s)
 
-      checkSkipStep :
-        ∀ {γ δ ξ}
-        → (Γ : Vec Sort γ)
-        → (Δ : Vec (State G) δ)
-        → (Ξ : Vec (State G) ξ)
-        → (P : Part)
-        → (Pr : Proc γ δ)
-        → (s : State G)
-        → (∀ t →
-            Maybe
-              (Γ & Δ & s ∷ Ξ
-                ⊢skip[ prod ] P ◂ Pr ∶ t))
-        → Maybe
-            (Γ & Δ & Ξ ⊢skip[ prod ] P ◂ Pr ∶ s)
-      checkSkipStep Γ Δ Ξ P Pr s next
-        with first (edges G s)
-        | inactiveAt? P s
-        | allMaybe
-            (λ where (_ , t) → next t)
-            (edges G s)
-      ... | just (_ , selected) | yes inactive | just checked =
-        just
-          (skip/step
-            (listed⇒step {G = G} selected)
-            (λ gr →
-              All.lookup
-                inactive
-                (step⇒listed {G = G} gr))
-            (λ gr →
-              prod ,
-              All.lookup
-                checked
-                (step⇒listed {G = G} gr))
-            refl)
-      ... | _ | _ | _ = nothing
+      -- ════════════════════════════════════════════════════════════════
+      --  Semantic characterization of `⊢skip[ prod ]`  (§3.1, §3.3)
+      --
+      --  A `prod` skip tree rooted at `s` (visited vector `[]`) exists iff
+      --  every state reachable from `s` while staying outside the leaf set
+      --  `L` (the directly-typable states) is P-inactive and can itself
+      --  reach an `L`-state.  This is decidable via the graph reachability
+      --  fixed point (`reachVia?`).  Deciding it replaces the fuelled
+      --  `checkSkip`/`checkSkipStep` search; the constructor direction
+      --  (Theorem B) turns a positive decision into a derivation.
+      -- ════════════════════════════════════════════════════════════════
 
-      -- Cyclic skip proofs additionally require synthesising nonprod leaves.
-      -- This checker currently constructs finite productive skip trees only.
-      checkSkip :
-        ∀ {γ δ ξ}
-        → ℕ
-        → CheckFunction
-        → (Γ : Vec Sort γ)
-        → (Δ : Vec (State G) δ)
-        → (Ξ : Vec (State G) ξ)
-        → (P : Part)
-        → (Pr : Proc γ δ)
-        → (s : State G)
-        → Maybe
-            (Γ & Δ & Ξ ⊢skip[ prod ] P ◂ Pr ∶ s)
-      checkSkip 0 recur Γ Δ Ξ P Pr s = nothing
-      checkSkip (suc fuel) recur Γ Δ Ξ P Pr s
-        with recur Γ Δ P Pr s
-      ... | just td = just (skip/main td)
-      ... | nothing =
-        checkSkipStep Γ Δ Ξ P Pr s λ t →
-          checkSkip fuel recur Γ Δ (s ∷ Ξ) P Pr t
+      private
+        _×-dec_ : ∀ {A B : Set} → Dec A → Dec B → Dec (A × B)
+        yes a ×-dec yes b = yes (a , b)
+        no ¬a ×-dec _     = no λ { (a , _) → ¬a a }
+        _     ×-dec no ¬b = no λ { (_ , b) → ¬b b }
+
+        _→-dec_ : ∀ {A B : Set} → Dec A → Dec B → Dec (A → B)
+        yes _ →-dec yes b = yes (λ _ → b)
+        yes a →-dec no ¬b = no λ f → ¬b (f a)
+        no ¬a →-dec _     = yes λ a → ⊥-elim (¬a a)
+
+        ¬?_ : ∀ {A : Set} → Dec A → Dec (¬ A)
+        ¬? (yes a) = no λ ¬a → ¬a a
+        ¬? (no ¬a) = yes ¬a
+
+        false≢true : false ≢ true
+        false≢true ()
+
+      -- `P not-active-in t` (abstract form) decided through `InactiveAt`.
+      na? : ∀ P t → Dec (P not-active-in t)
+      na? P t with inactiveAt? P t
+      ... | yes inact =
+        yes λ gr → All.lookup inact (step⇒listed {G = G} gr)
+      ... | no ¬inact =
+        no λ na → ¬inact (All.tabulate λ mem → na (listed⇒step {G = G} mem))
+
+      module SkipSem
+        {γ δ}
+        (Γ : Vec Sort γ)
+        (Δ : Vec (State G) δ)
+        (P : Part)
+        (Pr : Proc γ δ)
+        (L : State G → Set)
+        (L? : ∀ t → Dec (L t))
+        (leaf : ∀ t → L t → Γ & Δ ⊢p P ◂ Pr ∶ t)
+        where
+
+        ∉L : State G → Bool
+        ∉L t = not ⌊ L? t ⌋
+
+        -- states reachable from `s` by a path that stays outside `L`
+        NL : State G → State G → Set
+        NL s t = (∃[ n ] PathVia G ∉L s t n) × (¬ L t)
+
+        -- some `L`-state is reachable from `t`
+        ReachL : State G → Set
+        ReachL t = ∃[ ℓ ] (∃[ n ] PathVia G (λ _ → true) t ℓ n) × L ℓ
+
+        SemSkip : State G → Set
+        SemSkip s = ∀ t → NL s t → (P not-active-in t) × ReachL t
+
+        NL? : ∀ s t → Dec (NL s t)
+        NL? s t = (reachVia? G ∉L s t) ×-dec (¬? (L? t))
+
+        ReachL? : ∀ t → Dec (ReachL t)
+        ReachL? t =
+          Fin.any? (λ ℓ → reachVia? G (λ _ → true) t ℓ ×-dec L? ℓ)
+
+        semSkip? : ∀ s → Dec (SemSkip s)
+        semSkip? s =
+          Fin.all? (λ t → NL? s t →-dec (na? P t ×-dec ReachL? t))
+
+        -- ── Theorem B (§3.4): a positive `SemSkip s` yields a `prod` tree ──
+
+        ¬L→T∉L : ∀ {t} → ¬ L t → T (∉L t)
+        ¬L→T∉L {t} ¬Lt with L? t
+        ... | yes Lt = ⊥-elim (¬Lt Lt)
+        ... | no  _  = tt
+
+        -- membership in the visited vector, with the witnessing index
+        memberV? : ∀ {ξ} (w : State G) (Ξ : Vec (State G) ξ)
+          → Dec (∃[ X ] lookup Ξ X ≡ w)
+        memberV? w [] = no λ { (() , _) }
+        memberV? w (x ∷ Ξ) with w ≟Fin x
+        ... | yes refl = yes (F.zero , refl)
+        ... | no w≢x with memberV? w Ξ
+        ...   | yes (X , eq) = yes (F.suc X , eq)
+        ...   | no ¬mem =
+          no λ { (F.zero , eq) → w≢x (sym eq)
+               ; (F.suc X , eq) → ¬mem (X , eq) }
+
+        -- the set of visited states as a Bool vector (the termination measure)
+        mark : ∀ {ξ} → Vec (State G) ξ → Vec Bool (size G)
+        mark Ξ = tabulate (λ x → ⌊ memberV? x Ξ ⌋)
+
+        mark-lookup : ∀ {ξ} (Ξ : Vec (State G) ξ) x
+          → lookup (mark Ξ) x ≡ ⌊ memberV? x Ξ ⌋
+        mark-lookup Ξ x = VecP.lookup∘tabulate _ x
+
+        mem→marked : ∀ {ξ} {Ξ : Vec (State G) ξ} {x}
+          → (∃[ X ] lookup Ξ X ≡ x) → lookup (mark Ξ) x ≡ true
+        mem→marked {Ξ = Ξ} {x} m =
+          trans (mark-lookup Ξ x) (T→≡true (fromWitness m))
+
+        marked→mem : ∀ {ξ} {Ξ : Vec (State G) ξ} {x}
+          → lookup (mark Ξ) x ≡ true → ∃[ X ] lookup Ξ X ≡ x
+        marked→mem {Ξ = Ξ} {x} p =
+          toWitness (≡true→T (trans (sym (mark-lookup Ξ x)) p))
+
+        unmarked : ∀ {ξ} {Ξ : Vec (State G) ξ} {x}
+          → ¬ (∃[ X ] lookup Ξ X ≡ x) → lookup (mark Ξ) x ≡ false
+        unmarked {Ξ = Ξ} {x} ¬m with memberV? x Ξ | mark-lookup Ξ x
+        ... | yes m | _  = ⊥-elim (¬m m)
+        ... | no  _ | eq = eq
+
+        mark-mono : ∀ {ξ} (w : State G) (Ξ : Vec (State G) ξ)
+          → Incl (mark Ξ) (mark (w ∷ Ξ))
+        mark-mono w Ξ i Ti =
+          ≡true→T
+            (mem→marked {Ξ = w ∷ Ξ} {x = i}
+              (cons (marked→mem {Ξ = Ξ} {x = i} (T→≡true Ti))))
+          where cons : (∃[ X ] lookup Ξ X ≡ i)
+                     → ∃[ X′ ] lookup (w ∷ Ξ) X′ ≡ i
+                cons (X , eq) = F.suc X , eq
+
+        mark-push : ∀ {ξ} {w : State G} {Ξ : Vec (State G) ξ}
+          → ¬ (∃[ X ] lookup Ξ X ≡ w)
+          → suc (wt (mark Ξ)) ≤ wt (mark (w ∷ Ξ))
+        mark-push {w = w} {Ξ} w∉ =
+          wt/strict {left = mark Ξ} {right = mark (w ∷ Ξ)}
+            (mark-mono w Ξ) neq
+          where neq : mark Ξ ≢ mark (w ∷ Ξ)
+                neq e = false≢true
+                  (trans (sym (unmarked {Ξ = Ξ} {x = w} w∉))
+                    (trans (cong (λ z → lookup z w) e)
+                           (mem→marked {Ξ = w ∷ Ξ} {x = w} (F.zero , refl))))
+
+        -- extend an NL-certificate through one edge to a non-L successor
+        extNL : ∀ {s t β u} → NL s t
+          → BTheory._-<_>->_ (graphTheory G) t β u → ¬ L u → NL s u
+        extNL ((n , path) , ¬Lt) gr ¬Lu =
+          (suc n , pathVia-snoc G path (¬L→T∉L ¬Lt) gr) , ¬Lu
+
+        module _ (s : State G) (sem : SemSkip s) where
+
+          build : (outer : ℕ) → ∀ {ξ} (Ξ : Vec (State G) ξ) (t : State G)
+                → size G ≤ wt (mark (t ∷ Ξ)) + outer
+                → NL s t
+                → (ℓ : State G) → ∀ {n} → PathVia G (λ _ → true) t ℓ n → L ℓ
+                → Γ & Δ & Ξ ⊢skip[ prod ] P ◂ Pr ∶ t
+          build outer Ξ t inv nlt ℓ path Lℓ with L? t
+          ... | yes Lt = skip/main (leaf t Lt)
+          ... | no ¬Lt with path
+          ...   | path/nil = ⊥-elim (¬Lt Lℓ)
+          ...   | path/cons {u = u*} _ gr rest =
+                  skip/step gr (proj₁ (sem t nlt)) ktd prod-gr
+            where
+              invStep : size G ≤ wt (mark (u* ∷ t ∷ Ξ)) + outer
+              invStep =
+                Nat.≤-trans inv
+                  (Nat.+-monoˡ-≤ outer
+                    (wt/mono {left = mark (t ∷ Ξ)} {right = mark (u* ∷ t ∷ Ξ)}
+                      (mark-mono u* (t ∷ Ξ))))
+
+              ktd : ∀ {G″ β} → BTheory._-<_>->_ (graphTheory G) t β G″
+                  → ∃[ m ] Γ & Δ & (t ∷ Ξ) ⊢skip[ m ] P ◂ Pr ∶ G″
+              ktd {G″} gr′ with L? G″
+              ... | yes LG″ = prod , skip/main (leaf G″ LG″)
+              ... | no ¬LG″ with G″ ≟Fin u*
+              ...   | yes refl =
+                      prod ,
+                      build outer (t ∷ Ξ) u* invStep (extNL nlt gr ¬LG″) ℓ rest Lℓ
+              ...   | no _ with memberV? G″ (t ∷ Ξ)
+              ...     | yes (X , eqX) =
+                        nonprod ,
+                        skip/cycle {X = X} (subst (lookup (t ∷ Ξ) X ~_) eqX ~refl)
+              ...     | no G″∉ = fresh outer inv
+                where
+                  fullEq : size G ≤ wt (mark (t ∷ Ξ)) + zero
+                         → wt (mark (t ∷ Ξ)) ≡ size G
+                  fullEq iz =
+                    Nat.≤-antisym (wt-bound (mark (t ∷ Ξ)))
+                      (subst (size G ≤_) (Nat.+-identityʳ _) iz)
+
+                  fresh : ∀ o → size G ≤ wt (mark (t ∷ Ξ)) + o
+                        → ∃[ m ] Γ & Δ & (t ∷ Ξ) ⊢skip[ m ] P ◂ Pr ∶ G″
+                  fresh zero iz =
+                    ⊥-elim (G″∉ (marked→mem {Ξ = t ∷ Ξ} {x = G″}
+                                   (wt-full {v = mark (t ∷ Ξ)} (fullEq iz) G″)))
+                  fresh (suc o) is =
+                    let nlG″ = extNL nlt gr′ ¬LG″
+                        rl = proj₂ (sem G″ nlG″)
+                        invFresh : size G ≤ wt (mark (G″ ∷ t ∷ Ξ)) + o
+                        invFresh =
+                          Nat.≤-trans
+                            (subst (size G ≤_) (Nat.+-suc _ o) is)
+                            (Nat.+-monoˡ-≤ o (mark-push {w = G″} {Ξ = t ∷ Ξ} G″∉))
+                    in prod ,
+                       build o (t ∷ Ξ) G″ invFresh nlG″
+                         (proj₁ rl) (proj₂ (proj₁ (proj₂ rl))) (proj₂ (proj₂ rl))
+
+              prod-gr : proj₁ (ktd gr) ≡ prod
+              prod-gr with L? u*
+              ... | yes _ = refl
+              ... | no _ with u* ≟Fin u*
+              ...   | yes refl = refl
+              ...   | no ¬p = ⊥-elim (¬p refl)
+
+          theoremB : Γ & Δ & [] ⊢skip[ prod ] P ◂ Pr ∶ s
+          theoremB with L? s
+          ... | yes Ls = skip/main (leaf s Ls)
+          ... | no ¬Ls =
+            let nlt : NL s s
+                nlt = (zero , path/nil) , ¬Ls
+                rl = proj₂ (sem s nlt)
+            in build (size G) [] s
+                 (Nat.m≤n+m (size G) (wt (mark (s ∷ [])))) nlt
+                 (proj₁ rl) (proj₂ (proj₁ (proj₂ rl))) (proj₂ (proj₂ rl))
+
+      -- Extract the witness from a successful `recur` call.
+      fromT : ∀ {A : Set} (m : Maybe A) → T (is-just m) → A
+      fromT (just x) _ = x
+      fromT nothing ()
+
+      -- The skip closure is now a genuine decision procedure.  The leaf set
+      -- `L t` is "`recur` types `t` directly"; it is decidable because `recur`
+      -- returns a `Maybe`.  `semSkip?` decides the finite-graph reachability
+      -- characterisation `SemSkip s`, and `theoremB` turns a positive answer
+      -- into a `prod` skip tree — including the cyclic `skip/cycle` case.
+      checkClosureSkip : CheckFunction → CheckFunction
+      checkClosureSkip recur Γ Δ P Pr s = go (semSkip? s)
+        where
+          L : State G → Set
+          L t = T (is-just (recur Γ Δ P Pr t))
+
+          L? : ∀ t → Dec (L t)
+          L? t = T? (is-just (recur Γ Δ P Pr t))
+
+          leaf : ∀ t → L t → Γ & Δ ⊢p P ◂ Pr ∶ t
+          leaf t lt = fromT (recur Γ Δ P Pr t) lt
+
+          open SkipSem Γ Δ P Pr L L? leaf
+
+          go : Dec (SemSkip s)
+             → Maybe (Γ & Δ ⊢p P ◂ Pr ∶ s)
+          go (yes sem) = just (t/skip (theoremB s sem))
+          go (no _) = nothing
 
       checkClosure : CheckFunction → CheckFunction
       checkClosure recur Γ Δ P Pr s
         with checkPredecessors recur Γ Δ P Pr s (states G)
       ... | just td = just td
-      ... | nothing with
-        checkSkip (suc (size G)) recur Γ Δ [] P Pr s
-      ...   | just std = just (t/skip std)
-      ...   | nothing = nothing
+      ... | nothing = checkClosureSkip recur Γ Δ P Pr s
 
       checkWithFuel : ℕ → CheckFunction
       checkWithFuel 0 Γ Δ P Pr s = nothing

@@ -173,6 +173,14 @@ module LTS.Reachability (N : ℕ) where
   wt-pos {v = b V.∷ v} {F.suc i} p =
     Nat.≤-trans (wt-pos {v = v} {i = i} p) (Nat.m≤n+m (wt v) (bitv b))
 
+  -- A vector at maximal weight has every bit set.
+  wt-full : ∀ {n} {v : Vec Bool n} → wt v ≡ n → ∀ i → lookup v i ≡ true
+  wt-full {v = true V.∷ v} eq F.zero    = refl
+  wt-full {v = true V.∷ v} eq (F.suc i) =
+    wt-full {v = v} (Nat.suc-injective eq) i
+  wt-full {n = suc n} {v = false V.∷ v} eq i =
+    ⊥-elim (Nat.<-irrefl refl (subst (_≤ n) eq (wt-bound v)))
+
   -- ══════════════════════════════════════════════════════════════════
   --  Reachability over a concrete finite graph
   -- ══════════════════════════════════════════════════════════════════
@@ -450,6 +458,12 @@ module LTS.Reachability (N : ℕ) where
       T→≡true
         (converge ok s n t
           (≡true→T (complete-aux ok (startMark s) n (startMark-marks s) path Nat.≤-refl)))
+
+    reachVia? : ∀ ok s t → Dec (∃[ n ] PathVia ok s t n)
+    reachVia? ok s t with T? (lookup (reachVia ok s) t)
+    ... | yes p = yes (reachVia-sound ok s (T→≡true p))
+    ... | no ¬p =
+      no λ { (n , path) → ¬p (≡true→T (reachVia-complete ok s path)) }
 
     -- ══════════════════════════════════════════════════════════════
     --  Exact participation:  P ∈T s  ⇔  reach a P-active edge
