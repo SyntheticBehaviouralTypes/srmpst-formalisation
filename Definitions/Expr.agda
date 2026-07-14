@@ -89,6 +89,9 @@ s/nat≢s/bool ()
 s/nat≢s/unit : s/nat ≢ s/unit
 s/nat≢s/unit ()
 
+s/unit≢s/bool : s/unit ≢ s/bool
+s/unit≢s/bool ()
+
 -- Expression typing assigns at most one sort.  Needed to refute a typing of
 -- `minus1 E` / `is-zero E` once `E` is known to have a sort other than `s/nat`.
 ⊢e-unique : ∀ {γ} {Γ : Vec Sort γ} {E : Exp γ} {S S′}

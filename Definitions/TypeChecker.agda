@@ -1,7 +1,7 @@
 {-# OPTIONS --guardedness #-}
 
 open import Data.Bool using (Bool; true; false; not; T)
-open import Data.Empty using (⊥-elim)
+open import Data.Empty using (⊥; ⊥-elim)
 open import Data.Fin using (Fin)
   renaming (_≟_ to _≟Fin_)
 import Data.Fin as F
@@ -11,10 +11,11 @@ open import Data.List.Membership.Propositional using (_∈_)
 import Data.List.Relation.Unary.All as All
 import Data.List.Relation.Unary.Any as Any
 open import Data.Maybe.Base using (Maybe; just; nothing; is-just)
-open import Data.Nat using (ℕ; zero; suc; _+_; _*_; _≤_)
+open import Data.Nat using (ℕ; zero; suc; _+_; _*_; _≤_; z≤n; s≤s)
 import Data.Nat.Properties as Nat
 open import Data.Product
   using (_×_; Σ-syntax; ∃-syntax; _,_; proj₁; proj₂)
+open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.Unit using (tt)
 open import Data.Vec using (Vec; []; _∷_; lookup; tabulate)
 import Data.Vec.Properties as VecP
@@ -78,6 +79,8 @@ module Definitions.TypeChecker where
     open import LTS.Reachability N
       using ( ∈T?; reachVia?; reachVia-sound
             ; PathVia; path/nil; path/cons; pathVia-snoc
+            ; PathViaP; pathP/nil; pathP/cons; pathViaP-snoc
+            ; pathViaP→pathVia; pathVia→pathViaP; pathViaP-map
             ; wt; Incl; wt/mono; wt/strict; wt-bound; wt-full
             ; ≡true→T; T→≡true )
 
@@ -409,6 +412,11 @@ module Definitions.TypeChecker where
         yes a →-dec no ¬b = no λ f → ¬b (f a)
         no ¬a →-dec _     = yes λ a → ⊥-elim (¬a a)
 
+        _⊎-dec_ : ∀ {A B : Set} → Dec A → Dec B → Dec (A ⊎ B)
+        yes a ⊎-dec _     = yes (inj₁ a)
+        no _  ⊎-dec yes b = yes (inj₂ b)
+        no ¬a ⊎-dec no ¬b = no λ { (inj₁ a) → ¬a a ; (inj₂ b) → ¬b b }
+
         ¬?_ : ∀ {A : Set} → Dec A → Dec (¬ A)
         ¬? (yes a) = no λ ¬a → ¬a a
         ¬? (no ¬a) = yes ¬a
@@ -424,6 +432,67 @@ module Definitions.TypeChecker where
       ... | no ¬inact =
         no λ na → ¬inact (All.tabulate λ mem → na (listed⇒step {G = G} mem))
 
+      -- ── Predicate-form semantic skip (§3.1) ──
+      --
+      --  These are phrased over a *bare* predicate `L : State G → Set` (no
+      --  decidability assumed), so `SemSkipP L P s` can be a premise of the
+      --  algorithmic judgment `Alg` (§4), whose leaf set `L = Alg k` is not yet
+      --  known to be decidable when `Alg (suc k)` is formed.  The paths avoid
+      --  `L` via the predicate filter `PathViaP` rather than a Bool mark.
+      --  `SkipSem` (below) supplies the decision and the constructor, bridging
+      --  to the Bool reachability fixed point through `L?`.
+
+      NLP : (State G → Set) → State G → State G → Set
+      NLP L s t = PathViaP G (λ u → ¬ L u) s t × ¬ L t
+
+      ReachLP : (State G → Set) → State G → Set
+      ReachLP L t = ∃[ ℓ ] (∃[ n ] PathVia G (λ _ → true) t ℓ n) × L ℓ
+
+      SemSkipP : (State G → Set) → Part → State G → Set
+      SemSkipP L P s =
+        ∀ t → NLP L s t → (P not-active-in t) × ReachLP L t
+
+      -- ── Deciding `SemSkipP` (§3.3) ──
+      --
+      --  Needs only the leaf predicate and its decision (no leaf *witnesses*),
+      --  so it can be run with `L = Alg k` before soundness is available (§4).
+      module SkipDecide
+        (L : State G → Set)
+        (L? : ∀ t → Dec (L t))
+        (P : Part)
+        where
+
+        ∉L : State G → Bool
+        ∉L t = not ⌊ L? t ⌋
+
+        -- ── the Bool mark and the predicate filter agree ──
+        ¬L→T∉L : ∀ {t} → ¬ L t → T (∉L t)
+        ¬L→T∉L {t} ¬Lt with L? t
+        ... | yes Lt = ⊥-elim (¬Lt Lt)
+        ... | no  _  = tt
+
+        T∉L→¬L : ∀ {t} → T (∉L t) → ¬ L t
+        T∉L→¬L {t} with L? t
+        ... | no ¬Lt = λ _ → ¬Lt
+        ... | yes _  = λ h → ⊥-elim h
+
+        -- decide the predicate-filtered reachability via the Bool fixed point
+        pathViaP? : ∀ s t → Dec (PathViaP G (λ u → ¬ L u) s t)
+        pathViaP? s t with reachVia? G ∉L s t
+        ... | yes (_ , pv) = yes (pathVia→pathViaP G (λ _ → T∉L→¬L) pv)
+        ... | no ¬pv = no λ pvp → ¬pv (pathViaP→pathVia G (λ _ → ¬L→T∉L) pvp)
+
+        NL? : ∀ s t → Dec (NLP L s t)
+        NL? s t = pathViaP? s t ×-dec (¬? (L? t))
+
+        ReachL? : ∀ t → Dec (ReachLP L t)
+        ReachL? t =
+          Fin.any? (λ ℓ → reachVia? G (λ _ → true) t ℓ ×-dec L? ℓ)
+
+        semSkip? : ∀ s → Dec (SemSkipP L P s)
+        semSkip? s =
+          Fin.all? (λ t → NL? s t →-dec (na? P t ×-dec ReachL? t))
+
       module SkipSem
         {γ δ}
         (Γ : Vec Sort γ)
@@ -435,37 +504,18 @@ module Definitions.TypeChecker where
         (leaf : ∀ t → L t → Γ & Δ ⊢p P ◂ Pr ∶ t)
         where
 
-        ∉L : State G → Bool
-        ∉L t = not ⌊ L? t ⌋
-
         -- states reachable from `s` by a path that stays outside `L`
         NL : State G → State G → Set
-        NL s t = (∃[ n ] PathVia G ∉L s t n) × (¬ L t)
+        NL = NLP L
 
         -- some `L`-state is reachable from `t`
         ReachL : State G → Set
-        ReachL t = ∃[ ℓ ] (∃[ n ] PathVia G (λ _ → true) t ℓ n) × L ℓ
+        ReachL = ReachLP L
 
         SemSkip : State G → Set
-        SemSkip s = ∀ t → NL s t → (P not-active-in t) × ReachL t
-
-        NL? : ∀ s t → Dec (NL s t)
-        NL? s t = (reachVia? G ∉L s t) ×-dec (¬? (L? t))
-
-        ReachL? : ∀ t → Dec (ReachL t)
-        ReachL? t =
-          Fin.any? (λ ℓ → reachVia? G (λ _ → true) t ℓ ×-dec L? ℓ)
-
-        semSkip? : ∀ s → Dec (SemSkip s)
-        semSkip? s =
-          Fin.all? (λ t → NL? s t →-dec (na? P t ×-dec ReachL? t))
+        SemSkip = SemSkipP L P
 
         -- ── Theorem B (§3.4): a positive `SemSkip s` yields a `prod` tree ──
-
-        ¬L→T∉L : ∀ {t} → ¬ L t → T (∉L t)
-        ¬L→T∉L {t} ¬Lt with L? t
-        ... | yes Lt = ⊥-elim (¬Lt Lt)
-        ... | no  _  = tt
 
         -- membership in the visited vector, with the witnessing index
         memberV? : ∀ {ξ} (w : State G) (Ξ : Vec (State G) ξ)
@@ -528,8 +578,8 @@ module Definitions.TypeChecker where
         -- extend an NL-certificate through one edge to a non-L successor
         extNL : ∀ {s t β u} → NL s t
           → BTheory._-<_>->_ (graphTheory G) t β u → ¬ L u → NL s u
-        extNL ((n , path) , ¬Lt) gr ¬Lu =
-          (suc n , pathVia-snoc G path (¬L→T∉L ¬Lt) gr) , ¬Lu
+        extNL (path , ¬Lt) gr ¬Lu =
+          pathViaP-snoc G path ¬Lt gr , ¬Lu
 
         module _ (s : State G) (sem : SemSkip s) where
 
@@ -601,7 +651,7 @@ module Definitions.TypeChecker where
           ... | yes Ls = skip/main (leaf s Ls)
           ... | no ¬Ls =
             let nlt : NL s s
-                nlt = (zero , path/nil) , ¬Ls
+                nlt = pathP/nil , ¬Ls
                 rl = proj₂ (sem s nlt)
             in build (size G) [] s
                  (Nat.m≤n+m (size G) (wt (mark (s ∷ [])))) nlt
@@ -618,7 +668,7 @@ module Definitions.TypeChecker where
       -- characterisation `SemSkip s`, and `theoremB` turns a positive answer
       -- into a `prod` skip tree — including the cyclic `skip/cycle` case.
       checkClosureSkip : CheckFunction → CheckFunction
-      checkClosureSkip recur Γ Δ P Pr s = go (semSkip? s)
+      checkClosureSkip recur Γ Δ P Pr s = go (SkipDecide.semSkip? L L? P s)
         where
           L : State G → Set
           L t = T (is-just (recur Γ Δ P Pr t))
@@ -631,7 +681,7 @@ module Definitions.TypeChecker where
 
           open SkipSem Γ Δ P Pr L L? leaf
 
-          go : Dec (SemSkip s)
+          go : Dec (SemSkipP L P s)
              → Maybe (Γ & Δ ⊢p P ◂ Pr ∶ s)
           go (yes sem) = just (t/skip (theoremB s sem))
           go (no _) = nothing
@@ -655,6 +705,248 @@ module Definitions.TypeChecker where
         checkWithFuel
           (suc (size G) * processFuel Pr)
           Γ Δ P Pr
+
+      -- ════════════════════════════════════════════════════════════════
+      --  §4: the bounded algorithmic judgment `Alg`
+      --
+      --  `Alg k` mirrors the fuelled checker as a *proposition* so that fuel
+      --  exhaustion is an honest refutation (`Alg 0 = ⊥`) rather than an
+      --  inconclusive `nothing`.  It is a recursive *function* on the fuel,
+      --  not a datatype: the skip premise `SemSkipP (Alg k)` filters paths by
+      --  `¬ Alg k`, which violates strict positivity for a datatype but is
+      --  fine for a function whose recursion is on the fuel.
+      --
+      --    Alg (suc k) = Direct (Alg k)          -- syntax-directed rule
+      --                ⊎ (one unskip STEP to a predecessor typed by Alg k)
+      --                ⊎ SemSkipP (Alg k)         -- a skip round (§3)
+      --
+      --  `checkWithFuelD` decides it exactly and `alg-sound` maps it back to
+      --  the declarative judgment.
+      -- ════════════════════════════════════════════════════════════════
+
+      Pred : Set₁
+      Pred = ∀ {γ δ} → Vec Sort γ → Vec (State G) δ
+           → Part → Proc γ δ → State G → Set
+
+      -- decide `~` on states via the bisimulation checker
+      bisim?~ : ∀ x y → Dec (BTheory._~_ (graphTheory G) x y)
+      bisim?~ x y with T? (bisim? G x y)
+      ... | yes b = yes (sound (bisimulationCorrect G) b)
+      ... | no ¬b = no λ r → ¬b (complete (bisimulationCorrect G) r)
+
+      -- receive continuation, with the leaf predicate `L` at each branch
+      RecvAtL :
+        Pred → ∀ {γ δ I}
+        → Vec Sort γ → Vec (State G) δ
+        → (P Q : Part) → Vec (Proc (suc γ) δ) (suc I)
+        → Edge (size G) → Set
+      RecvAtL L Γ Δ P Q Br (α , t) =
+        ∀ {j U} → α ≡ (P ⟶ Q # j < U >) → L (U ∷ Γ) Δ Q (lookup Br j) t
+
+      -- the syntax-directed layer, parameterised by the leaf predicate `L`
+      Direct : Pred → Pred
+      Direct L Γ Δ P (Q ! i < E >∙ Pr) s =
+        Σ[ S ∈ Sort ] Σ[ t ∈ State G ]
+          (Γ ⊢e E ∶ S)
+          × BTheory._-<_>->_ (graphTheory G) s (P ⟶ Q # i < S >) t
+          × L Γ Δ P Pr t
+      Direct L Γ Δ Q (Σ_？[_]·_ P {I = I} S Br) s =
+        RecvWitness P Q I (edges G s)
+        × All.All (RecvAtL L Γ Δ P Q Br) (edges G s)
+      Direct L Γ Δ P (ifp E then Pr else Pr′) s =
+        (Γ ⊢e E ∶ s/bool) × L Γ Δ P Pr s × L Γ Δ P Pr′ s
+      Direct L Γ Δ P (rec Pr) s =
+        MessageGuarded Pr × L Γ (s ∷ Δ) P Pr s
+      Direct L Γ Δ P (v X) s =
+        BTheory._~_ (graphTheory G) (lookup Δ X) s
+      Direct L Γ Δ P ∅ s = ¬ P ∈T s
+
+      -- deciding a single receive continuation
+      recvAtL? :
+        (L : Pred)
+        → (recur : ∀ {γ δ} (Γ : Vec Sort γ) (Δ : Vec (State G) δ)
+                    (P : Part) (Pr : Proc γ δ) (s : State G)
+                    → Dec (L Γ Δ P Pr s))
+        → ∀ {γ δ I} (Γ : Vec Sort γ) (Δ : Vec (State G) δ)
+            (P Q : Part) (Br : Vec (Proc (suc γ) δ) (suc I)) (e : Edge (size G))
+        → Dec (RecvAtL L Γ Δ P Q Br e)
+      recvAtL? L recur Γ Δ P Q Br (α , t) with matchRecv? P Q _ α
+      ... | no noMatch =
+        yes λ { {j} {U} eq → ⊥-elim (noMatch (j , U , eq)) }
+      ... | yes (j , U , refl) with recur (U ∷ Γ) Δ Q (lookup Br j) t
+      ...   | yes a = yes λ { refl → a }
+      ...   | no ¬a = no λ f → ¬a (f refl)
+
+      -- deciding the syntax-directed layer, with full refutations
+      direct? :
+        (L : Pred)
+        → (recur : ∀ {γ δ} (Γ : Vec Sort γ) (Δ : Vec (State G) δ)
+                    (P : Part) (Pr : Proc γ δ) (s : State G)
+                    → Dec (L Γ Δ P Pr s))
+        → ∀ {γ δ} (Γ : Vec Sort γ) (Δ : Vec (State G) δ)
+            (P : Part) (Pr : Proc γ δ) (s : State G)
+        → Dec (Direct L Γ Δ P Pr s)
+      direct? L recur Γ Δ P (Q ! i < E >∙ Pr) s
+        with inferExpression Γ E
+      ... | no ¬E = no λ { (S , _ , etd , _ , _) → ¬E (S , etd) }
+      ... | yes (S , etd) with findStep s (P ⟶ Q # i < S >)
+      ...   | no ¬st =
+        no λ { (_ , t , etd′ , gr , _) →
+          ¬st (t , subst
+                     (λ σ → BTheory._-<_>->_ (graphTheory G) s
+                              (P ⟶ Q # i < σ >) t)
+                     (⊢e-unique etd′ etd) gr) }
+      ...   | yes (t , gr) with recur Γ Δ P Pr t
+      ...     | yes a = yes (S , t , etd , gr , a)
+      ...     | no ¬a =
+        no λ { (_ , t′ , etd′ , gr′ , a′) →
+          ¬a (subst (λ u → L Γ Δ P Pr u)
+                (step-deterministic
+                  (subst
+                    (λ σ → BTheory._-<_>->_ (graphTheory G) s
+                             (P ⟶ Q # i < σ >) t′)
+                    (⊢e-unique etd′ etd) gr′)
+                  gr)
+                a′) }
+      direct? L recur Γ Δ Q (Σ_？[_]·_ P {I = I} S Br) s
+        with findRecv P Q I (edges G s)
+        | All.all? (recvAtL? L recur Γ Δ P Q Br) (edges G s)
+      ... | no ¬rw | _ = no λ { (rw , _) → ¬rw rw }
+      ... | yes _ | no ¬all = no λ { (_ , all) → ¬all all }
+      ... | yes rw | yes all = yes (rw , all)
+      direct? L recur Γ Δ P (ifp E then Pr else Pr′) s
+        with inferExpression Γ E
+        | recur Γ Δ P Pr s
+        | recur Γ Δ P Pr′ s
+      ... | yes (s/bool , etd) | yes a | yes a′ = yes (etd , a , a′)
+      ... | yes (s/bool , _) | no ¬a | _ =
+        no λ { (_ , a , _) → ¬a a }
+      ... | yes (s/bool , _) | yes _ | no ¬a′ =
+        no λ { (_ , _ , a′) → ¬a′ a′ }
+      ... | yes (s/nat , etd) | _ | _ =
+        no λ { (etd′ , _ , _) → s/nat≢s/bool (⊢e-unique etd etd′) }
+      ... | yes (s/unit , etd) | _ | _ =
+        no λ { (etd′ , _ , _) → s/unit≢s/bool (⊢e-unique etd etd′) }
+      ... | no ¬E | _ | _ =
+        no λ { (etd′ , _ , _) → ¬E (s/bool , etd′) }
+      direct? L recur Γ Δ P (rec Pr) s
+        with messageGuarded? Pr | recur Γ (s ∷ Δ) P Pr s
+      ... | yes mg | yes a = yes (mg , a)
+      ... | no ¬mg | _ = no λ { (mg , _) → ¬mg mg }
+      ... | yes _ | no ¬a = no λ { (_ , a) → ¬a a }
+      direct? L recur Γ Δ P (v X) s = bisim?~ (lookup Δ X) s
+      direct? L recur Γ Δ P ∅ s = ¬? (∈T? G P s)
+
+      -- soundness of the syntax-directed layer
+      direct-sound :
+        (L : Pred)
+        → (leafSound : ∀ {γ δ} {Γ : Vec Sort γ} {Δ : Vec (State G) δ}
+                        {P} {Pr : Proc γ δ} {s}
+                      → L Γ Δ P Pr s → Γ & Δ ⊢p P ◂ Pr ∶ s)
+        → ∀ {γ δ} (Γ : Vec Sort γ) (Δ : Vec (State G) δ)
+            (P : Part) (Pr : Proc γ δ) (s : State G)
+        → Direct L Γ Δ P Pr s → Γ & Δ ⊢p P ◂ Pr ∶ s
+      direct-sound L ls Γ Δ P (Q ! i < E >∙ Pr) s (S , t , etd , gr , a) =
+        t/send gr etd (ls a)
+      direct-sound L ls Γ Δ Q (Σ_？[_]·_ P {I = I} S Br) s
+        ((j , U , t , member) , all) =
+        t/recv (listed⇒step {G = G} member)
+               (λ gr′ → ls (All.lookup all (step⇒listed {G = G} gr′) refl))
+      direct-sound L ls Γ Δ P (ifp E then Pr else Pr′) s (etd , a , a′) =
+        t/if etd (ls a) (ls a′)
+      direct-sound L ls Γ Δ P (rec Pr) s (mg , a) = t/rec mg (ls a)
+      direct-sound L ls Γ Δ P (v X) s eq = t/var eq
+      direct-sound L ls Γ Δ P ∅ s ¬in = t/end ¬in
+
+      -- ── the judgment, its decision, and its soundness ──
+
+      Alg : ℕ → Pred
+      checkWithFuelD :
+        ∀ k {γ δ} (Γ : Vec Sort γ) (Δ : Vec (State G) δ)
+          (P : Part) (Pr : Proc γ δ) (s : State G)
+        → Dec (Alg k Γ Δ P Pr s)
+      alg-sound :
+        ∀ k {γ δ} {Γ : Vec Sort γ} {Δ : Vec (State G) δ}
+          {P} {Pr : Proc γ δ} {s}
+        → Alg k Γ Δ P Pr s → Γ & Δ ⊢p P ◂ Pr ∶ s
+
+      Alg zero    Γ Δ P Pr s = ⊥
+      Alg (suc k) Γ Δ P Pr s =
+          Direct (Alg k) Γ Δ P Pr s
+        ⊎ (Σ[ r ∈ State G ] Incoming P s (edges G r) × Alg k Γ Δ P Pr r)
+        ⊎ SemSkipP (Alg k Γ Δ P Pr) P s
+
+      checkWithFuelD zero Γ Δ P Pr s = no λ ()
+      checkWithFuelD (suc k) Γ Δ P Pr s =
+        direct? (Alg k) (checkWithFuelD k) Γ Δ P Pr s
+          ⊎-dec
+            ( Fin.any? (λ r → findIncoming P s (edges G r)
+                                ×-dec checkWithFuelD k Γ Δ P Pr r)
+              ⊎-dec
+              SkipDecide.semSkip?
+                (Alg k Γ Δ P Pr) (checkWithFuelD k Γ Δ P Pr) P s )
+
+      alg-sound zero ()
+      alg-sound (suc k) {Γ = Γ} {Δ} {P} {Pr} {s} (inj₁ d) =
+        direct-sound (Alg k) (alg-sound k) Γ Δ P Pr s d
+      alg-sound (suc k) (inj₂ (inj₁ (r , (α , member , P∉α) , a))) =
+        t/unskip (skip/one (listed⇒step {G = G} member) P∉α) (alg-sound k a)
+      alg-sound (suc k) {Γ = Γ} {Δ} {P} {Pr} {s} (inj₂ (inj₂ sem)) =
+        t/skip
+          (SkipSem.theoremB Γ Δ P Pr
+            (Alg k Γ Δ P Pr) (checkWithFuelD k Γ Δ P Pr) (λ _ → alg-sound k)
+            s sem)
+
+      -- ── Monotonicity in the fuel (§4; used by completeness §6) ──
+
+      -- `Direct` is covariant in its leaf predicate (all `L`-occurrences are
+      -- positive).
+      direct-mono :
+        {L L′ : Pred}
+        → (mp : ∀ {γ δ} {Γ : Vec Sort γ} {Δ : Vec (State G) δ}
+                  {P} {Pr : Proc γ δ} {s}
+              → L Γ Δ P Pr s → L′ Γ Δ P Pr s)
+        → ∀ {γ δ} (Γ : Vec Sort γ) (Δ : Vec (State G) δ)
+            (P : Part) (Pr : Proc γ δ) (s : State G)
+        → Direct L Γ Δ P Pr s → Direct L′ Γ Δ P Pr s
+      direct-mono mp Γ Δ P (Q ! i < E >∙ Pr) s (S , t , etd , gr , a) =
+        S , t , etd , gr , mp a
+      direct-mono mp Γ Δ Q (Σ_？[_]·_ P {I = I} S Br) s (rw , all) =
+        rw , All.map (λ f {j} {U} eq → mp (f eq)) all
+      direct-mono mp Γ Δ P (ifp E then Pr else Pr′) s (etd , a , a′) =
+        etd , mp a , mp a′
+      direct-mono mp Γ Δ P (rec Pr) s (mg , a) = mg , mp a
+      direct-mono mp Γ Δ P (v X) s eq = eq
+      direct-mono mp Γ Δ P ∅ s ¬in = ¬in
+
+      -- `SemSkipP` is monotone (§3.2, S2): a bigger leaf set is easier to
+      -- reach and harder to avoid.
+      reachLP-mono :
+        {L L′ : State G → Set} → (∀ {u} → L u → L′ u)
+        → ∀ {t} → ReachLP L t → ReachLP L′ t
+      reachLP-mono mp (ℓ , path , Lℓ) = ℓ , path , mp Lℓ
+
+      semSkipP-mono :
+        {L L′ : State G → Set} → (∀ {u} → L u → L′ u)
+        → ∀ {P s} → SemSkipP L P s → SemSkipP L′ P s
+      semSkipP-mono mp sem t (pvp′ , ¬L′t) =
+        let na×r = sem t
+                     ( pathViaP-map G (λ _ ¬L′u Lu → ¬L′u (mp Lu)) pvp′
+                     , λ Lt → ¬L′t (mp Lt) )
+        in proj₁ na×r , reachLP-mono mp (proj₂ na×r)
+
+      alg-mono :
+        ∀ {k k′} → k ≤ k′
+        → ∀ {γ δ} {Γ : Vec Sort γ} {Δ : Vec (State G) δ}
+            {P} {Pr : Proc γ δ} {s}
+        → Alg k Γ Δ P Pr s → Alg k′ Γ Δ P Pr s
+      alg-mono z≤n ()
+      alg-mono (s≤s le) {Γ = Γ} {Δ} {P} {Pr} {s} (inj₁ d) =
+        inj₁ (direct-mono (alg-mono le) Γ Δ P Pr s d)
+      alg-mono (s≤s le) (inj₂ (inj₁ (r , inc , a))) =
+        inj₂ (inj₁ (r , inc , alg-mono le a))
+      alg-mono (s≤s le) (inj₂ (inj₂ sem)) =
+        inj₂ (inj₂ (semSkipP-mono (alg-mono le) sem))
 
       -- Success is a declarative derivation. Until skip/cycle is synthesised,
       -- `nothing` is inconclusive rather than evidence of non-typability.

@@ -293,6 +293,57 @@ module LTS.Reachability (N : ℕ) where
     pathVia-snoc (path/cons oks gr′ rest) oku gr =
       path/cons oks gr′ (pathVia-snoc rest oku gr)
 
+    -- ── Predicate-filtered paths ──
+    --
+    -- Same as `PathVia`, but the filter is a `Set`-valued predicate `Q` on the
+    -- states strictly before the target.  Needed to phrase the semantic skip
+    -- predicate over a *bare* predicate `L` (its filter is `λ u → ¬ L u`),
+    -- without appealing to the decidability of `L` — which is essential when
+    -- `L` is the algorithmic judgment `Alg k` itself (§4).
+
+    data PathViaP (Q : State G → Set)
+      : State G → State G → Set where
+      pathP/nil  : ∀ {s} → PathViaP Q s s
+      pathP/cons :
+        ∀ {s α u t}
+        → Q s → Step s α u → PathViaP Q u t
+        → PathViaP Q s t
+
+    pathViaP-snoc :
+      ∀ {Q s u t α}
+      → PathViaP Q s u → Q u → Step u α t
+      → PathViaP Q s t
+    pathViaP-snoc pathP/nil qu gr = pathP/cons qu gr pathP/nil
+    pathViaP-snoc (pathP/cons qs gr′ rest) qu gr =
+      pathP/cons qs gr′ (pathViaP-snoc rest qu gr)
+
+    -- covariance in the filter predicate
+    pathViaP-map :
+      ∀ {Q Q′ s t}
+      → (∀ u → Q u → Q′ u)
+      → PathViaP Q s t → PathViaP Q′ s t
+    pathViaP-map f pathP/nil = pathP/nil
+    pathViaP-map f (pathP/cons qs gr rest) =
+      pathP/cons (f _ qs) gr (pathViaP-map f rest)
+
+    -- bridges between the two filter representations
+    pathViaP→pathVia :
+      ∀ {Q ok s t}
+      → (∀ u → Q u → T (ok u))
+      → PathViaP Q s t → ∃[ n ] PathVia ok s t n
+    pathViaP→pathVia f pathP/nil = zero , path/nil
+    pathViaP→pathVia f (pathP/cons qs gr rest)
+      with pathViaP→pathVia f rest
+    ... | n , p = suc n , path/cons (f _ qs) gr p
+
+    pathVia→pathViaP :
+      ∀ {Q ok s t n}
+      → (∀ u → T (ok u) → Q u)
+      → PathVia ok s t n → PathViaP Q s t
+    pathVia→pathViaP g path/nil = pathP/nil
+    pathVia→pathViaP g (path/cons oks gr rest) =
+      pathP/cons (g _ oks) gr (pathVia→pathViaP g rest)
+
     -- ── Bridge to the declarative `Reachable` relation ──
 
     pathVia→reachable :
