@@ -1,7 +1,9 @@
 open import Data.Empty using (⊥-elim)
-open import Data.Nat using (suc)
+open import Data.Nat using (ℕ; _<_; suc)
+open import Data.Nat.Properties using (+-monoˡ-<; +-monoʳ-<)
 open import Data.Fin using (Fin ; zero ; suc ; punchOut ; punchIn)
-open import Data.Vec using (Vec ; _[_]=_ ; lookup ; _∷_ ; insertAt)
+open import Data.Vec
+  using (Vec; _[_]=_; _[_]≔_; lookup; _∷_; insertAt; map; sum)
 -- open import Relation.Nullary using (Dec; yes; no ; ¬_)
 open import Relation.Binary.PropositionalEquality using (_≡_ ; refl ; _≢_)
 
@@ -19,3 +21,15 @@ lookup-not-insertAt zero (suc j) i≢j = refl
 lookup-not-insertAt {V = _ ∷ V} (suc i) zero i≢j = refl
 lookup-not-insertAt {V = _ ∷ V} (suc i) (suc j) i≢j =
   lookup-not-insertAt {V = V} i j (cong-suc-fin i j i≢j )
+
+sum/map-update< :
+  ∀ {A : Set} {n} {y : A}
+  → (f : A → ℕ)
+  → (xs : Vec A n)
+  → (i : Fin n)
+  → f y < f (lookup xs i)
+  → sum (map f (xs [ i ]≔ y)) < sum (map f xs)
+sum/map-update< f (_ ∷ xs) zero y<x =
+  +-monoˡ-< (sum (map f xs)) y<x
+sum/map-update< f (x ∷ xs) (suc i) y<x =
+  +-monoʳ-< (f x) (sum/map-update< f xs i y<x)

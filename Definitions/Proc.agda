@@ -41,17 +41,6 @@ module Definitions.Proc (N : ℕ) where
     done-∅ : done/proc ∅
     done-if : ∀{E Pr Pr'} -> done/proc Pr -> done/proc Pr' -> done/proc (ifp E then Pr else Pr')
 
-  done? : ∀{δ γ}→ (Pr : Proc δ γ) → Dec (done/proc Pr)
-  done? (x ! x₁ < x₂ >∙ Pr) = no (λ ())
-  done? (Σ x ？[ x₁ ]· x₂) = no (λ ())
-  done? (ifp x then Pr else Pr₁) with done? Pr | done? Pr₁
-  ... | yes d1 | yes d2 = yes (done/proc.done-if d1 d2)
-  ... | yes d1 | no  d2 = no (λ{ (done-if x₁ x₂) → d2 x₂ })
-  ... | no d1  | _      = no (λ{ (done-if x₁ x₂) → d1 x₁ })
-  done? (rec Pr) = no (λ ())
-  done? (v x) = no (λ ())
-  done? ∅ = yes done/proc.done-∅
-
   module Subst where
     mutual
       weaken/proc : ∀ {γ δ} ->  Proc γ δ -> (X : Fin (suc δ)) -> Proc γ (suc δ)
@@ -112,9 +101,6 @@ module Definitions.Proc (N : ℕ) where
       [ E / y ]ech [] = []
       [ E / y ]ech (Pr' ∷ Br) = ([ E / suc y ]e Pr') ∷ ([ E / y ]ech Br)
 
-    _[_]eb=_ : ∀{I γ δ} -> Vec (Proc (suc γ) δ) I -> Fin I -> Value -> Proc γ δ
-    Brs [ i ]eb= V = [ val V / zero ]e (lu Brs i)
-
   unfold/proc : ∀{γ} -> Proc γ 1 -> Proc γ 0
   unfold/proc Pr = Subst.[ (rec Pr) / zero ]pr Pr
 
@@ -146,11 +132,6 @@ module Definitions.Proc (N : ℕ) where
    s/rec : ∀{Pr} -> (P : Part) ->
      M [ P ]= rec Pr ->
      M [ nothing ]⇒ (M [ P ]≔ unfold/proc Pr) -- TODO: may want to implement s-rec' in the draft
-
-  -- first a none empty sequence of reductions of the session
-  data _⇒+_ (M : Session) : (M' : Session) -> Set where
-    s/one : ∀{ α M'} -> M [ α ]⇒ M' -> M ⇒+ M'
-    s/more : ∀{ α M' M''} -> M [ α ]⇒ M' -> M' ⇒+ M'' -> M ⇒+ M''
 
   data _[_]⇒+_ (M : Session) : Action → (M' : Session) → Set where
     s/one : ∀{ α M'} -> M [ just α ]⇒ M' -> M [ α ]⇒+ M'
