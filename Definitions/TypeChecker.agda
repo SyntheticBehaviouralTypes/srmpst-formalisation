@@ -13,9 +13,9 @@ open import Data.Maybe.Base using (Maybe; just; nothing)
 open import Data.Nat using (ℕ; suc; _+_; _*_)
 import Data.Nat.Properties as Nat
 open import Data.Product
-  using (_×_; Σ-syntax; _,_; proj₁)
+  using (_×_; Σ-syntax; _,_; proj₁; proj₂)
 open import Data.Vec using (Vec; []; _∷_; lookup)
-open import Relation.Binary.PropositionalEquality using (_≡_; refl)
+open import Relation.Binary.PropositionalEquality using (_≡_; refl; sym; cong; subst)
 open import Relation.Nullary using (Dec; yes; no; ¬_)
 open import Relation.Nullary.Decidable using (T?)
 
@@ -40,21 +40,25 @@ module Definitions.TypeChecker where
 
   inferExpression :
     ∀ {γ} (Γ : Vec Sort γ) (E : Exp γ)
-    → Maybe (TypedExpression Γ E)
+    → Dec (TypedExpression Γ E)
   inferExpression Γ (val V) =
-    just (sort/value V , te/val (valueTyped V))
+    yes (sort/value V , te/val (valueTyped V))
   inferExpression Γ (minus1 E) with inferExpression Γ E
-  ... | just (s/nat , td) = just (s/nat , te/minus1 td)
-  ... | just (s/bool , _) = nothing
-  ... | just (s/unit , _) = nothing
-  ... | nothing = nothing
+  ... | yes (s/nat , td) = yes (s/nat , te/minus1 td)
+  ... | yes (s/bool , bd) =
+    no λ { (_ , te/minus1 td) → s/nat≢s/bool (⊢e-unique td bd) }
+  ... | yes (s/unit , ud) =
+    no λ { (_ , te/minus1 td) → s/nat≢s/unit (⊢e-unique td ud) }
+  ... | no ¬E = no λ { (_ , te/minus1 td) → ¬E (s/nat , td) }
   inferExpression Γ (is-zero E) with inferExpression Γ E
-  ... | just (s/nat , td) = just (s/bool , te/is-zero td)
-  ... | just (s/bool , _) = nothing
-  ... | just (s/unit , _) = nothing
-  ... | nothing = nothing
+  ... | yes (s/nat , td) = yes (s/bool , te/is-zero td)
+  ... | yes (s/bool , bd) =
+    no λ { (_ , te/is-zero td) → s/nat≢s/bool (⊢e-unique td bd) }
+  ... | yes (s/unit , ud) =
+    no λ { (_ , te/is-zero td) → s/nat≢s/unit (⊢e-unique td ud) }
+  ... | no ¬E = no λ { (_ , te/is-zero td) → ¬E (s/nat , td) }
   inferExpression Γ (var x) =
-    just (lookup Γ x , te/var)
+    yes (lookup Γ x , te/var)
 
   module Processes (N : ℕ) where
 
@@ -96,17 +100,20 @@ module Definitions.TypeChecker where
 
       messageGuarded? :
         ∀ {γ δ} (Pr : Proc γ δ)
-        → Maybe (MessageGuarded Pr)
-      messageGuarded? (_ ! _ < _ >∙ _) = just mg/send
-      messageGuarded? (Σ _ ？[ _ ]· _) = just mg/recv
+        → Dec (MessageGuarded Pr)
+      messageGuarded? (_ ! _ < _ >∙ _) = yes mg/send
+      messageGuarded? (Σ _ ？[ _ ]· _) = yes mg/recv
       messageGuarded? (ifp _ then Pr else Pr′)
         with messageGuarded? Pr | messageGuarded? Pr′
-      ... | just guarded | just guarded′ =
-        just (mg/if guarded guarded′)
-      ... | _ | _ = nothing
-      messageGuarded? (rec _) = nothing
-      messageGuarded? (v _) = nothing
-      messageGuarded? ∅ = nothing
+      ... | yes guarded | yes guarded′ =
+        yes (mg/if guarded guarded′)
+      ... | no ¬guarded | _ =
+        no λ { (mg/if guarded _) → ¬guarded guarded }
+      ... | yes _ | no ¬guarded′ =
+        no λ { (mg/if _ guarded′) → ¬guarded′ guarded′ }
+      messageGuarded? (rec _) = no λ ()
+      messageGuarded? (v _) = no λ ()
+      messageGuarded? ∅ = no λ ()
 
       MatchRecv : Part → Part → ℕ → Action → Set
       MatchRecv P Q I α =
@@ -134,23 +141,26 @@ module Definitions.TypeChecker where
 
       findAction :
         (α : Action) (xs : List (Edge (size G)))
-        → Maybe (ActionAt α xs)
-      findAction α [] = nothing
+        → Dec (ActionAt α xs)
+      findAction α [] = no λ { (_ , ()) }
       findAction α ((β , t) ∷ xs) with β ≟Action α
-      ... | yes refl = just (t , Any.here refl)
-      ... | no _ with findAction α xs
-      ...   | just (u , member) = just (u , Any.there member)
-      ...   | nothing = nothing
+      ... | yes refl = yes (t , Any.here refl)
+      ... | no β≢α with findAction α xs
+      ...   | yes (u , member) = yes (u , Any.there member)
+      ...   | no ¬rest =
+        no λ { (_ , Any.here px) → β≢α (sym (cong proj₁ px))
+             ; (u , Any.there m) → ¬rest (u , m) }
 
       findStep :
         ∀ s α
-        → Maybe
+        → Dec
             (Σ[ t ∈ State G ]
               BTheory._-<_>->_ (graphTheory G) s α t)
       findStep s α with findAction α (edges G s)
-      ... | just (t , member) =
-        just (t , listed⇒step {G = G} member)
-      ... | nothing = nothing
+      ... | yes (t , member) =
+        yes (t , listed⇒step {G = G} member)
+      ... | no ¬found =
+        no λ { (t , gr) → ¬found (t , step⇒listed {G = G} gr) }
 
       RecvWitness :
         Part → Part → ℕ → List (Edge (size G)) → Set
@@ -162,16 +172,20 @@ module Definitions.TypeChecker where
 
       findRecv :
         (P Q : Part) (I : ℕ) (xs : List (Edge (size G)))
-        → Maybe (RecvWitness P Q I xs)
-      findRecv P Q I [] = nothing
+        → Dec (RecvWitness P Q I xs)
+      findRecv P Q I [] = no λ { (_ , _ , _ , ()) }
       findRecv P Q I ((α , t) ∷ xs)
         with matchRecv? P Q I α
       ... | yes (j , U , refl) =
-        just (j , U , t , Any.here refl)
-      ... | no _ with findRecv P Q I xs
-      ...   | just (j , U , u , member) =
-        just (j , U , u , Any.there member)
-      ...   | nothing = nothing
+        yes (j , U , t , Any.here refl)
+      ... | no ¬match with findRecv P Q I xs
+      ...   | yes (j , U , u , member) =
+        yes (j , U , u , Any.there member)
+      ...   | no ¬rest =
+        no λ { (j , U , _ , Any.here px) →
+                 ¬match (j , U , sym (cong proj₁ px))
+             ; (j , U , u , Any.there m) →
+                 ¬rest (j , U , u , m) }
 
       CheckFunction : Set
       CheckFunction =
@@ -261,11 +275,11 @@ module Definitions.TypeChecker where
       checkDirect recur Γ Δ P
         (Q ! i < E >∙ Pr) s
         with inferExpression Γ E
-      ... | nothing = nothing
-      ... | just (S , etd) with
+      ... | no _ = nothing
+      ... | yes (S , etd) with
         findStep s (P ⟶ Q # i < S >)
-      ...   | nothing = nothing
-      ...   | just (t , gr) with
+      ...   | no _ = nothing
+      ...   | yes (t , gr) with
         recur Γ Δ P Pr t
       ...     | just td = just (t/send gr etd td)
       ...     | nothing = nothing
@@ -274,9 +288,9 @@ module Definitions.TypeChecker where
         with findRecv P Q _ (edges G s)
         | checkContinuations
             recur Γ Δ P Q Br (edges G s)
-      ... | nothing | _ = nothing
+      ... | no _ | _ = nothing
       ... | _ | nothing = nothing
-      ... | just (_ , _ , _ , selected) | just checked =
+      ... | yes (_ , _ , _ , selected) | just checked =
         just
           (t/recv
             (listed⇒step {G = G} selected)
@@ -287,13 +301,13 @@ module Definitions.TypeChecker where
         with inferExpression Γ E
         | recur Γ Δ P Pr s
         | recur Γ Δ P Pr′ s
-      ... | just (s/bool , etd) | just td | just td′ =
+      ... | yes (s/bool , etd) | just td | just td′ =
         just (t/if etd td td′)
       ... | _ | _ | _ = nothing
       checkDirect recur Γ Δ P (rec Pr) s
         with messageGuarded? Pr
         | recur Γ (s ∷ Δ) P Pr s
-      ... | just guarded | just td = just (t/rec guarded td)
+      ... | yes guarded | just td = just (t/rec guarded td)
       ... | _ | _ = nothing
       checkDirect recur Γ Δ P (v X) s
         with T? (bisim? G (lookup Δ X) s)
@@ -317,16 +331,26 @@ module Definitions.TypeChecker where
         (P : Part)
         → (s : State G)
         → (xs : List (Edge (size G)))
-        → Maybe (Incoming P s xs)
-      findIncoming P s [] = nothing
+        → Dec (Incoming P s xs)
+      findIncoming P s [] = no λ { (_ , () , _) }
       findIncoming P s ((α , t) ∷ xs)
         with t ≟Fin s | _∉α?_ P α
       ... | yes refl | yes P∉α =
-        just (α , Any.here refl , P∉α)
-      ... | _ | _ with findIncoming P s xs
-      ...   | just (α , member , P∉α) =
-        just (α , Any.there member , P∉α)
-      ...   | nothing = nothing
+        yes (α , Any.here refl , P∉α)
+      ... | no t≢s | _ with findIncoming P s xs
+      ...   | yes (β , member , P∉β) =
+        yes (β , Any.there member , P∉β)
+      ...   | no ¬rest =
+        no λ { (β , Any.here px , _) → t≢s (sym (cong proj₂ px))
+             ; (β , Any.there m , P∉β) → ¬rest (β , m , P∉β) }
+      findIncoming P s ((α , t) ∷ xs)
+        | yes refl | no ¬P∉α with findIncoming P s xs
+      ...   | yes (β , member , P∉β) =
+        yes (β , Any.there member , P∉β)
+      ...   | no ¬rest =
+        no λ { (β , Any.here px , P∉β) →
+                 ¬P∉α (subst (P ∉α_) (cong proj₁ px) P∉β)
+             ; (β , Any.there m , P∉β) → ¬rest (β , m , P∉β) }
 
       checkPredecessor :
         ∀ {γ δ}
@@ -339,8 +363,8 @@ module Definitions.TypeChecker where
         → Maybe (Γ & Δ ⊢p P ◂ Pr ∶ s)
       checkPredecessor recur Γ Δ P Pr s r
         with findIncoming P s (edges G r)
-      ... | nothing = nothing
-      ... | just (_ , member , P∉α) with recur Γ Δ P Pr r
+      ... | no _ = nothing
+      ... | yes (_ , member , P∉α) with recur Γ Δ P Pr r
       ...   | nothing = nothing
       ...   | just td =
         just

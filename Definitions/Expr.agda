@@ -9,7 +9,7 @@ open import Data.Fin using (Fin ; zero ; suc ; punchOut ; punchIn) renaming (_�
 open import Data.Vec using (Vec ; [] ; _[_]=_ ; lookup; _∷_) renaming (removeAt to _-_)
 open import Data.Vec.Properties using (removeAt-punchOut)
 open import Relation.Nullary using (Dec; yes; no ; ¬_)
-open import Relation.Binary.PropositionalEquality using (_≡_ ; refl ; sym ; _≢_ ; ≢-sym)
+open import Relation.Binary.PropositionalEquality using (_≡_ ; refl ; sym ; trans ; _≢_ ; ≢-sym)
 
 -- Expressions
 
@@ -81,6 +81,23 @@ data _⊢e_∶_ {γ : ℕ} (Γ : Vec Sort γ) : Exp γ -> Sort -> Set where
   te/minus1 : ∀{E} ->  Γ ⊢e E ∶ s/nat -> Γ ⊢e minus1 E ∶ s/nat
   te/is-zero : ∀{E} ->  Γ ⊢e E ∶ s/nat -> Γ ⊢e is-zero E ∶ s/bool
   te/var : ∀{x} ->  Γ ⊢e var x ∶ (lookup Γ x) -- TODO make {x} explicit
+
+-- Sort disequalities, used to refute ill-typed expressions.
+s/nat≢s/bool : s/nat ≢ s/bool
+s/nat≢s/bool ()
+
+s/nat≢s/unit : s/nat ≢ s/unit
+s/nat≢s/unit ()
+
+-- Expression typing assigns at most one sort.  Needed to refute a typing of
+-- `minus1 E` / `is-zero E` once `E` is known to have a sort other than `s/nat`.
+⊢e-unique : ∀ {γ} {Γ : Vec Sort γ} {E : Exp γ} {S S′}
+  → Γ ⊢e E ∶ S → Γ ⊢e E ∶ S′ → S ≡ S′
+⊢e-unique (te/val vd) (te/val vd′) =
+  trans (sort/value-typed vd) (sym (sort/value-typed vd′))
+⊢e-unique (te/minus1 _) (te/minus1 _) = refl
+⊢e-unique (te/is-zero _) (te/is-zero _) = refl
+⊢e-unique te/var te/var = refl
 
 exp-subst : ∀{γ}{Γ : Vec Sort (suc γ)}{E E' S x} -> Γ ⊢e E ∶ S -> (Γ - x) ⊢e E' ∶ lookup Γ x -> (Γ - x) ⊢e [ E' / x ]exp E ∶ S
 exp-subst (te/val x) td' = te/val x
