@@ -1,534 +1,586 @@
-# Plan: `Maybe` → `Dec` for `Definitions/TypeChecker.agda`
+# Plan v2: `Maybe` → `Dec` for `Definitions/TypeChecker.agda`
 
-Goal: every checking function in `Definitions/TypeChecker.agda` returns
-`Dec (⋯)` instead of `Maybe (⋯)`, i.e. the checker becomes a genuine decision
-procedure for the declarative judgment `Γ & Δ ⊢p P ◂ Pr ∶ s` over a finite
-graph LTS (and for `⊢s M ∶ s`). The outer fuel and its reducing metric
-(`suc (size G) * processFuel Pr`, one unit per `checkWithFuel` layer) stay as
-they are.
+Goal (unchanged): `check : ∀ Γ Δ P Pr s → Dec (Γ & Δ ⊢p P ◂ Pr ∶ s)` over a
+finite graph LTS, and `Dec (⊢s M ∶ s)`, replacing the `Maybe` checker.
 
-This is **not** a mechanical conversion. A `no` must refute *every* derivation
-of a judgment that is **not syntax-directed**: `t/skip` and `t/unskip` apply at
-every node, `skip/cycle` closes proofs up to bisimilarity `~`, and derivations
-may be arbitrarily deep. The plan therefore has three parts: (i) new decidable
-graph infrastructure, (ii) a *semantic characterization* of the `⊢skip[ prod ]`
-judgment (this is the crux at `checkSkipStep`, line 430), and (iii) a
-*bounded algorithmic judgment* with soundness and completeness theorems that
-turn the fueled checker into a `Dec`.
+This is a **revision** of the original plan.  Phases 0–3 of v1 are done and
+kept (see "What is done" below).  The remaining work — the completeness
+capstone — is restructured: v1's §5 cost measure (C1–C4), §6 revisit
+normalization, round-tree canonicalization, and budget arithmetic over
+declarative derivations are **all deleted** and replaced by two much more
+mechanical theorems.  Nothing already merged changes; `Alg`, `SemSkipP`,
+`theoremB`, `spine`, `HasMainLeaf`, `Anc`, `skip-na` are all reused.
 
 ---
 
-## 0. The three obstacles (why `Maybe` is currently essential)
+## 0. Why v1's remaining part was hard, and the two fixes
 
-**(O1) Fuel exhaustion is inconclusive.**
-`checkWithFuel 0 … = nothing` is fine for `Maybe`; for `Dec` the `0` case must
-produce `¬ (Γ & Δ ⊢p …)`, which is simply false in general. Fix: the checker
-must decide a *fuel-indexed algorithmic judgment* `Alg k`, exactly; then a
-separate **completeness theorem** shows any declarative derivation fits inside
-the budget `F Pr = suc (size G) * processFuel Pr`. Only the composite
-`check = decide (Alg (F Pr))` + soundness + completeness is a `Dec` of the
-declarative judgment. Fuel-0 then legitimately answers "no derivation *of the
-bounded judgment*" — never "no derivation at all". (§4, §6)
+v1 proved completeness by strong induction on a `cost` measure because two
+recursions were not structural:
 
-**(O2) `checkSkipStep` (line 430) never synthesises `skip/cycle`.**
-It demands a `prod` subtree for *every* outgoing edge, so any cycle in the
-P-inactive region makes the whole search fail (the comment at lines 432–433
-says exactly this). The visited vector `Ξ` is already threaded through
-`checkSkip` precisely so loops can be closed by `skip/cycle`. But — and this
-is the central logical finding of this plan — **"always close revisits with
-`skip/cycle`" is incomplete** (counterexample in §3.2), because `skip/cycle`
-is `nonprod` and `skip/step` demands that the *chosen* branch be `prod`.
-The correct move is to characterize `⊢skip[ prod ]` semantically and decide
-*that* (§3). The visited vector is then used in the *derivation-constructing*
-direction, where literal (`≡`-based, via `~refl`) cycle closing suffices.
+1. **`~`-transported derivations.**  Theorem A's `~`-jumps replace leaf
+   derivations by `td/bisim`-images, which are not subterms; recursing on them
+   needed C2 (`cost` invariance under `td/bisim`) — the item that was stuck.
+2. **Unbounded round chains.**  `t/unskip` traces and nested `t/skip` rounds
+   are not bounded by the *derivation's* structure relative to `Pr`, so hitting
+   the fixed budget `F Pr = suc (size G) * processFuel Pr` needed trace
+   shortening (C3), revisit normalization (C4/§6.2) and per-chain budget
+   arithmetic (§6.3) — derivation surgery, the most error-prone kind of Agda.
 
-**(O3) `t/end` is checked by an over-approximation.**
-`checkDirect … ∅ s` uses `globallyInactive?` (P absent from *every* state),
-which is sufficient but not necessary for `¬ P ∈T s` (absence from the
-*reachable cone of `s`*). A `no` from `globallyInactive?` refutes nothing.
-Must be replaced by an exact `∈T? : ∀ P s → Dec (P ∈T s)` (§2.2).
+**Fix 1 (kills C2, C4, §6.2): quantify the completeness statement over `~`.**
 
-Also note the general shape of the problem: at **every** process constructor
-three rule heads are possible — the structural rule, `t/skip`, and `t/unskip`
-— so every `no` is a triple refutation. This is what the algorithmic judgment
-of §4 makes tractable.
+```
+complete : (D : Γ & Δ ⊢p P ◂ Pr ∶ s)
+         → ∀ {δ′?no—same δ} {Δ′ : Vec (State G) δ} {s′}
+         → Δ ~ᵛ Δ′ → s ~ s′
+         → Alg (F Pr) Γ Δ′ P Pr s′
+```
+
+Because the induction hypothesis already covers *every* `~`-image of every
+subderivation, we never recurse on a transported derivation.  Concretely, the
+`t/skip` case instantiates Theorem A's leaf set with
+
+```
+L t = ∃[ ℓ ] Σ (HasMainLeaf std ℓ) (λ _ → ℓ ~ t)
+```
+
+whose `~`-closedness is literally `~trans`, and whose "main leaves ⊆ L" is
+literally `(ℓ , hml , ~refl)`.  C2's entire purpose disappears.  Each case of
+`complete` mirrors the corresponding case of `td/bisim` (`Safety/Skip.agda`
+lines 152–196), which is the already-compiled template for how `~L→ / ~R→ /
+~L→~ / ~R→~ / lookup/~ᵛ / ∈~ / skip/bisim` handle each constructor.
+
+**Fix 2 (kills C1, C3, §6.1, §6.3, and the whole `cost` measure): a
+saturation theorem on the `Alg` side.**
+
+```
+sat : ∀ {γ δ} (Γ : Vec Sort γ) (Δ : Vec (State G) δ) P (Pr : Proc γ δ) s k
+    → Alg k Γ Δ P Pr s → Alg (F Pr) Γ Δ P Pr s
+```
+
+`Alg (suc k) = Φ (Alg k)` for a monotone operator `Φ` (that is exactly what
+`alg-mono`'s step case proves).  For fixed `Γ Δ P Pr`, the round components
+(`pred`, `SemSkipP`) only move over `State G` — a finite set — so the Kleene
+chain of `Φ` stabilizes within `size G` steps by pigeonhole on the *existing*
+`wt / Incl / wt/strict / wt-bound` machinery in `LTS/Reachability.agda`.  The
+proof lives entirely on the algorithmic side: no declarative derivations, no
+bisimilarity, no surgery.  With `sat` in hand, `complete` needs **no fuel
+bookkeeping at all**: every case builds `Alg (suc (F …))`-ish values and
+immediately re-compresses with `sat`; `t/unskip` folds its trace one `pred`
+step at a time with `sat` after each step, so traces never need shortening.
+
+Everything else (Theorem A's walk, the top level) stays, and Theorem A's walk
+is *simpler* than v1 planned: it is structural on the `PathViaP` path (§A).
 
 ---
 
-## 1. Phase 0 — mechanical `Dec` conversions (no metatheory needed)
+## 1. What is done and stays (v1 Phases 0–3; build green)
 
-These are finite searches over lists/`Fin`; each `nothing` branch already
-contains the refutation implicitly. New signatures:
+* Phase 0 mechanical `Dec`s; `⊢e-unique`; exact `∈T?` for `t/end`.
+* `LTS/Reachability.agda`: `reachVia`/`reachVia?`/`PathVia`/`PathViaP` +
+  bridges, `wt`/`Incl`/`wt/mono`/`wt/strict`/`wt-bound`/`wt-full`,
+  `≡true→T`/`T→≡true`.
+* `SemSkipP`/`NLP`/`ReachLP`, `SkipDecide.semSkip?`, `SkipSem.theoremB`
+  (the constructor direction, with `skip/cycle` closure) — the line-430
+  incompleteness of the old `checkSkip` is already fixed.
+* `Alg` (fuel-recursive **function**, `Alg 0 = ⊥` — strict positivity),
+  `checkWithFuelD`, `alg-sound`, `alg-mono`, `direct?`/`direct-sound`/
+  `direct-mono`, `semSkipP-mono`, `reachLP-mono`.
+* In `Definitions/TypeChecker/Complete.agda`: `HasMainLeaf`, `spine` (S1),
+  `Anc`, `skip-na`.
+* Keep for reference: the §3.2 counterexample comment (why naive `Ξ`-search
+  is incomplete) — it documents why `SemSkipP` exists.
 
-| function | new type | refutation content |
-|---|---|---|
-| `inferExpression` | `∀ Γ E → Dec (TypedExpression Γ E)` | on `minus1`/`is-zero` failure: any typing of the whole forces (by inversion) a typing of `E` at `s/nat`, contradicting the sub-refutation **plus uniqueness** (below) |
-| `messageGuarded?` | `∀ Pr → Dec (MessageGuarded Pr)` | `rec`, `v`, `∅`: `λ ()`; `ifp`: inversion `mg/if` |
-| `findAction` | `∀ α xs → Dec (ActionAt α xs)` | standard `Any`-style search; `no` = `¬Any` |
-| `findStep` | `∀ s α → Dec (∃[ t ] s -< α >-> t)` | `no` via `step⇒listed` composed with the `findAction` refutation |
-| `findRecv` | `∀ P Q I xs → Dec (RecvWitness P Q I xs)` | same shape, driven by `matchRecv?` (already `Dec`) |
-| `findIncoming` | `∀ P s xs → Dec (Incoming P s xs)` | same shape |
-| `first` | drop, or `∀ xs → Dec (∃[ x ] x ∈ xs)` | list nonemptiness |
-| `allMaybe` | `allDec : (∀ x → Dec (F x)) → ∀ xs → Dec (All F xs)` | i.e. a dependent `All.all?`; `no` = pointer to the failing element |
-| `allParticipants` (in `checkSession`) | `(∀ i → Dec (A i)) → Dec (∀ i → A i)` | finite `∀` over `Fin n`; `no f = λ g → f (g i₀)` |
+**Deleted by this revision** (remove from `Complete.agda` once Phase C
+compiles; they are no longer on any critical path):
+`maxWithMem`, `maxWithMem-lb`, `traceLen`, `cost`, `costSkip`,
+`cost-unskip<`, `costSkip<skip`, `cost-main<skip`, `costSkip-child<`.
+Also delete v1's planned-but-unwritten C2, C3, C4, §6.1–§6.4 — do not attempt
+them.
 
-New helper lemma (trivial, by induction on the two derivations):
-
-```
-⊢e-unique : Γ ⊢e E ∶ S → Γ ⊢e E ∶ S′ → S ≡ S′
-```
-
-Needed wherever a rule mentions the *same* sort in two premises
-(`t/send`: `gr` at sort `S` and `etd : Γ ⊢e E ∶ S`): the refutation
-"no edge labelled with the inferred sort `S₀`" only refutes `t/send` because
-any `etd` in any derivation must also be at `S₀`.
-
-Also needed, from the `WellBehaved` bundle already in scope: `step-deterministic`
-(a `t/send` derivation's continuation state is forced to be the `t` that
-`findStep` found, so one recursive `no` at `t` refutes all of `t/send`), and
-`step-is-prop` (two proofs of the same transition are equal — keeps `All`
-lookups over `edges G s` coherent with quantification over transition proofs).
-
-**Watch out (edge duplicates):** `edges G s` may contain duplicate entries.
-`toWitness (fromWitness m)` need not be `m`, so *never* let a decision depend
-on the *position* of an edge — make every per-edge decision a function of the
-edge **value** `(α , t)`. Then `All.lookup` at whichever membership proof
-`step⇒listed gr` produces is automatically consistent. (This matters again in
-§3.4 for the `ktd` mode function.)
+Notation below: `F Pr = suc (size G) * processFuel Pr` (unchanged);
+`Step s α t = BTheory._-<_>->_ (graphTheory G) s α t`.
 
 ---
 
-## 2. Phase 1 — decidable graph infrastructure (`LTS/`)
+## Phase S — saturation (`Definitions/TypeChecker/Saturate.agda`, new file)
 
-### 2.1 Reachability (`LTS/Reachability.agda` — implements the existing TODO)
+Independent of everything else; do it first.  Imports only
+`Definitions.TypeChecker` (open `Processes N`, `GraphChecker G wb`) — it does
+NOT need `Safety.Skip`.  Wire a root import so `runall.sh` builds it.
 
-Implement the least-fixed-point reachability the file's TODO already sketches,
-generalized by a decidable *node* filter (needed for `NL` in §3) and returning
-*bounded paths* (needed for the construction in §3.4):
-
-```
--- one-step expansion of a Bool-vector of marked states, restricted to
--- nodes satisfying `ok`; iterate (size G) times ⇒ fixpoint
-reachVia : (ok : State G → Bool) (start : State G) → Vec Bool (size G)
-
--- soundness / completeness w.r.t. the path relation
-data PathVia (ok : …) : State G → State G → ℕ → Set   -- ok holds on all
-                                                       -- states strictly
-                                                       -- before the target
-reachVia-sound    : lookup (reachVia ok s) t ≡ true → ∃[ n ] n ≤ size G × PathVia ok s t n
-reachVia-complete : PathVia ok s t n → lookup (reachVia ok s) t ≡ true
-reachVia?         : ∀ ok s t → Dec (∃[ n ] PathVia ok s t n)
-```
-
-Proof shape for completeness: paths may be assumed **simple** (cut the loop
-between two visits of the same state — the standard pigeonhole shortening;
-prove `PathVia ok s t n → ∃[ m ] m ≤ size G × PathVia ok s t m` first), then
-induction on the ≤ `size G` iterations, using monotonicity of the expansion
-step. This is a self-contained ~150–300 line development and unblocks
-everything else.
-
-Bridge to the abstract relations of `graphTheory G`:
+### S.1 The sub-budget and the single arithmetic lemma
 
 ```
-path⇒skip : PathVia (λ _ → true …) -- with ¬P-labels
--- more precisely: a path all of whose edge labels satisfy P ∉α_
---   gives  s -[¬ P ]->* t   (by induction, using skip/step / skip/refl)
-skip⇒path : s -[¬ P ]->* t → ∃ path        (inverse direction)
+J : ∀ {γ δ} → Proc γ δ → ℕ
+J Pr = suc (size G) * (processFuel Pr ∸ 1)
 ```
 
-(For the label-filtered variant either add an edge filter to `PathVia` or
-reuse `ReachableBy (P ∉α_)` and connect it to the Bool-vector fixpoint; the
-existing `ReachableBy` is the right declarative side.)
-
-### 2.2 Exact participation: `∈T?`
-
-```
-∈T? : ∀ (P : Part) (s : State G) → Dec (P ∈T s)
-```
-
-Characterization to prove and then decide by §2.1:
-
-```
-P ∈T s  ⇔  ∃[ t ] Reachable s t × ∃ (α ,u) ∈ edges G t. P ∈α α
-```
-
-(⇒ by induction on `_∈T_`: `in/α` gives the empty path, `in/later` prepends a
-step. ⇐ by induction on the path: `in/later` at each step, `in/α` at the end.)
-Then `Dec` by: decide the reachable set, then `Any (λ edge → P ∈α? …)` over
-each reachable state's edge list.
-
-`checkDirect … ∅ s` then becomes
-
-```
-checkDirect recur Γ Δ P ∅ s with ∈T? P s
-... | no P∉T  = yes (t/end P∉T)
-... | yes P∈T = no λ { (t/end done) → done P∈T ; … }   -- plus the t/skip /
-                                                       -- t/unskip cases, §4
-```
-
-`GloballyInactive` / `inactive⇒notIn` can be deleted (or kept as a fast path
-on the `yes` side only).
-
----
-
-## 3. Phase 2 — the crux: deciding `Γ & Δ & [] ⊢skip[ prod ] P ◂ Pr ∶ s`
-
-First, an important scoping fact that simplifies everything:
-**`t/skip` fixes `Ξ = []`** (`(Γ & Δ ⊢p_∶_) & [] ⊢skip[ prod ] …`). The checker
-only ever needs to *decide* the skip judgment at the empty visited vector.
-Non-empty `Ξ` appears only *inside* proofs and inside the derivation
-constructor of §3.4.
-
-Throughout this section fix `Γ, Δ, P, Pr` and write `Leaf t` for the
-declarative typing `Γ & Δ ⊢p P ◂ Pr ∶ t`.
-
-### 3.1 Semantic characterization
-
-For a set (decidable predicate) `L : State G → Set` define:
-
-* `NL_L s` — the set of states `t` reachable from `s` by a path whose states
-  (including `s` and `t`, excluding nothing else) all lie **outside `L`**.
-  So `s ∈ L → NL_L s = ∅`.
-* `Reach_L t` — some state of `L` is reachable from `t` (ordinary
-  reachability; the path automatically stays in `NL_L` until its first `L`-hit).
-* the **semantic skip predicate**
-
-```
-SemSkip L s  =  ∀ t → t ∈ NL_L s → (P not-active-in t) × Reach_L t
-```
-
-Intuition: a `prod` skip tree at `s` is a finite tree whose internal nodes are
-exactly the non-`L` states reachable from `s` (children = *all* graph
-successors, by `skip/step`'s `ktd`), whose leaves are `L`-states (`skip/main`)
-or ancestor-bisimilar states (`skip/cycle`, `nonprod`), and in which every
-internal node has at least one `prod` child (the `proj₁ (ktd gr) ≡ prod`
-side-condition, with `gr` the chosen transition). Following chosen-`prod`
-children strictly descends the finite tree, so **every internal node reaches an
-`L`-leaf**; conversely `skip/cycle` closes the bookkeeping but adds no
-semantic content because bisimilar states satisfy the same conditions.
-
-Two easy lemmas to prove first:
-
-```
--- (S1) the "spine lemma": prod derivations reach a main leaf
-spine : Leaf & Ξ ⊢skip[ prod ] P ◂ Pr ∶ s →
-        ∃ a path from s to some u with a skip/main leaf, i.e. Reach_{mains} s
-  -- induction: skip/main ⇒ refl-path; skip/step ⇒ prepend gr, recurse on
-  -- the chosen branch (prod by the side-condition); skip/cycle is nonprod.
-
--- (S2) monotonicity in L
-semSkip-mono : L ⊆ L′ → SemSkip L s → SemSkip L′ s
-  -- NL_{L′} ⊆ NL_L (avoiding a bigger set is harder) and Reach_L ⊆ Reach_{L′}.
-```
-
-### 3.2 Why the naive `Ξ`-search is incomplete (record this in a comment!)
-
-Naive plan: in `checkSkipStep`, before recursing into successor `t`, test
-`t ~ (some entry of s ∷ Ξ)` and close with `skip/cycle`; recurse only on fresh
-states, so `Ξ` stays duplicate-free, depth ≤ `suc (size G)`, and fuel-0 is
-unreachable by pigeonhole. **This is sound but incomplete.** Counterexample:
-
-* States `s, a, ℓ`; edges `s → a`, `s → ℓ`, `a → s` (all labels ¬P);
-  `Leaf` holds at `ℓ` only; `s ̸~ a` (different action sets).
-* A `prod` derivation at `([], s)` exists:
-  at `s` choose the branch to `ℓ` (`skip/main`, `prod`); the branch to `a`
-  must also be handled: at `a` the only successor is `s`, and `skip/cycle`
-  there is `nonprod` — **but the chosen branch of `a`'s `skip/step` must be
-  `prod`**, so the derivation *re-expands* `s` (a second `skip/step` at `s`,
-  with `Ξ = [a , s]`), where the `ℓ`-branch is `prod` and the `a`-branch now
-  closes by `skip/cycle`.
-* The naive search at `a` sees successor `s ∈ Ξ`, closes it `nonprod`, finds
-  no `prod` child, and fails.
-
-Moral: revisited states must sometimes be **re-expanded to manufacture the
-`prod` witness**. Re-expansion makes canonical tree depth Θ(size G²) in the
-worst case (chains of such gadgets), so the single `suc (size G)` inner fuel
-of `checkSkip` cannot survive either. Hence: decide `SemSkip` (finite,
-fuel-free, §3.3), and build the derivation separately with a lexicographic
-double fuel (§3.4). The *outer* metric `suc (size G) * processFuel Pr` is
-untouched; only `checkSkip`'s private inner fuel is replaced.
-
-### 3.3 The decision procedure
-
-Given `recur : ∀ t → Dec (Alg k ⋯ t)` (the fuel-decremented checker, §4):
-
-```
-L?    : ∀ t → Dec (L_alg t)            -- L_alg t = Alg k … Pr t; tabulate over states G
-NL?   : Dec-set via reachVia (λ t → not ⌊ L? t ⌋) s     -- §2.1
-semSkip? : Dec (SemSkip L_alg s)
-  = for every t with NL-mark: inactiveAt? P t  ×  reachVia? (…) t →L_alg
-```
-
-All components are finite conjunctions/disjunctions over `states G` — **no
-fuel, no recursion** beyond the calls to `recur`. This replaces
-`checkSkipStep`+`checkSkip` in `checkClosure`.
-
-### 3.4 Theorem B (sufficiency / the constructor): `SemSkip L s → Γ & Δ & [] ⊢skip[ prod ] P ◂ Pr ∶ s`
-
-Here `L` must come with witnesses: `∀ t → L t → Leaf t` (the `yes`-derivations
-from `recur`). Construction `build Ξ t`, maintaining invariants
-(i) `t ∈ NL_L s ∪ L`, (ii) `Ξ` = the path of states from the root:
-
-* `t ∈ L` → `skip/main (witness t)`. (`prod`)
-* else `t ∈ NL_L s`, so `SemSkip` supplies `na : P not-active-in t` and a
-  **bounded path** `t → … → ℓ ∈ L` (from `reachVia-sound`; length ≤ size G).
-  Emit `skip/step gr na ktd refl` where:
-  - `gr` := the transition along the path's first edge (`listed⇒step`);
-  - `ktd gr′` is defined **by the value of `gr′`'s edge** (see §1's duplicate
-    warning), via `step⇒listed`:
-    * edge value = the spine edge → recurse `build (t ∷ Ξ) u*` **with the path
-      tail as the new path** — even if `u* ∈ Ξ` (re-expansion, cf. §3.2);
-      mode `prod`;
-    * target `u ∈ t ∷ Ξ` *literally* (`≟Fin`) → `skip/cycle` at that index
-      with `~refl` — **this is where the visited vector closes loops**; mode
-      `nonprod`; (no `bisim?` needed here at all — literal equality suffices
-      for completeness because ~-revisits are simply re-expanded)
-    * otherwise → recurse `build (u ∷ … )` with a fresh `Reach_L u` path
-      (u ∈ NL_L s by forward closure); mode `prod`.
-  - the side condition `proj₁ (ktd gr) ≡ prod` holds *by computation*: the
-    spine case is selected by decidable edge-value equality on `gr`'s own edge.
-
-**Termination**: lexicographic on `(#states ∉ Ξ , length of remaining path)`.
-Spine recursion keeps or shrinks component 1 and strictly shrinks 2; fresh-
-state recursion strictly shrinks 1 (and resets 2 ≤ size G). Implement as two
-nested fuels initialized to `suc (size G)` each, with arithmetic invariants
-`fuel₁ + |distinct Ξ| > size G` etc., so both `0`-cases are discharged by
-pigeonhole (`⊥-elim`), not by `nothing`.
-
-### 3.5 Theorem A (necessity): `Γ & Δ & [] ⊢skip[ prod ] P ◂ Pr ∶ s → SemSkip L* s`
-
-where `L*` is the **~-closure of the set of `skip/main`-leaf states of the
-given derivation `D`** (each with its `Leaf` subderivation; the ~-closure
-carries `td/bisim`-transported derivations). Stating A with this
-derivation-relative leaf set (rather than "all declaratively typable states")
-is essential: it is what makes the completeness glue in §6 go through with
-*bounded* budgets.
-
-Proof (the delicate one — all needed transport machinery **already exists** in
-`Safety/Skip.agda`):
-
-* Generalize over `Ξ` with the invariant
-  `Anc Ξ = ∀ X → (prod derivation at the tail context drop (suc X) Ξ of lu Ξ X)`
-  — every visited entry is an internal (`skip/step`, hence `prod`) node of the
-  enclosing derivation, and its own subderivation lives over the shorter tail
-  vector. At the top, `Anc [] = ⊤`.
-* Fix `t ∈ NL_{L*} s` with a path of length `k`; prove
-  `(inactive t × Reach_{L*} t)` **by induction on `k`**, walking the path down
-  the derivation, *not* by induction on the derivation:
-  - Nodes along the walk cannot be `skip/main` (their states are in `L*`,
-    contradicting `t ∈ NL`), and are `prod` where required, so they are
-    `skip/step`; step into the child matching the path edge.
-  - Child is `prod` → its subderivation continues the walk (`Anc` extended by
-    the current node's derivation).
-  - Child is `skip/cycle` at `u₁ ~ lu Ξ′ X` → **jump**: take the ancestor
-    derivation from `Anc`, `skip/weaken-visited*` it up to the current
-    context, transport it along `~` with **`skip-leaf/bisim`**
-    (leaf transport = `td/bisim`; its main-leaf states stay inside `L*`
-    because `L*` is ~-closed), obtaining a `prod` derivation *at `u₁` itself*
-    over the current `Ξ′` — the walk continues concretely with `k` already
-    decreased. This is why induction on `k` terminates while induction on the
-    derivation would not (the ancestor is *bigger*).
-  - At `k = 0` (the node for `t`): `skip/step` gives `na` = inactivity, and
-    the spine lemma (S1) gives `Reach_{L*} t` (its endpoint is a main-leaf
-    state ⊆ `L*`).
-* Auxiliary transports needed: inactivity along `~` (the `na ∘ ~R→` pattern
-  already used in `skip-td/bisim`), and `Reach` along `~` against a ~-closed
-  target set (replay the path with `~L→`/`~L→~`).
-
-(`skip/unfold-cycle` from `Safety/Skip.agda` is closely related machinery and
-may shortcut parts of this; but the `Anc`-invariant walk above is the
-self-contained argument.)
-
-Contrapositive of A (+ monotonicity S2 + the containment `L* ⊆ L_alg`
-established during the completeness induction, §6) is exactly what the `no`
-branch of `semSkip?` needs.
-
----
-
-## 4. Phase 3 — the bounded algorithmic judgment `Alg`
-
-Define an inductive family mirroring the current checker **exactly** (so the
-current `just`-constructions become its soundness proof nearly line-for-line):
-
-```
-data Alg : ℕ → ∀ {γ δ} → Vec Sort γ → Vec (State G) δ
-         → Part → Proc γ δ → State G → Set where
-  -- no constructor at fuel 0
-  alg/direct : Direct k … → Alg (suc k) …
-  alg/pred   : ∀ r → ((α , s) ∈ edges G r) → P ∉α α → Alg k … Pr r
-             → Alg (suc k) … Pr s                      -- one unskip STEP
-  alg/skip   : SemSkip (Alg k … Pr) s → Alg (suc k) … Pr s
-```
-
-with `Direct k` the syntax-directed layer: one constructor per process
-constructor, premises `Alg k` on **subterms** (send/recv/if/rec), plus the
-side conditions exactly as in `checkDirect` but in their *exact* forms
-(`∈T?` from §2.2 for `∅`; `T? (bisim? …)` with `BisimulationCorrect.sound` /
-`.complete` for `v X`; `⊢e-unique`-backed expression checks; `matchRecv?`
-et al.).
-
-Then:
-
-* `alg/mono : k ≤ k′ → Alg k … → Alg k′ …` (induction; needed by §6's
-  arithmetic).
-* **Decision**: `checkWithFuel : ∀ k → Dec (Alg k Γ Δ P Pr s)` — structurally
-  the current function with every `Maybe` replaced by the Phase-0/1/2 `Dec`s;
-  `checkPredecessors` stays the finite disjunction over `states G` it already
-  is (its `no` is a finite conjunction of refutations); `checkClosure`'s skip
-  arm is `semSkip?` (§3.3). **Fuel 0 answers `no (λ ())` — honestly**, since
-  `Alg 0` has no constructors.
-* **Soundness**: `alg-sound : Alg k … → Γ & Δ ⊢p P ◂ Pr ∶ s`.
-  `alg/direct` = today's `checkDirect` constructions; `alg/pred` =
-  `t/unskip (skip/one (listed⇒step …) P∉α)`; `alg/skip` = `t/skip ∘ build`
-  (Theorem B, with leaf witnesses `alg-sound ∘ recur-yes`).
-
----
-
-## 5. Interlude — the cost measure on declarative derivations
-
-Completeness needs to recurse on something. Structural recursion fails
-(normalization steps replace subderivations by *other* derivations), so define
-`cost : Derivation → ℕ`:
-
-* rule node = 1 + premises;
-* `t/unskip tr td` = `length tr + 1 + cost td` (so trace-shortening is ≤);
-* function-shaped premises (`t/recv`'s `conts`, `skip/step`'s `ktd`) are
-  measured through the **edge list**: `sum/max over (α,t) ∈ edges G ·` of the
-  premise at `listed⇒step` — well-defined because `step-is-prop` makes the
-  premise independent of the transition proof.
-
-Lemmas about `cost`:
-
-```
-(C1) subderivation (through a canonical edge) has strictly smaller cost
-(C2) cost (td/bisim Δ~Δ′ G~G′ D) ≡ cost D        -- td/bisim is rule-for-rule;
-     -- edge lists of bisimilar states have the same action/target multiset
-     -- up to ~, measured through canonical picks; if ≡ is painful, ≤ suffices
-(C3) trace shortening: t/unskip with a non-simple trace has a ≤-cost variant
-     with a simple trace (cut graph loops; td unchanged)
-(C4) revisit normalization (see §6): replacing a derivation by a nested
-     derivation of the SAME judgment strictly decreases cost
-```
-
----
-
-## 6. Phase 4 — completeness
-
-**Theorem.** `Γ & Δ ⊢p P ◂ Pr ∶ s → Alg (suc (size G) * processFuel Pr) Γ Δ P Pr s`.
-
-Combined with §4 this yields the goal:
-
-```
-check : ∀ Γ Δ P Pr s → Dec (Γ & Δ ⊢p P ◂ Pr ∶ s)
-check … with checkWithFuel (suc (size G) * processFuel Pr) …
-... | yes a = yes (alg-sound a)
-... | no ¬a = no (¬a ∘ complete)
-```
-
-Proof architecture — strong induction on `cost D`, with a budget invariant.
-
-**6.1 The round tree.** Canonicalize the head of `D` (collapse `t/unskip`
-chains with `skip/cat`, drop `skip/refl`, i.e. WLOG at most one `t/unskip`
-above a structural rule or `t/skip`). Between two structural rules the
-derivation is a tree of *rounds* at the same `(Γ, Δ, Pr)`:
-an unskip **step** moves to a predecessor state (decompose the trace from the
-`s` end, one `alg/pred` per step — this is why `checkPredecessors` is
-single-step); a `t/skip` node **branches** into its `skip/main` leaves (each
-leaf continues the round tree at its own state). Each round costs exactly one
-fuel layer in `Alg`.
-
-**6.2 Revisit normalization.** If the round tree below the current node ever
-revisits the current node's *state*, some subderivation proves the **same
-judgment** with strictly smaller cost (C1); recurse on it (strong induction —
-this replaces derivation surgery entirely). Iterating: WLOG the round tree
-from the current node never revisits the current state. Doing this at each
-position as you descend, and observing that a normalized sub-round-tree is a
-sub-tree of the original (so states excluded once stay excluded), gives:
-**WLOG every root-to-leaf chain in the round tree has pairwise-distinct
-states**, hence length ≤ size G.
-
-**6.3 Budget arithmetic.** Show by the same induction, with `h` = number of
-rounds already emitted on the current chain (`h ≤ size G`, states distinct,
-current state fresh):
-
-```
-B Pr h = (suc (size G) ∸ h) + suc (size G) * (processFuel Pr ∸ 1)
-```
-
-is a sufficient budget: emitting a round needs `B Pr (suc h) ≤ B Pr h ∸ 1` ✓;
-ending in a structural rule needs `1 + suc (size G) * processFuel(subterm)
-≤ B Pr h`, which follows from `processFuel(subterm) < processFuel Pr`
-(true for every premise: send/rec continuation, each recv branch via
-`branchesFuel`, both `if` branches) and `h ≤ size G ∸ 1` ✓. At `h = 0` this is
-exactly `suc (size G) * processFuel Pr`. Use `alg/mono` to round budgets up.
-
-**6.4 The skip rounds.** For a `t/skip std` round, Theorem A gives
-`SemSkip L* s` with `L*` = ~-closure of `std`'s main-leaf states, each
-carrying a derivation of cost `< cost D` (C1, C2). By induction each such
-state lands in `L_alg = Alg (k-1) … Pr ·` (they are exactly the round-tree
-children, so §6.3 provides the `k-1` budget). Then `L* ⊆ L_alg` and
-monotonicity (S2) turns `SemSkip L*` into the `SemSkip L_alg` demanded by
-`alg/skip`. This containment argument is the reason Theorem A is stated
-relative to the derivation's own leaves — with "all typable states" the
-budget glue would be impossible at inner fuel levels.
-
----
-
-## 7. Phase 5 — top level
-
-* `checkClosed`, `check` — direct from §6's `check`.
-* `checkSession : ∀ M s → Dec (⊢s M ∶ s)` — finite `∀` over participants
-  (Phase 0's `allParticipants`).
-* `checkProcess / checkSession (outer) / checkRooted*` — `Dec (CheckedProcess …)`
-  / `Dec (CheckedSession …)`. Subtlety: the record stores *a* `wellBehaved`
-  field, so the `no` case with `wellBehaved? G = yes wb` but no derivation
-  must rule out derivations over a *different* `wb′`. The typing data type
-  only ever uses `BTheory` fields, never `wb`, so prove once:
+* `pf≥1 : ∀ Pr → 1 ≤ processFuel Pr` (immediate: every clause is `suc _` or `1`).
+* **The** budget lemma, uniform over constructors (no per-case arithmetic):
 
   ```
-  typing-wb-irrelevant :
-    (wb wb′ : WellBehaved (graphTheory G)) →
-    Typing.MPST wb  ._&_⊢p_∶_ Γ Δ PPr s →
-    Typing.MPST wb′ ._&_⊢p_∶_ Γ Δ PPr s
+  J+size≡F : ∀ Pr → suc (J Pr + size G) ≡ F Pr
+  -- F Pr = sucG * pf = sucG * suc (pf ∸ 1) = sucG + sucG*(pf ∸ 1)
+  --      = suc (size G + J Pr); finish with +-comm.  Uses pf≥1.
+  ```
+* Per-case subterm bounds (each a one-liner given `pf≥1` / `⊔`/`+` monotony):
+
+  ```
+  send:  F Pr′ ≡ J (Q ! i < E >∙ Pr′)                     (pf ∸ 1 = pf Pr′)
+  recv:  F (lookup Br j) ≤ J (Σ P ？[ S ]· Br)             (needs branchFuel-lb)
+  if:    F Pr₁ ≤ J …  and  F Pr₂ ≤ J …                     (pf₁ ≤ pf₁ + pf₂)
+  rec:   F Pr′ ≡ J (rec Pr′)
+  v/∅:   J = 0 (Direct’s v/∅ cases don’t mention L, nothing needed)
   ```
 
-  by a (mutual, mechanical) induction — or refactor `Typing.MPST` to carve the
-  judgment out of a `wb`-parameterized module (bigger diff; the lemma is
-  cheaper).
+  with `branchFuel-lb : ∀ {I} (Br : Vec (Proc γ δ) (suc I)) j →
+  processFuel (lookup Br j) ≤ branchesFuel Br` (induction on `j`/`Br`).
+
+### S.2 The level iteration `It` and its decision
+
+For **arguments** (not module parameters) `{γ δ} Γ Δ P Pr` — fixed within one
+level; only `s` varies:
+
+```
+It : ∀ {γ δ} → Vec Sort γ → Vec (State G) δ → Part → Proc γ δ
+   → ℕ → State G → Set
+It Γ Δ P Pr zero    s = ⊥
+It Γ Δ P Pr (suc j) s =
+    Direct (Alg (J Pr)) Γ Δ P Pr s                                   -- D₀, constant in j
+  ⊎ (Σ[ r ∈ State G ] Incoming P s (edges G r) × It Γ Δ P Pr j r)   -- pred
+  ⊎ SemSkipP (It Γ Δ P Pr j) P s                                    -- skip
+```
+
+Same fuel-recursive-function discipline as `Alg` (strict positivity: the
+`SemSkipP` premise mentions `¬ It j` inside `PathViaP`, fine for a function
+on `j` — same reason `Alg` is a function, see the memory note).
+
+```
+It? : ∀ … j s → Dec (It … j s)
+  -- j = 0: no λ()
+  -- suc j: direct? (Alg (J Pr)) (checkWithFuelD (J Pr)) … ⊎-dec
+  --        (Fin.any? λ r → findIncoming P s (edges G r) ×-dec It? … j r) ⊎-dec
+  --        SkipDecide.semSkip? (It … j) (It? … j) P s
+It-mono : ∀ j → It … j s → It … (suc j) s
+  -- induction on j; pred: recurse; skip: semSkipP-mono; D₀: id.
+```
+
+`×-dec/⊎-dec/→-dec/¬?` are currently `private` in `TypeChecker.agda` — either
+un-private them or copy the 12 lines.
+
+### S.3 Pigeonhole: the chain collapses within `size G` steps
+
+```
+stab? : ∀ j → Dec (∀ s → It … (suc j) s → It … j s)
+stab? j = Fin.all? λ s → It? … (suc j) s →-dec It? … j s
+
+findStab : Σ[ j ∈ ℕ ] j ≤ size G × (∀ s → It … (suc j) s → It … j s)
+```
+
+Search `j = 0, 1, …`; a failing `j` yields `s₀` with `It (suc j) s₀ × ¬ It j s₀`,
+hence for the mark vectors `vec j = tabulate (λ s → ⌊ It? … j s ⌋)`:
+`Incl (vec j) (vec (suc j))` (from `It-mono` + `fromWitness/toWitness`
+plumbing, exactly like `mem→marked/marked→mem` in `SkipSem`) and
+`vec j ≢ vec (suc j)` (lookup differs at `s₀`), so `wt` strictly grows
+(`wt/strict`).  Implement as fuel-with-invariant recursion — the same pattern
+as `SkipSem.build`'s `fresh`/`fullEq` (`TypeChecker.agda:617–640`): carry
+`o : ℕ` with `size G ≤ wt (vec j) + o`; at `o = 0` the vector is full
+(`wt-full`) and the next step cannot add anything, so `stab? j` cannot fail —
+discharge with `⊥-elim` from the failing witness.  (Alternative bookkeeping:
+`j + wt-deficit`; pick whichever invariant lands first, the `build` one is
+proven-out.)
+
+```
+collapse : ∀ {j} → (∀ s → It … (suc j) s → It … j s)
+         → ∀ d s → It … (j + d) s → It … j s
+  -- induction on d: It (j + suc d) = Φ (It (j + d)) ⊆ Φ (It j) = It (suc j) ⊆ It j,
+  -- where "Φ ⊆" is the same 3-case map as It-mono (pred recurse, semSkipP-mono, D₀ id).
+itCap : ∀ k s → It … k s → It … (findStab .j) s
+  -- k ≤ j : It-mono iterated; k > j : collapse with d = k ∸ j (m+[n∸m]≡n).
+```
+
+### S.4 Back into `Alg`
+
+```
+It→Alg : ∀ j s → It … j s → Alg (J Pr + j) Γ Δ P Pr s
+  -- induction on j (+-suc rewrites):
+  --   D₀:  direct-mono (alg-mono (≤ J+j)) → inj₁
+  --   pred: IH → inj₂ (inj₁ …)
+  --   skip: semSkipP-mono IH → inj₂ (inj₂ …)
+```
+
+### S.5 The mutual block
+
+```
+mutual
+  sat : ∀ {γ δ} Γ Δ P (Pr : Proc γ δ) s k
+      → Alg k Γ Δ P Pr s → Alg (F Pr) Γ Δ P Pr s
+  sat Γ Δ P Pr s k a =
+    alg-mono (≤ via J+size≡F and findStab .j ≤ size G)
+      (It→Alg _ _ (itCap k s (algk→It Γ Δ P Pr k s a)))
+
+  -- Alg k ⊆ It k at the same level; the ONLY place the structural
+  -- recursion on Pr enters (through directSat).
+  algk→It : ∀ {γ δ} Γ Δ P Pr k s → Alg k Γ Δ P Pr s → It Γ Δ P Pr k s
+  algk→It … (suc k) s (inj₁ d)                    = inj₁ (directSat … d)
+  algk→It … (suc k) s (inj₂ (inj₁ (r , inc , a))) =
+    inj₂ (inj₁ (r , inc , algk→It … k r a))
+  algk→It … (suc k) s (inj₂ (inj₂ sem))           =
+    inj₂ (inj₂ (semSkipP-mono (λ {u} → algk→It … k u) sem))
+
+  -- Direct (Alg k) ⊆ Direct (Alg (J Pr)): by cases on Pr, calling sat at
+  -- the *visible* subterms.  Do NOT use direct-mono here — its `mp` is
+  -- quantified over arbitrary Pr and would wreck termination.
+  directSat : ∀ {γ δ} Γ Δ P Pr {k} s
+            → Direct (Alg k) Γ Δ P Pr s → Direct (Alg (J Pr)) Γ Δ P Pr s
+  -- send:  (S , t , etd , gr , a) ↦ (… , alg-mono (F Pr′ ≤ J) (sat … Pr′ t k a))
+  -- recv:  (rw , all) ↦ (rw , All.map (λ f {j}{U} eq →
+  --            alg-mono (F (lookup Br j) ≤ J) (satBr Br j … (f eq))) all)
+  -- if:    both components via sat; rec: via sat; v/∅: id.
+
+  -- vector companion so `lookup Br j` is structural
+  satBr : ∀ {γ δ I} (Br : Vec (Proc γ δ) I) (j : Fin I) … k
+        → Alg k … (lookup Br j) … → Alg (F (lookup Br j)) … (lookup Br j) …
+  satBr (Pr ∷ Br) zero    = sat … Pr …
+  satBr (Pr ∷ Br) (suc j) = satBr Br j
+```
+
+Termination: size-change — the cycle `sat → algk→It → directSat → sat/satBr`
+strictly decreases `Pr`; the cycle `algk→It → algk→It` (pred case, and under
+`semSkipP-mono`'s lambda) decreases `k` at equal `Pr`.  Calls under lambdas
+are fine because their *arguments* are visibly smaller; what would break is
+passing the unapplied recursive function (which is why `direct-mono` must not
+be used here).  Keep all four in ONE mutual block; keep `It`/`It?`/`It-mono`/
+`findStab`/`collapse`/`It→Alg` outside it (they never call `sat`).
+
+Deliverable of Phase S: `sat` type-checks and `runall.sh` is green.
+Estimated ~400–500 lines, all mechanical.
 
 ---
 
-## 8. Suggested order of implementation (each step compiles on its own)
+## Phase T — `~`-transport pack (`Complete.agda`)
 
-1. **Phase 0** conversions + `⊢e-unique` (small, immediate value).
-2. **`∈T?`** and the `t/end` fix (§2.2) — removes a genuine gap even in the
-   `Maybe` checker.
-3. **Reachability fixpoint** (§2.1) — the existing TODO; self-contained.
-4. **`SemSkip` + Theorem B** (§3.3–3.4): replace `checkSkip`/`checkSkipStep`.
-   At this point the *`Maybe`* checker already accepts cyclic skip regions —
-   the original line-430 incompleteness is fixed before any `Dec` appears.
-5. **`Alg` + decision + soundness** (§4) — mostly a re-typing of current code.
-6. **`cost` + Theorem A + completeness** (§5, §3.5, §6) — the bulk of the new
-   proof text; keep it in fresh modules, e.g.
-   `Definitions/TypeChecker/{Algorithmic,Sound,Cost,SkipSemantics,Complete}.agda`.
-7. **Phase 5** wrappers; delete the stale comments at lines 432–433 and
-   477–478 of `TypeChecker.agda`.
+Small standalone lemmas; all raw material is in scope via
+`open Typing.MPST wb` (`~L→ ~R→ ~L→~ ~R→~ ~trans ~sym ~refl ~ᵛ-refl ~ᵛ/∷
+lookup/~ᵛ ∈~`) and `SK = Safety.Skip wb` (`skip/bisim`, `skip-td/bisim`,
+`skip/weaken-visited`).
 
-## 9. Inventory
+```
+-- T1: pull a filtered path back along ~ (right-to-left), for semSkipP-bisim
+pathViaP-pull :
+  (Lcl : ∀ {u u′} → L u → u ~ u′ → L u′) → s ~ s′
+  → PathViaP G (λ u → ¬ L u) s′ t′
+  → ∃[ t ] PathViaP G (λ u → ¬ L u) s t × t ~ t′
+  -- nil: (s , pathP/nil , s~s′)
+  -- cons ¬Ls′ gr′ rest: gr = ~R→ s~s′ gr′ ; u~u′ = ~R→~ s~s′ gr′ ;
+  --   ¬L s = λ Ls → ¬Ls′ (Lcl Ls s~s′) ; recurse on rest with u~u′.
 
-**Reused as-is:** `td/bisim`, `skip-td/bisim`, `skip-leaf/bisim`,
-`skip/weaken-visited`, `lookup/weaken-visited`, (`skip/unfold-cycle`),
-`skip/cat`, `skip/one`, `~L→/~R→/~L→~/~R→~`, `∈~`, `step-deterministic`,
-`step-is-prop`, `bisimulationCorrect` (`sound`+`complete`), `wellBehaved?`,
-`listed⇒step`/`step⇒listed`, `matchRecv?`, `inactiveAt?`, `≟Action`/`≟Edge`.
+-- T2: push an unfiltered path forward along ~, for ReachLP
+pathVia-push :
+  t ~ t′ → PathVia G (λ _ → true) t ℓ n
+  → ∃[ ℓ′ ] PathVia G (λ _ → true) t′ ℓ′ n × ℓ ~ ℓ′
+  -- nil: (t′ , path/nil , t~t′); cons: ~L→ / ~L→~, recurse.
 
-**New:** `⊢e-unique`; `∈T?`; `reachVia` + sound/complete + bounded simple
-paths; `SemSkip`, `semSkip-mono` (S2), spine lemma (S1), Theorem A
-(with the `Anc` invariant and ~-transport of inactivity/reachability),
-Theorem B (lex-fuel constructor, literal-`Ξ` cycles, edge-value `ktd`);
-`Alg` + `alg/mono` + `alg-sound`; `cost` + (C1)–(C4); the completeness
-theorem (§6); `typing-wb-irrelevant`.
+-- T3: inactivity along ~ (one-liner)
+na-~ : t ~ t′ → P not-active-in t → P not-active-in t′
+na-~ t~t′ na = λ gr′ → na (~R→ t~t′ gr′)
 
-**Deliberately unchanged:** `processFuel`/`branchesFuel`, the outer fuel
-`suc (size G) * processFuel Pr` and its once-per-layer decrement, the
-declarative judgments, the `Safety/` metatheory.
+-- T4: the composite — SemSkipP is ~-invariant for ~-closed L
+semSkipP-bisim :
+  (Lcl : ∀ {u u′} → L u → u ~ u′ → L u′)
+  → s ~ s′ → SemSkipP L P s → SemSkipP L P s′
+  -- given (path′ , ¬Lt′) at t′: T1 gives t, path, t~t′ (¬L t via Lcl contrapositive);
+  -- sem t (path , ¬Lt) = (na , (ℓ , (n , p) , Lℓ));
+  -- return (na-~ t~t′ na , (ℓ′ , (n , pathVia-push …) , Lcl Lℓ (from p’s ℓ~ℓ′))).
+
+-- T5: main leaves of a transported skip tree come from ~-related leaves
+hml-bisim :
+  ∀ (D : Γ & Δ & Ξ ⊢skip[ m ] P ◂ Pr ∶ H) (Δ~ : Δ ~ᵛ Δ′) (Ξ~ : Ξ ~ᵛ Ξ′) (H~ : H ~ H′)
+  → HasMainLeaf (SK.skip-td/bisim Δ~ Ξ~ H~ D) ℓ′
+  → ∃[ ℓ ] HasMainLeaf D ℓ × ℓ ~ ℓ′
+  -- Case on D (the transported tree then REDUCES, so the hml match is definitional):
+  --   skip/main td  : transported = skip/main (td/bisim …); hml = hml/main; ℓ = H, H~.
+  --   skip/step …   : transported ktd gr″ .proj₂ = skip-td/bisim … (ktd (~R→ H~ gr″) .proj₂);
+  --                   hml/step gr″ hml′ → IH on (ktd (~R→ H~ gr″) .proj₂) →
+  --                   wrap with hml/step (~R→ H~ gr″).
+  --   skip/cycle …  : transported = skip/cycle; no HasMainLeaf constructor — absurd.
+
+-- T6: weaken the visited vector by a whole prefix (iterate Safety.Skip’s
+-- single-insertion lemma at the FRONT, avoiding take/drop lemmas entirely)
+weakenTo :
+  ∀ (X : Fin ξ) (Ξ : Vec (State G) ξ)
+  → Γ & Δ & dropSuc X Ξ ⊢skip[ m ] P ◂ Pr ∶ H
+  → Γ & Δ & Ξ            ⊢skip[ m ] P ◂ Pr ∶ H
+  -- recursion on X: zero, Ξ = y ∷ Ξ′ : skip/weaken-visited {Ξ′ = []} inserts y;
+  -- suc X, Ξ = y ∷ Ξ′ : recurse to get over Ξ′, then insert y at the front.
+  -- (dropSuc X Ξ = Data.Vec.drop-style tail after position X; define by the
+  -- same recursion so no stdlib take/drop lemma is needed.)
+```
+
+---
+
+## Phase A — Theorem A: the walk (finish; `Complete.agda`)
+
+Statement (abstract in `L`, as already designed; instantiated by Phase C):
+
+```
+theoremA :
+  (L : State G → Set)
+  (Lcl : ∀ {u u′} → L u → u ~ u′ → L u′)                 -- ~-closed
+  (std : Γ & Δ & [] ⊢skip[ prod ] P ◂ Pr ∶ s)
+  (lc  : ∀ {ℓ} → HasMainLeaf std ℓ → L ℓ)                -- leaves ⊆ L
+  → SemSkipP L P s
+```
+
+`SemSkipP L P s = ∀ t → PathViaP (¬L) s t × ¬ L t → na t × ReachLP L t`, so
+unfold and run the generalized walk.  **The walk is structural induction on
+the `PathViaP` argument** — `PathViaP` carries no length index and none is
+needed; the `~`-jump replaces the *carried tree*, never the recursion target.
+This is strictly simpler than v1's "induction on k with Anc" sketch.
+
+Strengthen `Anc` to carry leaf coverage (small refactor of the existing ✅):
+
+```
+AncL : (L : State G → Set) → ∀ {ξ} → Vec (State G) ξ → Set
+AncL L []      = ⊤
+AncL L (r ∷ Ξ) =
+  (Σ[ D ∈ Γ & Δ & Ξ ⊢skip[ prod ] P ◂ Pr ∶ r ]
+     (∀ {ℓ} → HasMainLeaf D ℓ → L ℓ))
+  × AncL L Ξ
+
+ancLookup : AncL L Ξ → ∀ X →
+  Σ[ D ∈ Γ & Δ & dropSuc X Ξ ⊢skip[ prod ] P ◂ Pr ∶ lu Ξ X ]
+    (∀ {ℓ} → HasMainLeaf D ℓ → L ℓ)
+  -- positional recursion on X / Ξ.
+```
+
+The walk:
+
+```
+walk :
+  ∀ {ξ} {Ξ : Vec (State G) ξ} {r}
+    (D   : Γ & Δ & Ξ ⊢skip[ prod ] P ◂ Pr ∶ r)
+    (anc : AncL L Ξ)
+    (lc  : ∀ {ℓ} → HasMainLeaf D ℓ → L ℓ)
+    {t} (path : PathViaP G (λ u → ¬ L u) r t) (¬Lt : ¬ L t)
+  → (P not-active-in t) × ReachLP L t
+```
+
+* **`path = pathP/nil`** (so `r = t`):
+  - `D = skip/main leaf` is absurd: `lc (hml/main leaf) : L t` vs `¬Lt`
+    (this is exactly `skip-na` ✅ — reuse/adapt it).
+  - `D = skip/step gr na ktd prf`: `na` answers the first component; `spine D`
+    ✅ gives `(ℓ , (n , p) , hml)`; `ReachLP` = `(ℓ , (n , p) , lc hml)`.
+* **`path = pathP/cons ¬Lr gr_β rest`** with `gr_β : Step r β u`:
+  - `D = skip/main leaf` absurd via `lc`/`¬Lr` as above.
+  - `D = skip/step gr na ktd prf`: inspect `ktd gr_β` **with the equation
+    kept** — use the `go (ktd gr_β) refl` where-helper pattern (the exact
+    with-abstraction gotcha and its fix are documented in `spine`,
+    `Complete.agda:208–219`).  Let `anc′ = ((D , lc) , anc) : AncL L (r ∷ Ξ)`.
+    * `(prod , child)` — descend:
+      `walk child anc′ (λ hml → lc (hml/step gr_β hml†)) rest ¬Lt`,
+      where `hml†` is `hml` transported along the kept equation
+      `ktd gr_β ≡ (prod , child)` (a `subst`, same as in `spine`).
+    * `(nonprod , child)` — `child` can only be `skip/cycle {X} eq` with
+      `eq : lu (r ∷ Ξ) X ~ u` (`skip/main`/`skip/step` are `prod`).  **Jump**:
+      1. `(D_a , lc_a) = ancLookup anc′ X` — a `prod` tree at `a = lu (r ∷ Ξ) X`
+         over `dropSuc X (r ∷ Ξ)`;
+      2. `D_w = weakenTo X (r ∷ Ξ) D_a` — same tree over `r ∷ Ξ` (T6);
+         its leaves are unchanged, so its coverage is still `lc_a`
+         (`weakenTo` maps `skip/main td ↦ skip/main td`; if the termination
+         checker wants it, prove the 10-line
+         `hml-weaken : HasMainLeaf (weakenTo …) ℓ → HasMainLeaf D_a ℓ`);
+      3. `D_u = SK.skip-td/bisim ~ᵛ-refl ~ᵛ-refl eq D_w` — a `prod` tree
+         **at `u`** over `r ∷ Ξ`;
+      4. its coverage: `lc_u hml′ = Lcl (lc_a (hml-bisim … hml′ .proj₂ .proj₁ …)) (…~…)`
+         — i.e. T5 recovers an original leaf `ℓ₀ ~ ℓ′`, `lc_a` puts `ℓ₀ ∈ L`,
+         `Lcl` closes to `ℓ′`;
+      5. continue: `walk D_u anc′ lc_u rest ¬Lt` — the path shrank, recursion
+         is structural.  ✓
+
+Then `theoremA L Lcl std lc t (path , ¬Lt) = walk std tt lc path ¬Lt`.
+
+Notes:
+* Everything `skip-td/bisim` needs (`Ξ ~ᵛ Ξ′` at equal length) is satisfied
+  with `~ᵛ-refl`.
+* The walk never inspects `Δ`; `Γ Δ P Pr` are module-fixed.
+* v1's worry "the ancestor is bigger so induction on the derivation fails" is
+  moot: recursion is on `path`, the tree is just carried data.
+
+---
+
+## Phase C — completeness up to `~` (`Complete.agda`)
+
+```
+mutual
+  complete :
+    (D : Γ & Δ ⊢p P ◂ Pr ∶ s)
+    → ∀ {Δ′ s′} → Δ ~ᵛ Δ′ → s ~ s′
+    → Alg (F Pr) Γ Δ′ P Pr s′
+
+  completeLeaf :   -- extract-and-complete a main leaf, up to ~
+    (D : Γ & Δ & Ξ ⊢skip[ m ] P ◂ Pr ∶ r) {ℓ}
+    → HasMainLeaf D ℓ
+    → ∀ {Δ′ t} → Δ ~ᵛ Δ′ → ℓ ~ t
+    → Alg (F Pr) Γ Δ′ P Pr t
+```
+
+Every case ends by injecting into `Alg (suc (F Pr))`-shaped data and calling
+`sat` (Phase S) to come back to `Alg (F Pr)`; per-case fuel is *never*
+tracked.  Useful case-local abbreviation:
+`intoF : Alg (suc (F Pr)) … → Alg (F Pr) …` = `sat … (suc (F Pr))`.
+
+Cases of `complete` (each mirrors the same constructor in `td/bisim`,
+`Safety/Skip.agda:161–196` — keep it open as the template):
+
+* `t/send gr etd td`, target `s′`:
+  `gr′ = ~L→ s~s′ gr : Step s′ … t′`; IH `a = complete td Δ~Δ′ (~L→~ s~s′ gr)`
+  at the *send subterm* `Pr₁`, giving `Alg (F Pr₁) … t′`;
+  `inj₁ (S , t′ , etd , gr′ , alg-mono (F Pr₁ ≤ F Pr ∸ 1 …) a)`.
+  Cleanest arithmetic: prove once `F-sub-send : suc (F Pr₁) ≤ F (Q ! i < E >∙ Pr₁)`
+  (and siblings for recv/if/rec — reuse Phase S's per-case bounds:
+  `F Pr₁ ≤ J Pr ≤ F Pr ∸ suc (size G)`), then inject at `suc (F Pr₁)` and
+  finish with `alg-mono`.
+* `t/recv gr conts`, target `s′`:
+  - witness: `step⇒listed (~L→ s~s′ gr)` gives `RecvWitness … (edges G s′)`.
+  - `All` over `edges G s′` by `All.tabulate λ {e} mem → λ {j}{U} eq → …`:
+    from `eq`, `listed⇒step mem` is `Step s′ (P ⟶ Q # j < U >) t′`; pull back
+    `gr₀ = ~R→ s~s′ (subst … eq (listed⇒step mem))`, `t₀~t′ = ~R→~ …`;
+    IH `complete (conts gr₀) Δ~Δ′ t₀~t′ : Alg (F (lookup Br j)) (U ∷ Γ) Δ′ Q … t′`;
+    `alg-mono` into the common bound.  (`conts gr₀` is a function-premise
+    application — keep `conts` a pattern variable, the usual discipline.)
+* `t/skip std`, target `s′` — the payoff case:
+  ```
+  L t          = ∃[ ℓ ] Σ (HasMainLeaf std ℓ) (λ _ → ℓ ~ t)
+  Lcl          = λ (ℓ , hml , ℓ~t) t~t′ → (ℓ , hml , ~trans ℓ~t t~t′)
+  lc           = λ hml → (_ , hml , ~refl)
+  sem  : SemSkipP L P s   = theoremA L Lcl std lc                 (Phase A)
+  sem′ : SemSkipP L P s′  = semSkipP-bisim Lcl s~s′ sem           (T4)
+  L⊆   : ∀ {t} → L t → Alg (F Pr) Γ Δ′ P Pr t
+       = λ (ℓ , hml , ℓ~t) → completeLeaf std hml Δ~Δ′ ℓ~t
+  result = intoF (inj₂ (inj₂ (semSkipP-mono L⊆ sem′)))
+  ```
+* `t/unskip tr td` (`tr : H -[¬ P ]->* s`, `td` at `H`):
+  `SK.skip/bisim s~s′ tr` gives `(H₀ , H~H₀ , tr′ : H₀ -[¬ P ]->* s′)`;
+  IH `complete td Δ~Δ′ H~H₀ : Alg (F Pr) … H₀`; then fold, re-saturating at
+  every step so no arithmetic ever appears:
+  ```
+  pred-fold : ∀ {a b} → a -[¬ P ]->* b → Alg (F Pr) Γ Δ′ P Pr a
+            → Alg (F Pr) Γ Δ′ P Pr b
+  pred-fold skip/refl            alg = alg
+  pred-fold (skip/step gr P∉ tr) alg =
+    pred-fold tr (intoF (inj₂ (inj₁ (_ , (_ , step⇒listed gr , P∉) , alg))))
+  ```
+  No trace shortening, no `traceLen`.
+* `t/if etd ttd ftd`: two IHs at `s~s′`, `alg-mono` both into the common
+  bound, `inj₁ (etd , _ , _)`, `intoF`.
+* `t/rec mg td`: IH `complete td (~ᵛ/∷ s~s′ Δ~Δ′) s~s′ : Alg (F Pr₁) Γ (s′ ∷ Δ′) …`;
+  `inj₁ (mg , alg-mono … it)`, `intoF`.
+* `t/var eq`: `inj₁ (~trans (lookup/~ᵛ Δ~Δ′ _ eq) s~s′)` at fuel `1`,
+  `alg-mono` to `F Pr`.  (Same expression as `td/bisim`'s `t/var` case.)
+* `t/end done`: `inj₁ (done ∘ ∈~ (~sym s~s′))` at fuel `1`, `alg-mono`.
+
+`completeLeaf` (structural on the tree, matching `D` and the `hml` together —
+same index-matching style as `spine`):
+
+* `D = skip/main leaf`, `hml = hml/main leaf` → `complete leaf Δ~Δ′ ℓ~t`.
+* `D = skip/step gr na ktd prf`, `hml = hml/step gr′ hml′` →
+  `completeLeaf (ktd gr′ .proj₂) hml′ Δ~Δ′ ℓ~t`.
+* `skip/cycle`: no `hml` constructor — absurd pattern.
+
+Termination: `complete (t/skip std)` calls `theoremA` (non-recursive) and
+`completeLeaf std …`; `completeLeaf` descends the tree and at leaves calls
+`complete` on a strict subterm — the same size-change shape `spine` already
+passes.  No measure, no `cost`.
+
+Finally:
+
+```
+complete₀ : (D : Γ & Δ ⊢p P ◂ Pr ∶ s) → Alg (F Pr) Γ Δ P Pr s
+complete₀ D = complete D ~ᵛ-refl ~refl
+```
+
+---
+
+## Phase F — top level (`TypeChecker.agda` + wrappers)
+
+1. ```
+   check : ∀ {γ δ} Γ Δ P Pr s → Dec (Γ & Δ ⊢p P ◂ Pr ∶ s)
+   check Γ Δ P Pr s with checkWithFuelD (F Pr) Γ Δ P Pr s
+   ... | yes a = yes (alg-sound (F Pr) a)
+   ... | no ¬a = no (¬a ∘ complete₀)
+   ```
+   Placement: `complete₀` lives in `Complete.agda` (needs `Safety.Skip`), so
+   `check` must live there too (or in a new `Definitions/TypeChecker/Check.agda`
+   importing `Complete`).  `Definitions.TypeChecker` itself keeps everything
+   up to `alg-sound`; the aggregator stays acyclic exactly as now.
+2. `checkClosed`, `checkSession : ∀ M s → Dec (⊢s M ∶ s)` — finite `∀` over
+   `Fin N` (`allDec : (∀ i → Dec (A i)) → Dec (∀ i → A i)`; `no f = λ g → f (g i)`).
+3. `checkProcess/checkSession/checkRooted*` to `Dec (CheckedProcess …)`:
+   * `wellBehaved? G = no ¬wb`: refute the record's first field directly —
+     `no λ (checkedProcess wb′ _) → ¬wb wb′`.  No lemma needed.
+   * `yes wb` but `check = no ¬td`: this is the only place needing
+     ```
+     typing-wb-irrelevant :
+       (wb wb′ : WellBehaved (graphTheory G)) →
+       Typing.MPST wb′ ._&_⊢p_∶_ Γ Δ PPr s → Typing.MPST wb ._&_⊢p_∶_ Γ Δ PPr s
+     ```
+     Mechanical mutual induction (with the `⊢skip` judgment): every
+     constructor field is `BTheory`-level (`_-<_>->_`, `~`, `∈T`,
+     `not-active-in` are all derived from `B`, never from `wb`), so each case
+     is a re-wrap.  ~100 lines.
+4. Delete the `Maybe` cluster: `CheckFunction`, `checkContinuation(s)`,
+   `checkDirect`, `checkPredecessor(s)`, `checkClosureSkip`, `checkClosure`,
+   `checkWithFuel`, old `check`, `fromT`, `allParticipants`-Maybe.  Then
+   delete the dead `cost` block from `Complete.agda` (list in §1) and the
+   stale comments the old checker carried.
+
+---
+
+## Order of implementation (each step leaves `runall.sh` green)
+
+1. **Phase S** (`Saturate.agda`) — fully independent, mechanical; do first.
+   If any of S stalls, everything else still composes with `sat` as a
+   module parameter, but S has no research risk: check S.1's `J+size≡F`
+   numerically first (`size G = 2`, `pf = 3`: `F = 9`, `J = 6`, `suc (6+2) = 9` ✓).
+2. **Phase T** — T1–T4 (needed by C), T5–T6 (needed by A).  ~150 lines.
+3. **Phase A** — refactor `Anc → AncL`, write `ancLookup`, `weakenTo`, then
+   the walk.  Keep `spine`/`skip-na` as is.
+4. **Phase C** — `complete`/`completeLeaf`/`pred-fold`/`complete₀`, then the
+   per-constructor `F`-bounds (share Phase S's S.1 lemmas — export them).
+5. **Phase F** — `check`, session/top-level `Dec`s, `typing-wb-irrelevant`,
+   delete the `Maybe` cluster and the dead cost block.
+6. Update `status.md`; delete stale comments; final `runall.sh`.
+
+## Gotchas carried forward (from status.md, still apply)
+
+* Non-injective `wt/Incl/mark/lookup/tabulate`: pin vector implicits
+  (`{Ξ}`, `{left}`, `{right}`) at call sites (bites again in S.3's `vec j`).
+* `Alg`/`It` must be fuel-recursive *functions*, not datatypes (positivity).
+* Function premises (`conts`, `ktd`) must stay clause pattern variables for
+  termination (bites in C's recv case and A's walk).
+* `with … in eq` dropping equations when context depends on `ktd gr`: use the
+  `go (ktd gr) refl` where-helper (`spine` shows the working pattern; needed
+  again in A's walk).
+* In `Complete.agda`: `open Typing.MPST wb hiding (_,_)`; Vec's `_∷_/[]`;
+  qualify `BTheory._-<_>->_ (graphTheory G)`; `skip/step`'s target implicit
+  is `{G' = …}` (ASCII apostrophe).
+* New: in Phase S never pass an unapplied recursive function into a
+  higher-order lemma (`direct-mono`!) — inline per-case (`directSat`).
+
+## Inventory delta vs v1
+
+**Dropped entirely:** `cost`/`costSkip`, C1 lemma family, C2, C3, C4,
+round-tree canonicalization (`skip/cat` collapsing), revisit normalization,
+budget `B Pr h`, `maxWithMem(-lb)`, `traceLen`.
+
+**New:** `sat` + `It` machinery (Phase S), transport pack T1–T6,
+`AncL`/`ancLookup`/`weakenTo`, `walk`/`theoremA`, `complete`/`completeLeaf`/
+`pred-fold`, `allDec`, `typing-wb-irrelevant` (was already planned).
+
+**Reused as-is:** everything in v1's "Reused" list, plus (new since then)
+`Alg`, `checkWithFuelD`, `alg-sound`, `alg-mono`, `direct?/direct-sound/
+direct-mono`, `semSkipP-mono`, `reachLP-mono`, `SkipDecide.semSkip?`,
+`SkipSem.theoremB`, `spine`, `HasMainLeaf`, `skip-na`, `skip/bisim`,
+`skip-td/bisim`, `skip/weaken-visited`, `wt`-family, `PathVia(P)` bridges.
