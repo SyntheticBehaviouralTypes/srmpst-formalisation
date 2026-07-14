@@ -12,8 +12,8 @@ open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; sym; trans; subst; cong)
 open import Definitions
 
-module Safety.Skip {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
-  open module M = Definitions.MPST(BP)
+module Safety.Skip {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
+  open module M = Definitions.MPST(wb)
   open M
   open M.Subst
 

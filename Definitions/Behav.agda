@@ -105,44 +105,60 @@ module Definitions.Behav where
 
     -- Bisimilarity
 
-    record _~_ (G G′ : Behav) : Set where
-      coinductive
-      field
-        ~L :
-          ∀ {α G″}
-          → G -< α >-> G″
-          → ∃[ G‴ ] G′ -< α >-> G‴ × G″ ~ G‴
+    mutual
+      record _≲_ (G G′ : Behav) : Set where
+        coinductive
+        field
+          simulate :
+            ∀ {α G″}
+            → G -< α >-> G″
+            → ∃[ G‴ ] G′ -< α >-> G‴ × G″ ~ G‴
 
-        ~R :
-          ∀ {α G‴}
-          → G′ -< α >-> G‴
-          → ∃[ G″ ] G -< α >-> G″ × G″ ~ G‴
+      _~_ : Behav → Behav → Set
+      G ~ G′ = G ≲ G′ × G′ ≲ G
 
-    open _~_
+    open _≲_
 
-    ~refl : ∀ {G} → G ~ G
-    ~L ~refl gr =
-      _ , gr , ~refl
-    ~R ~refl gr =
-      _ , gr , ~refl
+    mutual
+      ≲refl : ∀ {G} → G ≲ G
+      simulate ≲refl gr =
+        _ , gr , ~refl
+
+      ~refl : ∀ {G} → G ~ G
+      ~refl =
+        ≲refl , ≲refl
 
     ~sym : ∀ {G G′} → G ~ G′ → G′ ~ G
-    ~L (~sym G~G′) gr =
-      let _ , gr′ , b = ~R G~G′ gr
-      in _ , gr′ , ~sym b
-    ~R (~sym G~G′) gr =
-      let _ , gr′ , b = ~L G~G′ gr
-      in _ , gr′ , ~sym b
+    ~sym (G≲G′ , G′≲G) =
+      G′≲G , G≲G′
 
-    ~trans : ∀ {G G′ G″} → G ~ G′ → G′ ~ G″ → G ~ G″
-    ~L (~trans G~G′ G′~G″) gr =
-      let _ , gr′ , b′ = ~L G~G′ gr
-          _ , gr″ , b″ = ~L G′~G″ gr′
-      in _ , gr″ , ~trans b′ b″
-    ~R (~trans G~G′ G′~G″) gr =
-      let _ , gr′ , b′ = ~R G′~G″ gr
-          _ , gr″ , b″ = ~R G~G′ gr′
-      in _ , gr″ , ~trans b″ b′
+    mutual
+      ≲trans : ∀ {G G′ G″} → G ≲ G′ → G′ ≲ G″ → G ≲ G″
+      simulate (≲trans G≲G′ G′≲G″) gr =
+        let _ , gr′ , b′ = simulate G≲G′ gr
+            _ , gr″ , b″ = simulate G′≲G″ gr′
+        in _ , gr″ , ~trans b′ b″
+
+      ~trans : ∀ {G G′ G″} → G ~ G′ → G′ ~ G″ → G ~ G″
+      ~trans (G≲G′ , G′≲G) (G′≲G″ , G″≲G′) =
+        ≲trans G≲G′ G′≲G″ , ≲trans G″≲G′ G′≲G
+
+    ~L :
+      ∀ {G G′ α G″}
+      → G ~ G′
+      → G -< α >-> G″
+      → ∃[ G‴ ] G′ -< α >-> G‴ × G″ ~ G‴
+    ~L (G≲G′ , _) =
+      simulate G≲G′
+
+    ~R :
+      ∀ {G G′ α G‴}
+      → G ~ G′
+      → G′ -< α >-> G‴
+      → ∃[ G″ ] G -< α >-> G″ × G″ ~ G‴
+    ~R (_ , G′≲G) gr =
+      let _ , gr′ , b = simulate G′≲G gr
+      in _ , gr′ , ~sym b
 
     ~L→G :
       ∀ {G G′ G″ α}
@@ -232,7 +248,7 @@ module Definitions.Behav where
     lookup/~ᵛ (~ᵛ/∷ _ Δ~Δ′) (suc X) G~lookup =
       lookup/~ᵛ Δ~Δ′ X G~lookup
 
-  record BT-Prop {N : ℕ} (B : BTheory N) : Set₁ where
+  record WellBehaved {N : ℕ} (B : BTheory N) : Set₁ where
     open Definitions.Actions N
     open Action
     open Definitions.Common N

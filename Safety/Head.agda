@@ -11,13 +11,13 @@ open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; subst; sym)
 open import Definitions
 
-module Safety.Head {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
+module Safety.Head {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private
-    module M = Definitions.MPST BP
+    module M = Definitions.MPST wb
   open M
   open M.Subst
-  open import Safety.Skip BP
-  open import Typing.Substitution BP
+  open import Safety.Skip wb
+  open import Typing.Substitution wb
 
   mutual
 

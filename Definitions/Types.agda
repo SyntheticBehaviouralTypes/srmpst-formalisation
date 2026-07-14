@@ -398,6 +398,7 @@ module Definitions.Types (N : ℕ) where
 
   open PreTypes hiding (_-<_>->_)
   open BTheory GlobalTypes
+  open _≲_
 
   ------------------------------------------------------------------------------
 
@@ -629,8 +630,8 @@ module Definitions.Types (N : ℕ) where
     in-∈T/cont Chs i {σ = σ} n rewrite lu/subst σ Chs i = in/later (step/i i) n
 
   ~unfold : ∀ {G : Global 1 mg} → (μ G) ~ >> ([ add-subst var (μ G) ]G G)
-  ~unfold .BTheory._~_.~L (step/unfold x) = _ , x , ~refl
-  ~unfold .BTheory._~_.~R x = _ , step/unfold x , ~refl
+  ~unfold .proj₁ .simulate (step/unfold x) = _ , x , ~refl
+  ~unfold .proj₂ .simulate x = _ , step/unfold x , ~refl
 
   private
     in-∈T/unfold : ∀ {P} {G : Global (suc zero) mg}
@@ -778,8 +779,6 @@ module Definitions.Types (N : ℕ) where
     → ¬ (P ∈G G')
   ∉G/step tr = contraposition λ x →
     ∈T-∈G (∈T/step tr (∈G-∈T x))
-
-  open _~_
 
   in/bisim : ∀ {P G G'} → G ~ G' → P ∈G G → P ∈G G'
   in/bisim G~G' p∈G = ∈T-∈G (∈~ G~G' (∈G-∈T p∈G))
@@ -1103,35 +1102,45 @@ module Definitions.Types (N : ℕ) where
     stepback/~ : ∀ {α} (s≢r : False (sender α ≟f receiver α))
       → ∀ {G₀ G₁ G₂} (b : G₁ ~ G₂) (r : G₀ -< α >-> G₁)
       → G₀ ~ stepback s≢r r G₂
-    stepback/~ {α = α , i} s≢r b r .~L {α = α' , j} r' with indep? r r'
-    stepback/~ {α = α , i} s≢r b r .~L {α = α' , j} r' | inj₂ refl with j ≟f i
-    stepback/~ {α = α , i} s≢r b r .~L {α = α' , j} r' | inj₂ refl | yes refl
+    stepback/~ {α = α , i} s≢r b r .proj₁ .simulate
+      {α = α' , j} r' with indep? r r'
+    stepback/~ {α = α , i} s≢r b r .proj₁ .simulate
+      {α = α' , j} r' | inj₂ refl with j ≟f i
+    stepback/~ {α = α , i} s≢r b r .proj₁ .simulate
+      {α = α' , j} r' | inj₂ refl | yes refl
       with step/det  r' r
     ... | refl = _ , stepback/α s≢r r _ , b
-    stepback/~ {α = α , i} s≢r b r .~L {α = α' , j} r' | inj₂ refl | no pf
+    stepback/~ {α = α , i} s≢r b r .proj₁ .simulate
+      {α = α' , j} r' | inj₂ refl | no pf
       = _ , stepback/α' s≢r r r' _ pf , ~refl
-    stepback/~ {α = α} s≢r b rG₀G₁ .~L {α = α'} rG₀G | inj₁ ii
+    stepback/~ {α = α} s≢r b rG₀G₁ .proj₁ .simulate
+      {α = α'} rG₀G | inj₁ ii
       = let G' , rG₁G' , rGG' = diamond rG₀G₁ rG₀G ii
             _ ,  rG₂Gn , Gn~G' = ~L b rG₁G'
         in _ , step/tl/I ii (stepback/ch ii rG₀G₁ rG₀G rGG' rG₂Gn)
            , stepback/~ {α = α} s≢r Gn~G' rGG'
 
     -- Other direction
-    stepback/~ {α = α , i} s≢r b r .~R {α = α' , j} (step/i .j) with j ≟f i
-    stepback/~ {α = α , i} s≢r {G₂ = G₂} b r .~R {α = α' , j} (step/i .j)
+    stepback/~ {α = α , i} s≢r b r .proj₂ .simulate
+      {α = α' , j} (step/i .j) with j ≟f i
+    stepback/~ {α = α , i} s≢r {G₂ = G₂} b r .proj₂ .simulate
+      {α = α' , j} (step/i .j)
       | yes refl rewrite lookup∘update i (mk-alts r) (lookup (sorts α) i ·· G₂)
                  | sorts/tabulate r G₂
-      = _ , r , b
-    stepback/~ {α = α , i} s≢r {G₂ = G₂} b r .~R {α = α' , j} (step/i .j)
+      = _ , r , ~sym b
+    stepback/~ {α = α , i} s≢r {G₂ = G₂} b r .proj₂ .simulate
+      {α = α' , j} (step/i .j)
       | no ne rewrite lookup∘update′ ne (mk-alts r) (lookup (sorts α) i ·· G₂)
                       | sorts/tabulate r G₂
                       | lookup∘tabulate (mk-alt r) j
       = _ , proj₂ (step/alt r j) , ~refl
-    stepback/~ {α = α} s≢r {G₂ = G₂} b r .~R {α = α'} (step/tl/I ii k)
+    stepback/~ {α = α} s≢r {G₂ = G₂} b r .proj₂ .simulate
+      {α = α'} (step/tl/I ii k)
       rewrite mk-branches/swap/steps ii r b k
       = _ , mk-branches/swap ii r b k .d~-r03
-        , stepback/~ s≢r (mk-branches/swap ii r b k .d~-f~n)
-                         (mk-branches/swap ii r b k .d~-r3f)
+        , ~sym
+            (stepback/~ s≢r (mk-branches/swap ii r b k .d~-f~n)
+              (mk-branches/swap ii r b k .d~-r3f))
 
     -- NOTE: in a future where [G -< p , i >-> G'] may not impose the WF
     -- condition that all other alternatives [p , j] are possible in [G], we
@@ -1155,10 +1164,11 @@ module Definitions.Types (N : ℕ) where
                ; (inj₂ (∈S refl)) → f (∈R refl)
                ; (inj₂ (∈R refl)) → ¬pr (∈R refl) }
 
-  GT-Properties : BT-Prop GlobalTypes
-  GT-Properties .BT-Prop.recv-act-eq = recv∈α/≡act
-  GT-Properties .BT-Prop.snd≢rcv = λ x → toWitnessFalse (snd≢rcv x)
-  GT-Properties .BT-Prop.step-det = step/det
-  GT-Properties .BT-Prop.~stepback = ~/stepback
-  GT-Properties .BT-Prop.diamond = the-diamond
-  GT-Properties .BT-Prop.cond-comm = no-phantom-comm
+  GT-WellBehaved : WellBehaved GlobalTypes
+  GT-WellBehaved .WellBehaved.recv-act-eq = recv∈α/≡act
+  GT-WellBehaved .WellBehaved.snd≢rcv =
+    λ x → toWitnessFalse (snd≢rcv x)
+  GT-WellBehaved .WellBehaved.step-det = step/det
+  GT-WellBehaved .WellBehaved.~stepback = ~/stepback
+  GT-WellBehaved .WellBehaved.diamond = the-diamond
+  GT-WellBehaved .WellBehaved.cond-comm = no-phantom-comm

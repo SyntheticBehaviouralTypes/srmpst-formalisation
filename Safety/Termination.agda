@@ -42,14 +42,14 @@ open import Relation.Binary.PropositionalEquality
 open import Utils.Vec using (sum/map-update<)
 open import Definitions
 
-module Safety.Termination {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
+module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private
-    module M = Definitions.MPST BP
+    module M = Definitions.MPST wb
   open M
   open M.Subst
-  open import Safety.Head BP
-  open import Safety.Preservation BP
-  open import Safety.Progress BP
+  open import Safety.Head wb
+  open import Safety.Preservation wb
+  open import Safety.Progress wb
 
   τ-depth/proc :
     ∀ {γ δ}

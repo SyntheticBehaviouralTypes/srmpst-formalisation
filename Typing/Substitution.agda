@@ -20,12 +20,12 @@ open import Relation.Binary.PropositionalEquality
 open import Utils.Vec using (lookup-not-insertAt)
 open import Definitions
 
-module Typing.Substitution {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
+module Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private
-    module M = Definitions.MPST BP
+    module M = Definitions.MPST wb
   open M
   open M.Subst
-  open import Safety.Skip BP using (td/bisim)
+  open import Safety.Skip wb using (td/bisim)
 
   private
     variable

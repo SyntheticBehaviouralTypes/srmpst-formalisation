@@ -21,10 +21,10 @@ open import Definitions.Guard public
 open import Definitions.Behav public
 
 -- Processes
-module MPST {N : ℕ} {B : BTheory N} (BP : BT-Prop B) where
+module MPST {N : ℕ} {B : BTheory N} (wb : WellBehaved B) where
 
   open BTheory B public
-  open BT-Prop BP public
+  open WellBehaved wb public
 
   open import Definitions.Common  N public
   open import Definitions.Proc    N public
@@ -34,7 +34,6 @@ module MPST {N : ℕ} {B : BTheory N} (BP : BT-Prop B) where
   open Action
   open Comm
   open Choice
-  open _~_
 
   private
     variable
