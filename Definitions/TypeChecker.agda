@@ -71,6 +71,7 @@ module Definitions.TypeChecker where
     open import LTS.Bisimulation N
     open import LTS.Core N
     open import LTS.Decision N using (wellBehaved?)
+    open import LTS.Reachability N using (∈T?)
 
     module GraphChecker
       (G : Graph)
@@ -248,29 +249,6 @@ module Definitions.TypeChecker where
         just (checked All.∷ rest)
       ... | _ | _ = nothing
 
-      GloballyInactive : Part → Set
-      GloballyInactive P =
-        ∀ s → All.All (λ edge → P ∉α proj₁ edge) (edges G s)
-
-      -- Global inactivity is stronger than absence from one reachable cone.
-      -- It keeps terminal checking independent of reachability computation.
-      globallyInactive? :
-        (P : Part) → Dec (GloballyInactive P)
-      globallyInactive? P =
-        Fin.all? λ s →
-          All.all?
-            (λ edge → _∉α?_ P (proj₁ edge))
-            (edges G s)
-
-      inactive⇒notIn :
-        ∀ {P} → GloballyInactive P → ∀ {s} → ¬ P ∈T s
-      inactive⇒notIn inactive {s} (in/α gr P∈α) =
-        ∉c→¬∈c
-          (All.lookup (inactive s) (step⇒listed {G = G} gr))
-          P∈α
-      inactive⇒notIn inactive (in/later _ later) =
-        inactive⇒notIn inactive later
-
       checkDirect : CheckFunction → CheckFunction
       checkDirect recur Γ Δ P
         (Q ! i < E >∙ Pr) s
@@ -315,9 +293,9 @@ module Definitions.TypeChecker where
         just (t/var (sound (bisimulationCorrect G) related))
       ... | no _ = nothing
       checkDirect recur Γ Δ P ∅ s
-        with globallyInactive? P
-      ... | yes inactive = just (t/end (inactive⇒notIn inactive))
-      ... | no _ = nothing
+        with ∈T? G P s
+      ... | no P∉T = just (t/end P∉T)
+      ... | yes _ = nothing
 
       Incoming :
         Part
