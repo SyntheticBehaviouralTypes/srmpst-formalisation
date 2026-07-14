@@ -199,115 +199,6 @@ module Definitions.TypeChecker where
              ; (j , U , u , Any.there m) →
                  ¬rest (j , U , u , m) }
 
-      CheckFunction : Set
-      CheckFunction =
-        ∀ {γ δ}
-        → (Γ : Vec Sort γ)
-        → (Δ : Vec (State G) δ)
-        → (P : Part)
-        → (Pr : Proc γ δ)
-        → (s : State G)
-        → Maybe (Γ & Δ ⊢p P ◂ Pr ∶ s)
-
-      RecvAt :
-        ∀ {γ δ I}
-        → Vec Sort γ
-        → Vec (State G) δ
-        → (P Q : Part)
-        → Vec (Proc (suc γ) δ) (suc I)
-        → Edge (size G)
-        → Set
-      RecvAt Γ Δ P Q Br (α , t) =
-        ∀ {j U}
-        → α ≡ (P ⟶ Q # j < U >)
-        → (U ∷ Γ) & Δ ⊢p Q ◂ lookup Br j ∶ t
-
-      checkContinuation :
-        ∀ {γ δ I}
-        → CheckFunction
-        → (Γ : Vec Sort γ)
-        → (Δ : Vec (State G) δ)
-        → (P Q : Part)
-        → (Br : Vec (Proc (suc γ) δ) (suc I))
-        → (edge : Edge (size G))
-        → Maybe (RecvAt Γ Δ P Q Br edge)
-      checkContinuation recur Γ Δ P Q Br (α , t)
-        with matchRecv? P Q _ α
-      ... | no noMatch =
-        just λ { {j} {U} eq →
-          ⊥-elim (noMatch (j , U , eq)) }
-      ... | yes (j , U , refl) with
-        recur (U ∷ Γ) Δ Q (lookup Br j) t
-      ...   | just td = just λ { refl → td }
-      ...   | nothing = nothing
-
-      checkContinuations :
-        ∀ {γ δ I}
-        → CheckFunction
-        → (Γ : Vec Sort γ)
-        → (Δ : Vec (State G) δ)
-        → (P Q : Part)
-        → (Br : Vec (Proc (suc γ) δ) (suc I))
-        → (xs : List (Edge (size G)))
-        → Maybe (All.All (RecvAt Γ Δ P Q Br) xs)
-      checkContinuations recur Γ Δ P Q Br [] =
-        just All.[]
-      checkContinuations recur Γ Δ P Q Br
-        (edge ∷ xs)
-        with checkContinuation recur Γ Δ P Q Br edge
-        | checkContinuations recur Γ Δ P Q Br xs
-      ... | just checked | just rest =
-        just (checked All.∷ rest)
-      ... | _ | _ = nothing
-
-      checkDirect : CheckFunction → CheckFunction
-      checkDirect recur Γ Δ P
-        (Q ! i < E >∙ Pr) s
-        with inferExpression Γ E
-      ... | no _ = nothing
-      ... | yes (S , etd) with
-        findStep s (P ⟶ Q # i < S >)
-      ...   | no _ = nothing
-      ...   | yes (t , gr) with
-        recur Γ Δ P Pr t
-      ...     | just td = just (t/send gr etd td)
-      ...     | nothing = nothing
-      checkDirect recur Γ Δ Q
-        (Σ P ？[ S ]· Br) s
-        with findRecv P Q _ (edges G s)
-        | checkContinuations
-            recur Γ Δ P Q Br (edges G s)
-      ... | no _ | _ = nothing
-      ... | _ | nothing = nothing
-      ... | yes (_ , _ , _ , selected) | just checked =
-        just
-          (t/recv
-            (listed⇒step {G = G} selected)
-            (λ gr →
-              All.lookup checked (step⇒listed {G = G} gr) refl))
-      checkDirect recur Γ Δ P
-        (ifp E then Pr else Pr′) s
-        with inferExpression Γ E
-        | recur Γ Δ P Pr s
-        | recur Γ Δ P Pr′ s
-      ... | yes (s/bool , etd) | just td | just td′ =
-        just (t/if etd td td′)
-      ... | _ | _ | _ = nothing
-      checkDirect recur Γ Δ P (rec Pr) s
-        with messageGuarded? Pr
-        | recur Γ (s ∷ Δ) P Pr s
-      ... | yes guarded | just td = just (t/rec guarded td)
-      ... | _ | _ = nothing
-      checkDirect recur Γ Δ P (v X) s
-        with T? (bisim? G (lookup Δ X) s)
-      ... | yes related =
-        just (t/var (sound (bisimulationCorrect G) related))
-      ... | no _ = nothing
-      checkDirect recur Γ Δ P ∅ s
-        with ∈T? G P s
-      ... | no P∉T = just (t/end P∉T)
-      ... | yes _ = nothing
-
       Incoming :
         Part
         → State G
@@ -340,43 +231,6 @@ module Definitions.TypeChecker where
         no λ { (β , Any.here px , P∉β) →
                  ¬P∉α (subst (P ∉α_) (cong proj₁ px) P∉β)
              ; (β , Any.there m , P∉β) → ¬rest (β , m , P∉β) }
-
-      checkPredecessor :
-        ∀ {γ δ}
-        → CheckFunction
-        → (Γ : Vec Sort γ)
-        → (Δ : Vec (State G) δ)
-        → (P : Part)
-        → (Pr : Proc γ δ)
-        → (s r : State G)
-        → Maybe (Γ & Δ ⊢p P ◂ Pr ∶ s)
-      checkPredecessor recur Γ Δ P Pr s r
-        with findIncoming P s (edges G r)
-      ... | no _ = nothing
-      ... | yes (_ , member , P∉α) with recur Γ Δ P Pr r
-      ...   | nothing = nothing
-      ...   | just td =
-        just
-          (t/unskip
-            (skip/one (listed⇒step {G = G} member) P∉α)
-            td)
-
-      checkPredecessors :
-        ∀ {γ δ n}
-        → CheckFunction
-        → (Γ : Vec Sort γ)
-        → (Δ : Vec (State G) δ)
-        → (P : Part)
-        → (Pr : Proc γ δ)
-        → (s : State G)
-        → Vec (State G) n
-        → Maybe (Γ & Δ ⊢p P ◂ Pr ∶ s)
-      checkPredecessors recur Γ Δ P Pr s [] = nothing
-      checkPredecessors recur Γ Δ P Pr s (r ∷ rs)
-        with checkPredecessor recur Γ Δ P Pr s r
-        | checkPredecessors recur Γ Δ P Pr s rs
-      ... | just td | _ = just td
-      ... | nothing | result = result
 
       InactiveAt : Part → State G → Set
       InactiveAt P s =
@@ -657,55 +511,6 @@ module Definitions.TypeChecker where
                  (Nat.m≤n+m (size G) (wt (mark (s ∷ [])))) nlt
                  (proj₁ rl) (proj₂ (proj₁ (proj₂ rl))) (proj₂ (proj₂ rl))
 
-      -- Extract the witness from a successful `recur` call.
-      fromT : ∀ {A : Set} (m : Maybe A) → T (is-just m) → A
-      fromT (just x) _ = x
-      fromT nothing ()
-
-      -- The skip closure is now a genuine decision procedure.  The leaf set
-      -- `L t` is "`recur` types `t` directly"; it is decidable because `recur`
-      -- returns a `Maybe`.  `semSkip?` decides the finite-graph reachability
-      -- characterisation `SemSkip s`, and `theoremB` turns a positive answer
-      -- into a `prod` skip tree — including the cyclic `skip/cycle` case.
-      checkClosureSkip : CheckFunction → CheckFunction
-      checkClosureSkip recur Γ Δ P Pr s = go (SkipDecide.semSkip? L L? P s)
-        where
-          L : State G → Set
-          L t = T (is-just (recur Γ Δ P Pr t))
-
-          L? : ∀ t → Dec (L t)
-          L? t = T? (is-just (recur Γ Δ P Pr t))
-
-          leaf : ∀ t → L t → Γ & Δ ⊢p P ◂ Pr ∶ t
-          leaf t lt = fromT (recur Γ Δ P Pr t) lt
-
-          open SkipSem Γ Δ P Pr L L? leaf
-
-          go : Dec (SemSkipP L P s)
-             → Maybe (Γ & Δ ⊢p P ◂ Pr ∶ s)
-          go (yes sem) = just (t/skip (theoremB s sem))
-          go (no _) = nothing
-
-      checkClosure : CheckFunction → CheckFunction
-      checkClosure recur Γ Δ P Pr s
-        with checkPredecessors recur Γ Δ P Pr s (states G)
-      ... | just td = just td
-      ... | nothing = checkClosureSkip recur Γ Δ P Pr s
-
-      checkWithFuel : ℕ → CheckFunction
-      checkWithFuel 0 Γ Δ P Pr s = nothing
-      checkWithFuel (suc fuel) Γ Δ P Pr s
-        with checkDirect (checkWithFuel fuel) Γ Δ P Pr s
-      ... | just td = just td
-      ... | nothing =
-        checkClosure (checkWithFuel fuel) Γ Δ P Pr s
-
-      check : CheckFunction
-      check Γ Δ P Pr =
-        checkWithFuel
-          (suc (size G) * processFuel Pr)
-          Γ Δ P Pr
-
       -- ════════════════════════════════════════════════════════════════
       --  §4: the bounded algorithmic judgment `Alg`
       --
@@ -948,41 +753,6 @@ module Definitions.TypeChecker where
       alg-mono (s≤s le) (inj₂ (inj₂ sem)) =
         inj₂ (inj₂ (semSkipP-mono (alg-mono le) sem))
 
-      -- Success is a declarative derivation. Until skip/cycle is synthesised,
-      -- `nothing` is inconclusive rather than evidence of non-typability.
-
-      checkClosed :
-        ∀ {γ}
-        → (Γ : Vec Sort γ)
-        → (P : Part)
-        → (Pr : Proc γ 0)
-        → (s : State G)
-        → Maybe (Γ & [] ⊢p P ◂ Pr ∶ s)
-      checkClosed Γ P Pr = check Γ [] P Pr
-
-      checkSession :
-        (M : Session)
-        → (s : State G)
-        → Maybe (⊢s M ∶ s)
-      checkSession M s =
-        allParticipants λ P →
-          checkClosed [] P (M [ P ]s) s
-        where
-          allParticipants :
-            ∀ {n} {A : Fin n → Set}
-            → (∀ i → Maybe (A i))
-            → Maybe (∀ i → A i)
-          allParticipants {n = 0} checked =
-            just λ ()
-          allParticipants {n = suc n} checked
-            with checked F.zero
-            | allParticipants (λ i → checked (F.suc i))
-          ... | just at-zero | just at-suc =
-            just λ where
-              F.zero → at-zero
-              (F.suc i) → at-suc i
-          ... | _ | _ = nothing
-
     ProcessTyping :
       (G : Graph)
       → WellBehaved (graphTheory G)
@@ -1010,32 +780,6 @@ module Definitions.TypeChecker where
         wellBehaved : WellBehaved (graphTheory G)
         derivation  : ProcessTyping G wellBehaved Γ P Pr s
 
-    checkProcess :
-      ∀ {γ}
-      → (G : Graph)
-      → (Γ : Vec Sort γ)
-      → (P : Common.Part)
-      → (Pr : Syntax.Proc γ 0)
-      → (s : State G)
-      → Maybe (CheckedProcess G Γ P Pr s)
-    checkProcess G Γ P Pr s with wellBehaved? G
-    ... | no _ = nothing
-    ... | yes wb with GraphChecker.checkClosed G wb Γ P Pr s
-    ...   | just td = just (checkedProcess wb td)
-    ...   | nothing = nothing
-
-    checkRootedProcess :
-      ∀ {γ}
-      → (R : RootedGraph)
-      → (Γ : Vec Sort γ)
-      → (P : Common.Part)
-      → (Pr : Syntax.Proc γ 0)
-      → Maybe
-          (CheckedProcess
-            (underlying R) Γ P Pr (initial R))
-    checkRootedProcess R Γ P Pr =
-      checkProcess (underlying R) Γ P Pr (initial R)
-
     SessionTyping :
       (G : Graph)
       → WellBehaved (graphTheory G)
@@ -1056,21 +800,3 @@ module Definitions.TypeChecker where
       field
         wellBehaved : WellBehaved (graphTheory G)
         derivation  : SessionTyping G wellBehaved M s
-
-    checkSession :
-      (G : Graph)
-      → (M : Syntax.Session)
-      → (s : State G)
-      → Maybe (CheckedSession G M s)
-    checkSession G M s with wellBehaved? G
-    ... | no _ = nothing
-    ... | yes wb with GraphChecker.checkSession G wb M s
-    ...   | just td = just (checkedSession wb td)
-    ...   | nothing = nothing
-
-    checkRootedSession :
-      (R : RootedGraph)
-      → (M : Syntax.Session)
-      → Maybe (CheckedSession (underlying R) M (initial R))
-    checkRootedSession R M =
-      checkSession (underlying R) M (initial R)

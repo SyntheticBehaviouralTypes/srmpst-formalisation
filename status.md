@@ -79,20 +79,85 @@ Theorem A survives with the same abstract-`L` design, but the walk is now
   `HasMainLeaf D ℓ → L ℓ`).
 - `maxWithMem(-lb)`, `traceLen`, `cost`/`costSkip`, `cost-unskip<`,
   `costSkip<skip`, `cost-main<skip`, `costSkip-child<` — **dead under v2**;
-  delete once Phase C compiles.
+  ✅ deleted in Phase F step 4.
 
 ## Remaining work (v2 phases; do in this order)
 
-- **Phase S** — `Saturate.agda`: `J Pr`, `J+size≡F`, `It`/`It?`/`It-mono`,
-  `findStab` pigeonhole (build/fresh-style fuel-with-invariant), `It→Alg`,
-  mutual `sat`/`algk→It`/`directSat`/`satBr`. Independent of everything else.
-- **Phase T** — transport pack in `Complete.agda`: `pathViaP-pull`,
-  `pathVia-push`, `na-~`, `semSkipP-bisim`, `hml-bisim`, `weakenTo`.
-- **Phase A** — Theorem A: `AncL`/`ancLookup`, the walk (structural on path,
-  `~`-jump via `weakenTo` + `skip-td/bisim` + `hml-bisim`), `theoremA`.
-- **Phase C** — `complete`/`completeLeaf`/`pred-fold`/`complete₀`.
-- **Phase F** — `check : Dec (⊢p)`, session `Dec`, `typing-wb-irrelevant`,
-  delete `Maybe` cluster + dead cost block.
+- **Phase S** ✅ DONE (build green) — new file
+  `Definitions/TypeChecker/Saturate.agda` (`module GraphSaturate (G)(wb)`),
+  root `Saturate.agda` wired into `runall.sh`. Delivers
+  `sat : ∀ Γ Δ P Pr s k → Alg k … s → Alg (F Pr) … s`. Contents: `F`/`J`,
+  `pf-suc`, `J+size≡F`, `bound`, `branchFuel-lb`, `J-recv-bound`/`J-if₁`/`J-if₂`;
+  `It`/`It?`/`it-mono-≤` (fuel-recursive function like `Alg`); pigeonhole
+  `vec`/`stabOr` (via generic `findCex`+`¬→→×`)/`search` (fuel-with-invariant,
+  `SkipSem.build` style)/`findStab`; `collapse`/`itCap`/`It→Alg`; mutual
+  `sat`/`algk→It`/`directSat`/`satBr` (subterm-sat inlined per constructor,
+  never through `direct-mono`). Gotcha hit: pin `wt-full {v = vec …}`.
+- **Phase T** ✅ DONE (build green) — transport pack appended to
+  `Complete.agda` (`GraphComplete`): `pathViaP-pull` (T1, pull `¬L`-path back
+  along `~` via `~R→`/`~R→~`), `pathVia-push` (T2, push path forward via
+  `~L→`/`~L→~`), `na-~` (T3), `semSkipP-bisim` (T4, composite — `SemSkipP`
+  `~`-invariant for `~`-closed `L`), `hml-bisim` (T5, main leaf of a
+  `SK.skip-td/bisim`-transported tree ↝ `~`-related original leaf; `skip/cycle`
+  case absurd `()`), `dropSuc`+`weakenTo` (T6, prefix-weaken visited vector by
+  iterating `SK.skip/weaken-visited {Ξ′ = []}`). Extra imports: `Data.Fin`/
+  `import Data.Fin as F`, `_∸_`, `PathViaP`/`pathP/nil`/`pathP/cons`. Compiled
+  first try — no gotchas hit.
+- **Phase A** ✅ DONE (build green) — Theorem A in `Complete.agda`. `Anc`
+  refactored to `AncL` (each entry also carries `∀{ℓ}→HasMainLeaf D ℓ→L ℓ`);
+  `ancLookup` (positional). Added `hml-wv` (general-`Ξ′` `HasMainLeaf`
+  pullback through `SK.skip/weaken-visited`) + `hml-weakenTo` (iterated) so the
+  weakened ancestor's coverage transfers. `walk` is structural on the
+  `PathViaP` argument: nil→(skip/main absurd via `¬Lt∘lc`, skip/step→`na`+
+  `spine`); cons→`go (ktd gr_β) refl` where-helper (spine's eqn-kept trick):
+  `(prod,child)` descends with subst-transported coverage, `(nonprod,
+  skip/cycle X cyc-eq)` JUMPS = `ancLookup`+`weakenTo`+`SK.skip-td/bisim
+  ~ᵛ-refl ~ᵛ-refl cyc-eq`, coverage recovered via `hml-bisim`+`hml-weakenTo`+
+  `Lcl`. `theoremA` = `walk _ _ _ _ L Lcl std tt lc`. Compiled first try
+  (Γ/Δ/P/Pr made explicit params of `walk` so the where-clause can name them;
+  Ξ/r/t/u bound in the cons-clause pattern). Extra import: Vec `_++_`.
+- **Phase C** ✅ DONE (build green) — completeness up to `~` in `Complete.agda`.
+  Imports `F`/`sat`/`branchFuel-lb` from `GraphSaturate`, `All`, more
+  `Nat.Properties`/`Data.Sum`. `F-suc`/`F-if₁`/`F-if₂`/`F-recv` subterm bounds;
+  `intoF Pr` (one `sat` step, `Pr` EXPLICIT since `v`/`∅`/`rec` injected values
+  don't mention the leaf predicate); `pred-fold` (fold a `-[¬P]->*` trace into
+  `Alg` unskip steps, re-saturating each). Mutual `complete`/`completeLeaf`
+  mirrors `td/bisim` case-by-case → `Alg (F Pr)`; `t/skip` instantiates
+  `theoremA` with `L t = ∃ ℓ. HasMainLeaf std ℓ × ℓ~t` (`Lcl`=`~trans`,
+  `lc`=`(_,hml,~refl)`), transports via `semSkipP-bisim`, maps leaves via
+  `completeLeaf`; `t/unskip` via `SK.skip/bisim`+`pred-fold`. `complete₀ D =
+  complete D ~ᵛ-refl ~refl`. Gotchas: bind `{Pr = PP}` per clause + pass to
+  `intoF`; pin `{G = G}` on `listed⇒step`/`step⇒listed`; `∀ {ℓ} →` not `{ℓ}`.
+- **Phase F steps 1–3** ✅ DONE (build green, strict) — the decision
+  procedures in `Complete.agda`. In `GraphComplete`: `checkD`
+  (`checkWithFuelD (F Pr)` + `alg-sound` yes-branch / `complete₀` no-branch),
+  `checkClosedD`, and `checkSessionD` (finite conjunction over `Fin N` via a
+  local `allDec`). At `Complete` level: `module WbIrr (G)(wb)(wb′)` with
+  `typing-wb-irrelevant`/`skip-wb-irrelevant` (mutual, re-wraps each
+  constructor — the judgments never inspect the `WellBehaved` witness) plus
+  helpers `mode-conv`/`mg-conv` (`Mode`/`MessageGuarded` are `MPST`-parameterised
+  so their copies differ per witness); then the bundled `checkProcessD`/
+  `checkRootedProcessD`/`checkSessionWD`/`checkRootedSessionD` returning
+  `Dec (CheckedProcess …)` / `Dec (CheckedSession …)` (destructure the record's
+  existential witness, refute via `WbIrr.typing-wb-irrelevant`). Gotchas:
+  import `Dec`; rename `check`→`checkD` (clashes with the Maybe `check`).
+- **Phase F step 4** ✅ DONE (build green, strict) — final cleanup. Deleted
+  from `TypeChecker.agda` the entire `Maybe` cluster: `CheckFunction`, `RecvAt`,
+  `checkContinuation(s)`, `checkDirect`, `checkPredecessor(s)`, `fromT`,
+  `checkClosureSkip`, `checkClosure`, `checkWithFuel`, the old `check`,
+  `checkClosed`, the `Maybe` `checkSession` (+ local `allParticipants`), and the
+  `Maybe` `checkProcess`/`checkRootedProcess`/`checkSession`/`checkRootedSession`
+  wrappers. **Kept**: the whole `Dec`/`Alg` layer, the `Incoming`/`findIncoming`
+  decision, `SkipSem`/`theoremB`, and the `ProcessTyping`/`CheckedProcess`/
+  `SessionTyping`/`CheckedSession` records (consumed by the new `Dec` wrappers).
+  Deleted from `Complete.agda` the dead §5 cost block: `maxWithMem(-lb)`,
+  `traceLen`, `cost`/`costSkip`, `cost-unskip<`, `costSkip<skip`,
+  `cost-main<skip`, `costSkip-child<`.
+
+**The `Maybe`→`Dec` conversion is complete.** `Definitions/TypeChecker/Complete.agda`
+now exposes `checkD`/`checkClosedD`/`checkSessionD` (in `GraphComplete`) and the
+bundled `checkProcessD`/`checkRootedProcessD`/`checkSessionWD`/`checkRootedSessionD`
+returning genuine `Dec`s.
 
 ---
 
