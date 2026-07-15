@@ -1,7 +1,7 @@
 {-# OPTIONS --guardedness #-}
 
 open import Data.Nat using (ℕ)
-open import Definitions
+open import Definitions.Typing
 
 module Safety {N : ℕ} {B : BTheory N} (wb : WellBehaved B) where
 

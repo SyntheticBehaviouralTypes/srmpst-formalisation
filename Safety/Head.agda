@@ -9,11 +9,11 @@ open import Function using (_∘_)
 open import Relation.Nullary using (¬_)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; subst; sym)
-open import Definitions
+open import Definitions.Typing
 
 module Safety.Head {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private
-    module M = Definitions.MPST wb
+    module M = MPST wb
   open M
   open M.Subst
   open import Safety.Skip wb
@@ -240,12 +240,13 @@ module Safety.Head {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     in _ , skip/step (~R→ G~G′ gr) P∉α tr′ , H~H′
 
   mainLeaf/weaken-visited :
-    ∀ {γ ξ ξ′ m P Pr G H K}
+    ∀ {γ δ ξ ξ′ m P Pr G H K}
       {Γ : Vec Sort γ}
+      {Δ : Vec Behav δ}
       {Ξ : Vec Behav ξ}
       {Ξ′ : Vec Behav ξ′}
-      {td : Γ & [] ⊢p P ◂ Pr ∶ K}
-    → (std : Γ & [] & Ξ′ ++ Ξ ⊢skip[ m ] P ◂ Pr ∶ G)
+      {td : Γ & Δ ⊢p P ◂ Pr ∶ K}
+    → (std : Γ & Δ & Ξ′ ++ Ξ ⊢skip[ m ] P ◂ Pr ∶ G)
     → MainLeaf td (skip/weaken-visited {H = H} {Ξ = Ξ} {Ξ′ = Ξ′} std)
     → MainLeaf td std
   mainLeaf/weaken-visited (skip/main td) main/here =

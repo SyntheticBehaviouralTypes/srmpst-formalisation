@@ -18,11 +18,11 @@ open import Relation.Nullary using (yes; no)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; sym; subst; _≢_)
 open import Utils.Vec using (lookup-not-insertAt)
-open import Definitions
+open import Definitions.Typing
 
 module Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private
-    module M = Definitions.MPST wb
+    module M = MPST wb
   open M
   open M.Subst
   open import Safety.Skip wb using (td/bisim)

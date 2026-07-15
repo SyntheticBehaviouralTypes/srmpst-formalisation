@@ -10,9 +10,9 @@
 -- existing `wt`/`Incl` machinery in `LTS/Reachability.agda`).  With `sat` the
 -- completeness proof (Phase C) needs no fuel bookkeeping.
 --
--- This module imports only `Definitions.TypeChecker`; it is independent of the
--- rest of the completeness development.  A root import wires it into
--- `runall.sh`.
+-- This module imports only `Definitions.TypeChecker.Core`; it is independent
+-- of the rest of the completeness development. `Definitions/TypeChecker.agda`
+-- re-exports its public interface alongside `Core`'s and `Complete`'s.
 
 open import Data.Bool using (Bool; true; false; T)
 open import Data.Empty using (⊥; ⊥-elim)
@@ -31,11 +31,11 @@ open import Relation.Binary.PropositionalEquality
   using (_≡_; _≢_; refl; sym; trans; cong; subst)
 open import Relation.Nullary using (Dec; yes; no; ¬_)
 open import Relation.Nullary.Decidable
-  using (⌊_⌋; toWitness; fromWitness; T?)
+  using (⌊_⌋; toWitness; fromWitness; T?; _×-dec_; _⊎-dec_; _→-dec_)
 
 open import Definitions.Behav using (BTheory; WellBehaved)
 open import Definitions.Expr using (Sort)
-open import Definitions.TypeChecker
+open import Definitions.TypeChecker.Core
 import Definitions.Typing as Typing
 
 module Definitions.TypeChecker.Saturate (N : ℕ) where
@@ -54,23 +54,9 @@ module Definitions.TypeChecker.Saturate (N : ℕ) where
     open GraphChecker G wb
     open Typing.MPST wb hiding (_,_)
 
-    -- ── generic decidable helpers (private in `TypeChecker`; copied) ──
+    -- ── helpers specific to this file (generic `Dec` combinators come from
+    -- `Relation.Nullary.Decidable`) ──
     private
-      _×-dec_ : ∀ {A B : Set} → Dec A → Dec B → Dec (A × B)
-      yes a ×-dec yes b = yes (a , b)
-      no ¬a ×-dec _     = no λ { (a , _) → ¬a a }
-      _     ×-dec no ¬b = no λ { (_ , b) → ¬b b }
-
-      _→-dec_ : ∀ {A B : Set} → Dec A → Dec B → Dec (A → B)
-      yes _ →-dec yes b = yes (λ _ → b)
-      yes a →-dec no ¬b = no λ f → ¬b (f a)
-      no ¬a →-dec _     = yes λ a → ⊥-elim (¬a a)
-
-      _⊎-dec_ : ∀ {A B : Set} → Dec A → Dec B → Dec (A ⊎ B)
-      yes a ⊎-dec _     = yes (inj₁ a)
-      no _  ⊎-dec yes b = yes (inj₂ b)
-      no ¬a ⊎-dec no ¬b = no λ { (inj₁ a) → ¬a a ; (inj₂ b) → ¬b b }
-
       false≢true : false ≢ true
       false≢true ()
 

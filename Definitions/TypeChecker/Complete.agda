@@ -5,12 +5,18 @@
 -- fuelled algorithmic judgment `Alg` into a genuine `Dec` of the declarative
 -- typing judgment.
 --
--- This module lives OUTSIDE the `Definitions` aggregator on purpose: it imports
--- both `Definitions.TypeChecker` (for `Alg`/`alg-sound`/…) and `Safety.Skip`
--- (for the `~`-transport machinery Theorem A needs).  Since the aggregator does
--- not re-export it, `Safety.* → Definitions → TypeChecker` stays acyclic.
+-- This module imports `Definitions.TypeChecker.Core` (for `Alg`/`alg-sound`/…)
+-- and `Safety.Skip`/`Safety.Head` (for the `~`-transport / main-leaf machinery
+-- Theorem A needs). It is kept as its own file, separate from `Core`, purely
+-- for that reason: `Safety.Skip`/`Safety.Head` only import the narrow
+-- `Definitions.Typing`, not the `Definitions` aggregator, so there is no cycle
+-- — `Definitions/TypeChecker.agda` re-exports this module's two entry points
+-- (`typecheck`/`typecheckSession`, plus the `WBGraph` subtype and its smart
+-- constructor `buildG`) via an anonymous parameterised module, so the
+-- participant count `N` surfaces as an ordinary implicit argument rather
+-- than a module parameter the caller has to apply.
 
-open import Data.Bool using (true)
+open import Data.Bool using (true; T)
 open import Data.Empty using (⊥-elim)
 open import Data.Unit using (⊤; tt)
 open import Data.Fin using (Fin)
@@ -27,15 +33,17 @@ open import Data.Product using (_×_; _,_; proj₁; proj₂; ∃-syntax; Σ-synt
 open import Data.Sum using (inj₁; inj₂)
 open import Data.Vec using (Vec; lookup; _∷_; []; _++_)
 open import Relation.Nullary using (Dec; yes; no; ¬_)
+open import Relation.Nullary.Decidable using (⌊_⌋; toWitness)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; sym; trans; cong; subst)
 
 open import Definitions.Behav using (BTheory; WellBehaved)
 open import Definitions.Expr using (Sort)
-open import Definitions.TypeChecker
+open import Definitions.TypeChecker.Core
 import Definitions.Typing as Typing
 
 import Safety.Skip
+import Safety.Head
 import Definitions.TypeChecker.Saturate
 
 module Definitions.TypeChecker.Complete (N : ℕ) where
@@ -46,7 +54,8 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
   open import LTS.Reachability N
     using (PathVia; path/nil; path/cons; PathViaP; pathP/nil; pathP/cons)
   open import LTS.Decision N using (wellBehaved?)
-  open import LTS.Algebra N using (RootedGraph; underlying; initial)
+  open import LTS.Algebra N
+    using (RootedGraph; underlying; initial; OpenGraph; compile)
 
   module GraphComplete
     (G : Graph)
@@ -56,57 +65,43 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
     open GraphChecker G wb
     open Typing.MPST wb hiding (_,_)
     module SK = Safety.Skip {N} {graphTheory G} wb
+    module SH = Safety.Head {N} {graphTheory G} wb
     open Definitions.TypeChecker.Saturate.GraphSaturate N G wb
       using (F; sat; branchFuel-lb)
 
     -- ── §3.5 Theorem A, part 1: main leaves + the spine lemma (S1) ──
     --
-    --  `HasMainLeaf D ℓ` witnesses that the skip tree `D` contains a
-    --  `skip/main` leaf at state `ℓ` (reached by descending through the
-    --  `skip/step` `ktd` function-premises).  This is the interface the walk
-    --  uses to conclude `L ℓ` from the "main leaves ⊆ L" hypothesis.
-    data HasMainLeaf
-      {γ δ} {Γ : Vec Sort γ} {Δ : Vec (State G) δ} {P} {Pr : Proc γ δ}
-      : ∀ {ξ} {Ξ : Vec (State G) ξ} {m} {s}
-      → (Γ & Δ & Ξ ⊢skip[ m ] P ◂ Pr ∶ s) → State G → Set where
-      hml/main :
-        ∀ {ξ} {Ξ : Vec (State G) ξ} {u}
-          (leaf : Γ & Δ ⊢p P ◂ Pr ∶ u)
-        → HasMainLeaf {Ξ = Ξ} (skip/main leaf) u
-      hml/step :
-        ∀ {ξ} {Ξ : Vec (State G) ξ} {s α s'}
-          {gr : BTheory._-<_>->_ (graphTheory G) s α s'}
-          {na : P not-active-in s}
-          {ktd : ∀ {G″ β} → BTheory._-<_>->_ (graphTheory G) s β G″
-               → ∃[ m ] Γ & Δ & (s ∷ Ξ) ⊢skip[ m ] P ◂ Pr ∶ G″}
-          {prf : proj₁ (ktd gr) ≡ prod}
-          {β G″} (gr' : BTheory._-<_>->_ (graphTheory G) s β G″) {u}
-        → HasMainLeaf (proj₂ (ktd gr')) u
-        → HasMainLeaf (skip/step gr na ktd prf) u
+    --  `Definitions.Typing.MainLeaf td D` (already in scope via `open
+    --  Typing.MPST wb`) witnesses that the skip tree `D` contains a
+    --  `skip/main` leaf typed by the derivation `td`.  Unlike a hand-rolled
+    --  state-only witness, this already carries the leaf's typing derivation,
+    --  so `completeLeaf` (Phase C, below) needs no second walk to recover it.
 
     --  A `prod` skip tree reaches a `skip/main` leaf: following each
     --  `skip/step`'s chosen `prod` child strictly descends the finite tree.
-    --  Returns the leaf state ℓ, an (unfiltered) path `s → ℓ`, and a
-    --  `HasMainLeaf` witness.  (`skip/cycle` cannot occur: it is `nonprod`.)
-    --  The `with … in eq` recovers `ktd gr ≡ (prod , d)`, which the plain
-    --  `with` drops, so the child `d` can be re-attached to `ktd gr`.
+    --  Returns the leaf state ℓ, its typing derivation, an (unfiltered) path
+    --  `s → ℓ`, and a `MainLeaf` witness.  (`skip/cycle` cannot occur: it is
+    --  `nonprod`.)  The `with … in eq` recovers `ktd gr ≡ (prod , d)`, which
+    --  the plain `with` drops, so the child `d` can be re-attached to `ktd gr`.
     spine :
       ∀ {γ δ ξ} {Γ : Vec Sort γ} {Δ : Vec (State G) δ}
         {Ξ : Vec (State G) ξ} {P} {Pr : Proc γ δ} {s}
       → (D : Γ & Δ & Ξ ⊢skip[ prod ] P ◂ Pr ∶ s)
-      → ∃[ ℓ ] (∃[ n ] PathVia G (λ _ → true) s ℓ n) × HasMainLeaf D ℓ
-    spine (skip/main {G = ℓ} leaf) = ℓ , (zero , path/nil) , hml/main leaf
+      → ∃[ ℓ ] Σ[ td ∈ Γ & Δ ⊢p P ◂ Pr ∶ ℓ ]
+          (∃[ n ] PathVia G (λ _ → true) s ℓ n) × MainLeaf td D
+    spine (skip/main {G = ℓ} leaf) = ℓ , leaf , (zero , path/nil) , main/here
     spine {Γ = Γ} {Δ} {Ξ} {P} {Pr} {s}
           (skip/step {G' = s'} gr na ktd prf) = go (ktd gr) refl
       where
         go : (kg : ∃[ m ] Γ & Δ & (s ∷ Ξ) ⊢skip[ m ] P ◂ Pr ∶ s')
            → ktd gr ≡ kg
-           → ∃[ ℓ ] (∃[ n ] PathVia G (λ _ → true) s ℓ n)
-                  × HasMainLeaf (skip/step gr na ktd prf) ℓ
+           → ∃[ ℓ ] Σ[ td ∈ Γ & Δ ⊢p P ◂ Pr ∶ ℓ ]
+               (∃[ n ] PathVia G (λ _ → true) s ℓ n)
+             × MainLeaf td (skip/step gr na ktd prf)
         go (prod , d) eq =
-          let ℓ , (n , path′) , hml = spine d
-          in ℓ , (suc n , path/cons _ gr path′)
-               , hml/step gr (subst (λ z → HasMainLeaf (proj₂ z) ℓ) (sym eq) hml)
+          let ℓ , td , (n , path′) , hml = spine d
+          in ℓ , td , (suc n , path/cons _ gr path′)
+               , main/step gr (subst (λ z → MainLeaf td (proj₂ z)) (sym eq) hml)
         go (nonprod , d) eq with trans (sym prf) (cong proj₁ eq)
         ... | ()
 
@@ -117,7 +112,7 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
     --  that all its main leaves land in `L`.  The walk maintains this so a
     --  `skip/cycle` back-edge to `lookup Ξ X` is discharged by transporting
     --  that ancestor's derivation — and its leaf coverage — to the cycle
-    --  target (via `weakenTo` + `skip-td/bisim` + `hml-bisim`).
+    --  target (via `weakenTo` + `skip-td/bisim` + `mainLeaf-bisim`).
     AncL :
       ∀ {γ δ} (Γ : Vec Sort γ) (Δ : Vec (State G) δ)
         (P : Part) (Pr : Proc γ δ) (L : State G → Set)
@@ -125,7 +120,7 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
     AncL Γ Δ P Pr L []       = ⊤
     AncL Γ Δ P Pr L (r ∷ Ξ) =
       (Σ[ D ∈ Γ & Δ & Ξ ⊢skip[ prod ] P ◂ Pr ∶ r ]
-         (∀ {ℓ} → HasMainLeaf D ℓ → L ℓ))
+         (∀ {ℓ} {td : Γ & Δ ⊢p P ◂ Pr ∶ ℓ} → MainLeaf td D → L ℓ))
       × AncL Γ Δ P Pr L Ξ
 
     -- The easy half of the walk's base case: a `prod` skip tree at a state that
@@ -197,21 +192,25 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
       na-~ t~t′ na , ℓ′ , (n , p′) , Lcl Lℓ ℓ~ℓ′
 
     -- T5: a main leaf of a `~`-transported skip tree comes from a
-    -- `~`-related main leaf of the original tree.
-    hml-bisim :
+    -- `~`-related main leaf of the original tree; `MainLeaf` already carries
+    -- the leaf's typing derivation, so we recover it (`td`) directly rather
+    -- than only the state it types.
+    mainLeaf-bisim :
       ∀ {γ δ ξ m} {Γ : Vec Sort γ} {Δ Δ′ : Vec (State G) δ}
-        {Ξ Ξ′ : Vec (State G) ξ} {P} {Pr : Proc γ δ} {H H′ ℓ′}
+        {Ξ Ξ′ : Vec (State G) ξ} {P} {Pr : Proc γ δ} {H H′}
+        {G′ : State G} {td′ : Γ & Δ′ ⊢p P ◂ Pr ∶ G′}
       → (D : Γ & Δ & Ξ ⊢skip[ m ] P ◂ Pr ∶ H)
       → (Δ~ : Δ ~ᵛ Δ′) (Ξ~ : Ξ ~ᵛ Ξ′) (H~ : H ~ H′)
-      → HasMainLeaf (SK.skip-td/bisim Δ~ Ξ~ H~ D) ℓ′
-      → ∃[ ℓ ] HasMainLeaf D ℓ × ℓ ~ ℓ′
-    hml-bisim (skip/main leaf) Δ~ Ξ~ H~ (hml/main _) =
-      _ , hml/main leaf , H~
-    hml-bisim (skip/step gr na ktd prf) Δ~ Ξ~ H~ (hml/step gr″ inner)
-      with hml-bisim (ktd (~R→ H~ gr″) .proj₂) Δ~ (~ᵛ/∷ H~ Ξ~)
+      → MainLeaf td′ (SK.skip-td/bisim Δ~ Ξ~ H~ D)
+      → ∃[ ℓ ] Σ[ td ∈ Γ & Δ ⊢p P ◂ Pr ∶ ℓ ] MainLeaf td D × ℓ ~ G′
+    mainLeaf-bisim (skip/main leaf) Δ~ Ξ~ H~ main/here =
+      _ , leaf , main/here , H~
+    mainLeaf-bisim (skip/step gr na ktd prf) Δ~ Ξ~ H~ (main/step gr″ inner)
+      with mainLeaf-bisim (ktd (~R→ H~ gr″) .proj₂) Δ~ (~ᵛ/∷ H~ Ξ~)
              (~R→~ H~ gr″) inner
-    ... | ℓ , inner₀ , ℓ~ℓ′ = ℓ , hml/step (~R→ H~ gr″) inner₀ , ℓ~ℓ′
-    hml-bisim (skip/cycle eq) Δ~ Ξ~ H~ ()
+    ... | ℓ , td , inner₀ , ℓ~ℓ′ =
+      ℓ , td , main/step (~R→ H~ gr″) inner₀ , ℓ~ℓ′
+    mainLeaf-bisim (skip/cycle eq) Δ~ Ξ~ H~ ()
 
     -- T6: weaken the visited vector by a whole prefix, by iterating
     -- `Safety.Skip`'s single-front-insertion lemma.  `dropSuc X Ξ` is the
@@ -230,33 +229,24 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
     weakenTo (F.suc X) (y ∷ Ξ′) D =
       SK.skip/weaken-visited {Ξ′ = []} (weakenTo X Ξ′ D)
 
+    -- `Safety.Head.mainLeaf/weaken-visited` already proves that
     -- `skip/weaken-visited` preserves main leaves (it maps `skip/main td ↦
-    -- skip/main td` and recurses structurally through `skip/step`), so a main
-    -- leaf of the front-inserted tree comes from the same-state main leaf of
-    -- the original.  General over the prefix `Ξ′` because the recursion grows
-    -- it.
-    hml-wv :
-      ∀ {γ δ ξ ξ′ m} {Γ : Vec Sort γ} {Δ : Vec (State G) δ}
-        {P} {Pr : Proc γ δ} {t₀} {w : State G} {ℓ}
-        {Ξ : Vec (State G) ξ} {Ξ′ : Vec (State G) ξ′}
-        (D : Γ & Δ & (Ξ′ ++ Ξ) ⊢skip[ m ] P ◂ Pr ∶ t₀)
-      → HasMainLeaf (SK.skip/weaken-visited {H = w} {Ξ = Ξ} {Ξ′ = Ξ′} D) ℓ
-      → HasMainLeaf D ℓ
-    hml-wv (skip/main leaf) (hml/main _) = hml/main leaf
-    hml-wv {Ξ′ = Ξ′} (skip/step gr na ktd prf) (hml/step gr″ inner) =
-      hml/step gr″ (hml-wv {Ξ′ = _ ∷ Ξ′} (ktd gr″ .proj₂) inner)
-    hml-wv (skip/cycle eq) ()
-
-    -- iterate `hml-wv` over the whole prefix that `weakenTo` inserts
+    -- skip/main td` and recurses structurally through `skip/step`; its Δ was
+    -- generalised from `[]` to arbitrary, since the proof never used Δ), so a
+    -- main leaf of the front-inserted tree comes from the same derivation's
+    -- main leaf of the original — no need to re-derive that here.  This just
+    -- iterates it over the whole prefix that `weakenTo` inserts.
     hml-weakenTo :
       ∀ {γ δ ξ m} {Γ : Vec Sort γ} {Δ : Vec (State G) δ}
-        {P} {Pr : Proc γ δ} {H} {ℓ}
+        {P} {Pr : Proc γ δ} {H} {ℓ} {td : Γ & Δ ⊢p P ◂ Pr ∶ ℓ}
         (X : Fin ξ) (Ξ : Vec (State G) ξ)
         (D : Γ & Δ & dropSuc X Ξ ⊢skip[ m ] P ◂ Pr ∶ H)
-      → HasMainLeaf (weakenTo X Ξ D) ℓ → HasMainLeaf D ℓ
-    hml-weakenTo F.zero    (y ∷ Ξ′) D hml = hml-wv {Ξ′ = []} D hml
+      → MainLeaf td (weakenTo X Ξ D) → MainLeaf td D
+    hml-weakenTo F.zero    (y ∷ Ξ′) D hml =
+      SH.mainLeaf/weaken-visited {Ξ′ = []} D hml
     hml-weakenTo (F.suc X) (y ∷ Ξ′) D hml =
-      hml-weakenTo X Ξ′ D (hml-wv {Ξ′ = []} (weakenTo X Ξ′ D) hml)
+      hml-weakenTo X Ξ′ D
+        (SH.mainLeaf/weaken-visited {Ξ′ = []} (weakenTo X Ξ′ D) hml)
 
     -- positional lookup into the `AncL` invariant
     ancLookup :
@@ -265,7 +255,7 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
         {Ξ : Vec (State G) ξ}
       → AncL Γ Δ P Pr L Ξ → (X : Fin ξ)
       → Σ[ D ∈ Γ & Δ & dropSuc X Ξ ⊢skip[ prod ] P ◂ Pr ∶ lookup Ξ X ]
-          (∀ {ℓ} → HasMainLeaf D ℓ → L ℓ)
+          (∀ {ℓ} {td : Γ & Δ ⊢p P ◂ Pr ∶ ℓ} → MainLeaf td D → L ℓ)
     ancLookup {Ξ = r ∷ Ξ} (DL , _)   F.zero    = DL
     ancLookup {Ξ = r ∷ Ξ} (_  , anc) (F.suc X) = ancLookup anc X
 
@@ -284,16 +274,16 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
         {ξ} {Ξ : Vec (State G) ξ} {r}
         (D : Γ & Δ & Ξ ⊢skip[ prod ] P ◂ Pr ∶ r)
         (anc : AncL Γ Δ P Pr L Ξ)
-        (lc : ∀ {ℓ} → HasMainLeaf D ℓ → L ℓ)
+        (lc : ∀ {ℓ} {td : Γ & Δ ⊢p P ◂ Pr ∶ ℓ} → MainLeaf td D → L ℓ)
         {t} (path : PathViaP G (λ u → ¬ L u) r t) (¬Lt : ¬ L t)
       → (P not-active-in t) × ReachLP L t
     walk Γ Δ P Pr L Lcl (skip/main leaf) anc lc pathP/nil ¬Lt =
-      ⊥-elim (¬Lt (lc (hml/main leaf)))
+      ⊥-elim (¬Lt (lc main/here))
     walk Γ Δ P Pr L Lcl (skip/step gr na ktd prf) anc lc pathP/nil ¬Lt
       with spine (skip/step gr na ktd prf)
-    ... | ℓ , (n , p) , hml = na , ℓ , (n , p) , lc hml
+    ... | ℓ , td , (n , p) , hml = na , ℓ , (n , p) , lc hml
     walk Γ Δ P Pr L Lcl (skip/main leaf) anc lc (pathP/cons ¬Lr gr_β rest) ¬Lt =
-      ⊥-elim (¬Lr (lc (hml/main leaf)))
+      ⊥-elim (¬Lr (lc main/here))
     walk Γ Δ P Pr L Lcl {Ξ = Ξ} {r = r} (skip/step gr na ktd prf) anc lc
          {t = t} (pathP/cons {u = u} ¬Lr gr_β rest) ¬Lt =
       go (ktd gr_β) refl
@@ -305,9 +295,9 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
            → (P not-active-in t) × ReachLP L t
         go (prod , child) eq =
           walk Γ Δ P Pr L Lcl child anc′
-            (λ {ℓ} hml →
-               lc (hml/step gr_β
-                     (subst (λ z → HasMainLeaf (proj₂ z) ℓ) (sym eq) hml)))
+            (λ {ℓ} {td} hml →
+               lc (main/step gr_β
+                     (subst (λ z → MainLeaf td (proj₂ z)) (sym eq) hml)))
             rest ¬Lt
         go (nonprod , skip/cycle {X = X} cyc-eq) eq =
           walk Γ Δ P Pr L Lcl D_u anc′ lc_u rest ¬Lt
@@ -317,11 +307,12 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
             lc_a = proj₂ aL
             D_w  = weakenTo X (r ∷ Ξ) D_a
             D_u  = SK.skip-td/bisim ~ᵛ-refl ~ᵛ-refl cyc-eq D_w
-            lc_u : ∀ {ℓ} → HasMainLeaf D_u ℓ → L ℓ
+            lc_u : ∀ {ℓ} {td : Γ & Δ ⊢p P ◂ Pr ∶ ℓ} → MainLeaf td D_u → L ℓ
             lc_u hml′ =
-              Lcl (lc_a (hml-weakenTo X (r ∷ Ξ) D_a (proj₁ (proj₂ hb))))
-                  (proj₂ (proj₂ hb))
-              where hb = hml-bisim D_w ~ᵛ-refl ~ᵛ-refl cyc-eq hml′
+              Lcl (lc_a (hml-weakenTo X (r ∷ Ξ) D_a
+                           (proj₁ (proj₂ (proj₂ hb)))))
+                  (proj₂ (proj₂ (proj₂ hb)))
+              where hb = mainLeaf-bisim D_w ~ᵛ-refl ~ᵛ-refl cyc-eq hml′
 
     -- Theorem A: a `prod` skip tree whose main leaves lie in a `~`-closed `L`
     -- witnesses the semantic-skip predicate `SemSkipP L P s`.
@@ -330,7 +321,7 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
         (L : State G → Set)
         (Lcl : ∀ {u u′} → L u → u ~ u′ → L u′)
         (std : Γ & Δ & [] ⊢skip[ prod ] P ◂ Pr ∶ s)
-      → (∀ {ℓ} → HasMainLeaf std ℓ → L ℓ)
+      → (∀ {ℓ} {td : Γ & Δ ⊢p P ◂ Pr ∶ ℓ} → MainLeaf td std → L ℓ)
       → SemSkipP L P s
     theoremA L Lcl std lc t (path , ¬Lt) =
       walk _ _ _ _ L Lcl std tt lc path ¬Lt
@@ -342,8 +333,9 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
     --  constructor, but lands in the *algorithmic* judgment `Alg (F Pr)`
     --  rather than a declarative one.  Quantifying over `~` (the `Δ~`/`s~`
     --  arguments) means the induction hypothesis already covers every
-    --  `~`-image, so the `t/skip` leaf set `L t = ∃ ℓ. HasMainLeaf std ℓ × ℓ~t`
-    --  is `~`-closed by `~trans`.  Every case injects `Alg (suc (F Pr))`-shaped
+    --  `~`-image, so the `t/skip` leaf set
+    --  `L t = ∃ ℓ. Σ[ td ] MainLeaf td std × ℓ~t` is `~`-closed by `~trans`.
+    --  Every case injects `Alg (suc (F Pr))`-shaped
     --  data and re-compresses with `sat` (Phase S); per-case fuel is never
     --  tracked beyond the mechanical `F`-subterm bounds below.
     -- ════════════════════════════════════════════════════════════════
@@ -410,15 +402,17 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
       complete {Pr = PP} (t/skip std) Δ~Δ′ s~s′ =
         intoF PP (inj₂ (inj₂
           (semSkipP-mono
-            (λ { (ℓ , hml , ℓ~u) → completeLeaf std hml Δ~Δ′ ℓ~u })
+            (λ { (ℓ , td , hml , ℓ~u) → completeLeaf std hml Δ~Δ′ ℓ~u })
             (semSkipP-bisim Lcl s~s′ (theoremA _ Lcl std lc)))))
         where
           Lcl : ∀ {u u′}
-              → (∃[ ℓ ] HasMainLeaf std ℓ × ℓ ~ u) → u ~ u′
-              → ∃[ ℓ ] HasMainLeaf std ℓ × ℓ ~ u′
-          Lcl (ℓ , hml , ℓ~u) u~u′ = ℓ , hml , ~trans ℓ~u u~u′
-          lc : ∀ {ℓ} → HasMainLeaf std ℓ → ∃[ ℓ₀ ] HasMainLeaf std ℓ₀ × ℓ₀ ~ ℓ
-          lc {ℓ} hml = ℓ , hml , ~refl
+              → (∃[ ℓ ] Σ[ td ∈ _ ] MainLeaf td std × ℓ ~ u)
+              → u ~ u′
+              → ∃[ ℓ ] Σ[ td ∈ _ ] MainLeaf td std × ℓ ~ u′
+          Lcl (ℓ , td , hml , ℓ~u) u~u′ = ℓ , td , hml , ~trans ℓ~u u~u′
+          lc : ∀ {ℓ} {td} → MainLeaf {G′ = ℓ} td std
+             → ∃[ ℓ₀ ] Σ[ td₀ ∈ _ ] MainLeaf td₀ std × ℓ₀ ~ ℓ
+          lc {ℓ} {td} hml = ℓ , td , hml , ~refl
       complete (t/unskip tr td) Δ~Δ′ s~s′
         with SK.skip/bisim s~s′ tr
       ... | H₀ , G~H₀ , tr′ = pred-fold tr′ (complete td Δ~Δ′ G~H₀)
@@ -435,17 +429,22 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
       complete {Pr = PP} (t/end done) Δ~Δ′ s~s′ =
         intoF PP (inj₁ (λ P∈ → done (∈~ (~sym s~s′) P∈)))
 
-      -- extract-and-complete a main leaf, up to `~`
+      -- extract-and-complete a main leaf, up to `~`.  Recurses on the same
+      -- `D`/`MainLeaf` shape `spine` uses (structural on the `MainLeaf`
+      -- witness) rather than short-circuiting straight to the leaf's own
+      -- derivation `td`, since that's what the termination checker needs to
+      -- see: `td` itself isn't a syntactic subterm of `D`, but `hml′` is a
+      -- subterm of `hml` at every step.
       completeLeaf :
         ∀ {γ δ ξ m} {Γ : Vec Sort γ} {Δ : Vec (State G) δ}
           {Ξ : Vec (State G) ξ} {P} {Pr : Proc γ δ} {r}
         → (D : Γ & Δ & Ξ ⊢skip[ m ] P ◂ Pr ∶ r)
-        → ∀ {ℓ} → HasMainLeaf D ℓ
+        → ∀ {ℓ} {td : Γ & Δ ⊢p P ◂ Pr ∶ ℓ} → MainLeaf td D
         → ∀ {Δ′ : Vec (State G) δ} {t} → Δ ~ᵛ Δ′ → ℓ ~ t
         → Alg (F Pr) Γ Δ′ P Pr t
-      completeLeaf (skip/main leaf) (hml/main _) Δ~Δ′ ℓ~t =
+      completeLeaf (skip/main leaf) main/here Δ~Δ′ ℓ~t =
         complete leaf Δ~Δ′ ℓ~t
-      completeLeaf (skip/step gr na ktd prf) (hml/step gr′ hml′) Δ~Δ′ ℓ~t =
+      completeLeaf (skip/step gr na ktd prf) (main/step gr′ hml′) Δ~Δ′ ℓ~t =
         completeLeaf (ktd gr′ .proj₂) hml′ Δ~Δ′ ℓ~t
       completeLeaf (skip/cycle eq) ()
 
@@ -491,97 +490,52 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
     checkSessionD : (M : Syntax.Session) (s : State G) → Dec (⊢s M ∶ s)
     checkSessionD M s = allDec (λ P → checkClosedD [] P (Syntax._[_]s M P) s)
 
-  -- ── Phase F, step 3a: `WellBehaved`-irrelevance of the typing judgment ──
+  -- ── The public interface ──
   --
-  --  The typing and skip judgments never inspect the `WellBehaved` witness —
-  --  every premise lives at the `BTheory` level.  So a derivation under one
-  --  witness re-wraps, constructor for constructor, into one under any other.
-  --  This lets the bundled `CheckedProcess`/`CheckedSession` (whose witness is
-  --  an existential field) be *decided* from the witness `wellBehaved?` picks.
-  module WbIrr
-    (G : Graph)
-    (wb wb′ : WellBehaved (graphTheory G))
-    where
-    open Typing.MPST wb hiding (_,_)
-    private module Td = Typing.MPST wb′
+  --  `WBGraph`: a *predicate subtype* of well-behaved rooted graphs, built on
+  --  the decision procedure `wellBehaved?` via the standard `T ⌊ _ ⌋` idiom
+  --  (irrelevant Boolean-reflected proof) rather than bundling a `WellBehaved`
+  --  witness as data — `wb-of` recovers the witness with `toWitness`. Since
+  --  every caller now supplies a `WBGraph`, there is no longer a second
+  --  "graph of unknown behaviour" witness floating around to reconcile, so
+  --  the earlier `WellBehaved`-irrelevance machinery (`WbIrr`) is unneeded.
+  --
+  --  `buildG`: the smart constructor — compiling an `OpenGraph 0` (the
+  --  ergonomic graph-description DSL of `LTS.Algebra`) and pairing the
+  --  result with the well-behavedness proof is all `WBGraph` asks for, and
+  --  for a concrete/closed graph Agda solves that proof on its own
+  --  (`T ⌊ _ ⌋` at a `yes` reduces to `⊤`, whose unique inhabitant `tt` is
+  --  filled in by unification), so callers can just write `buildG OG`.
+  --
+  --  `typecheck` / `typecheckSession`: mirror `Γ & Δ ⊢p P ◂ Pr ∶ G`
+  --  (`Γ = Δ = []`, `G` supplied by the rooted graph's `initial` state;
+  --  participant before process, matching `P ◂ Pr`). `typecheckSession` has
+  --  no participant argument — a session already covers every participant,
+  --  `⊢s M ∶ G`.
 
-    -- `Mode`/`MessageGuarded` are `MPST`-parameterised, so the two witnesses
-    -- give distinct (but constructor-identical) copies.
-    mode-conv : Mode → Td.Mode
-    mode-conv prod    = Td.prod
-    mode-conv nonprod = Td.nonprod
+  WBGraph : Set
+  WBGraph = Σ[ R ∈ RootedGraph ] T ⌊ wellBehaved? (underlying R) ⌋
 
-    mg-conv : ∀ {γ δ} {Pr : Proc γ δ} → MessageGuarded Pr → Td.MessageGuarded Pr
-    mg-conv mg/send        = Td.mg/send
-    mg-conv mg/recv        = Td.mg/recv
-    mg-conv (mg/if mgt mgf) = Td.mg/if (mg-conv mgt) (mg-conv mgf)
+  wb-of : (WR : WBGraph) → WellBehaved (graphTheory (underlying (proj₁ WR)))
+  wb-of WR = toWitness (proj₂ WR)
 
-    mutual
-      typing-wb-irrelevant :
-        ∀ {γ δ} {Γ : Vec Sort γ} {Δ : Vec (State G) δ} {PPr} {s}
-        → Γ & Δ ⊢p PPr ∶ s → Td._&_⊢p_∶_ Γ Δ PPr s
-      typing-wb-irrelevant (t/send gr etd td) =
-        Td.t/send gr etd (typing-wb-irrelevant td)
-      typing-wb-irrelevant (t/recv gr conts) =
-        Td.t/recv gr (λ gr′ → typing-wb-irrelevant (conts gr′))
-      typing-wb-irrelevant (t/skip std) =
-        Td.t/skip (skip-wb-irrelevant std)
-      typing-wb-irrelevant (t/unskip tr td) =
-        Td.t/unskip tr (typing-wb-irrelevant td)
-      typing-wb-irrelevant (t/if etd ttd ftd) =
-        Td.t/if etd (typing-wb-irrelevant ttd) (typing-wb-irrelevant ftd)
-      typing-wb-irrelevant (t/rec mg td) =
-        Td.t/rec (mg-conv mg) (typing-wb-irrelevant td)
-      typing-wb-irrelevant (t/var eq)   = Td.t/var eq
-      typing-wb-irrelevant (t/end done) = Td.t/end done
+  buildG :
+    (OG : OpenGraph 0) → {p : T ⌊ wellBehaved? (underlying (compile OG)) ⌋}
+    → WBGraph
+  buildG OG {p} = compile OG , p
 
-      skip-wb-irrelevant :
-        ∀ {γ δ ξ m} {Γ : Vec Sort γ} {Δ : Vec (State G) δ}
-          {Ξ : Vec (State G) ξ} {PPr} {sG}
-        → (Γ & Δ ⊢p_∶_) & Ξ ⊢skip[ m ] PPr ∶ sG
-        → Td._&_&_⊢skip[_]_∶_ Γ Δ Ξ (mode-conv m) PPr sG
-      skip-wb-irrelevant (skip/main leaf) =
-        Td.skip/main (typing-wb-irrelevant leaf)
-      skip-wb-irrelevant (skip/step gr na ktd prf) =
-        Td.skip/step gr na
-          (λ gr′ → _ , skip-wb-irrelevant (ktd gr′ .proj₂)) (cong mode-conv prf)
-      skip-wb-irrelevant (skip/cycle eq) = Td.skip/cycle eq
+  typecheck :
+    (WR : WBGraph) (P : Common.Part) (Pr : Syntax.Proc 0 0)
+    → Dec (ProcessTyping (underlying (proj₁ WR)) (wb-of WR) [] P Pr
+             (initial (proj₁ WR)))
+  typecheck WR P Pr =
+    GraphComplete.checkClosedD (underlying (proj₁ WR)) (wb-of WR) [] P Pr
+      (initial (proj₁ WR))
 
-  -- ── Phase F, step 3b: the bundled decision procedures ──
-  checkProcessD :
-    ∀ {γ}
-    → (G : Graph) (Γ : Vec Sort γ) (P : Common.Part)
-      (Pr : Syntax.Proc γ 0) (s : State G)
-    → Dec (CheckedProcess G Γ P Pr s)
-  checkProcessD G Γ P Pr s with wellBehaved? G
-  ... | no ¬wb = no λ { (checkedProcess wb _) → ¬wb wb }
-  ... | yes wb with GraphComplete.checkD G wb Γ [] P Pr s
-  ...   | yes td = yes (checkedProcess wb td)
-  ...   | no ¬td =
-            no λ { (checkedProcess wb′ td′) →
-                     ¬td (WbIrr.typing-wb-irrelevant G wb′ wb td′) }
-
-  checkRootedProcessD :
-    ∀ {γ}
-    → (R : RootedGraph) (Γ : Vec Sort γ) (P : Common.Part)
-      (Pr : Syntax.Proc γ 0)
-    → Dec (CheckedProcess (underlying R) Γ P Pr (initial R))
-  checkRootedProcessD R Γ P Pr =
-    checkProcessD (underlying R) Γ P Pr (initial R)
-
-  checkSessionWD :
-    (G : Graph) (M : Syntax.Session) (s : State G)
-    → Dec (CheckedSession G M s)
-  checkSessionWD G M s with wellBehaved? G
-  ... | no ¬wb = no λ { (checkedSession wb _) → ¬wb wb }
-  ... | yes wb with GraphComplete.checkSessionD G wb M s
-  ...   | yes d = yes (checkedSession wb d)
-  ...   | no ¬d =
-            no λ { (checkedSession wb′ d′) →
-                     ¬d (λ P → WbIrr.typing-wb-irrelevant G wb′ wb (d′ P)) }
-
-  checkRootedSessionD :
-    (R : RootedGraph) (M : Syntax.Session)
-    → Dec (CheckedSession (underlying R) M (initial R))
-  checkRootedSessionD R M =
-    checkSessionWD (underlying R) M (initial R)
+  typecheckSession :
+    (WR : WBGraph) (M : Syntax.Session)
+    → Dec (SessionTyping (underlying (proj₁ WR)) (wb-of WR) M
+             (initial (proj₁ WR)))
+  typecheckSession WR M =
+    GraphComplete.checkSessionD (underlying (proj₁ WR)) (wb-of WR) M
+      (initial (proj₁ WR))

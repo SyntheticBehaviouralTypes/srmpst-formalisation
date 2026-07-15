@@ -10,10 +10,10 @@ open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Function using (_∘_)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; sym; trans; subst; cong)
-open import Definitions
+open import Definitions.Typing
 
 module Safety.Skip {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
-  open module M = Definitions.MPST(wb)
+  open module M = MPST(wb)
   open M
   open M.Subst
 

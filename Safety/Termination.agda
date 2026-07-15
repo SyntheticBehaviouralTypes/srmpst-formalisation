@@ -40,11 +40,11 @@ open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; subst; sym)
 
 open import Utils.Vec using (sum/map-update<)
-open import Definitions
+open import Definitions.Typing
 
 module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private
-    module M = Definitions.MPST wb
+    module M = MPST wb
   open M
   open M.Subst
   open import Safety.Head wb

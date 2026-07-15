@@ -15,11 +15,11 @@ open import Data.Maybe.Base using (just; nothing)
 open import Relation.Nullary using (yes; no)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; subst; sym)
-open import Definitions
+open import Definitions.Typing
 
 module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private
-    module M = Definitions.MPST wb
+    module M = MPST wb
   open M
   open M.Subst
   open import Typing.Substitution wb
