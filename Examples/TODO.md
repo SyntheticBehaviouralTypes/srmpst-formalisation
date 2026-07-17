@@ -145,40 +145,27 @@ used *exactly once* (as in `SendRecv`/`PingPong`) is fine; anything with two or
 more branches converging is not, regardless of whether it's a `Σ`-choice or a
 genuine diamond.
 
-## Blocking issue: `typecheck` is extremely slow, even on trivial rejections
+## RESOLVED: the fuel-based checker was exponential; replaced by the shape-restricted judgment (July 2026)
 
-Found while finishing `CounterExamples` (3-state graph, `N = 3`, after the
-`Stepback` fix above — `wellBehaved?` itself is fast, ~5s including full fresh
-dependency compilation). Isolated step-by-step per the graph-then-one-check-at-
-a-time protocol:
+The old `Alg`/`checkWithFuelD`/`Saturate.agda` decision procedure re-derived every sub-decision
+at every fuel level (`size G ^ (suc (size G) * processFuel Pr)` — measured under `Tests/`:
+skip-depth 0 ≈ 5s, depth 1 ≈ 58s, depth 2 > 90s on 2–3-state graphs). It was deleted wholesale
+and replaced by the shape-restricted judgment `R = D ⊎ SemSkipP (D …)`
+(`Definitions/TypeChecker/Restricted.agda`) with a fuel-free structural decider, plus soundness
+(via the existing `theoremB`) and completeness (`Definitions/TypeChecker/Completeness.agda`,
+mirroring `Safety/Head.agda`'s `td/head`) — so the public `typecheck`/`typecheckSession` still
+return genuine `Dec`s of the declarative judgment, with identical types. All of
+`Tests/Perf01–09` now check in ~5–6s each (≈5s of that is interface loading), including the
+formerly-hanging Perf06/07 and `Examples/CounterExamples.agda`. See CLAUDE.md §"Decidability
+layer" for the architecture and the two structural findings made along the way
+(spine-revisiting skip trees — `Tests/Perf09_RevisitSpine.agda` — and the exponential fuel
+recursion).
 
-- `wbg = buildG round {p = tt}` alone: ~5s, fine.
-- `typecheck wbg C p/C4` where `p/C4 = rec (v zero)` (an *unguarded* recursion —
-  should fail immediately via `MessageGuarded`, no graph exploration needed at
-  all) does not finish within 90s.
-- Ruled out witness-extraction (`toWitnessFalse`) as the cause: reducing the
-  `Dec` to a bare `Bool` (`T (not ⌊ wtd ⌋)`, no witness built) *also* times out
-  at 60s+. The slowness is in computing the decision itself, not in extracting
-  a proof term from it.
-
-So this is not about graph size, process complexity, or witness construction —
-something in `Alg`/`checkWithFuelD`/the saturation machinery
-(`Definitions/TypeChecker/{Core,Saturate,Complete}.agda`) is doing vastly more
-work than a 3-state graph and a message-guard check should need. Likely
-candidates: the fuel bound `F Pr = suc (size G) * processFuel Pr` combined with
-how `Alg`'s fuel-recursive `SemSkipP`/`Direct` cases re-explore reachability at
-every fuel level: pending investigation of whether `Fin.all?`/`Fin.any?`
-sub-decisions are being redundantly recomputed across saturation steps, or
-`sat`'s pigeonhole search is doing more descents than it needs to.
-
-**Stopped here per instruction** — this blocks not just `CounterExamples` but
-every remaining example that calls `typecheck`/`typecheckSession` on anything
-beyond the smallest handful of states (`RoundRobin`, `OAuth2`, `Rec2Buy`,
-`RecMW`, `IndepW` are all bigger than this 3-state graph). Needs a decision on
-how to proceed before continuing: debug/optimize the fuel-driven decision
-procedure itself (a substantial undertaking in `Definitions/TypeChecker`), or
-fall back to something else (manual proofs for the remaining examples, a
-smaller/non-saturated fuel bound exposed some other way, etc.).
+Also fixed here: `CounterExamples.agda`'s original graph made participant `C` *unprojectable*
+(one branch ended without ever messaging `C`, so no `C`-process is typeable — `C ∈T s0` kills
+`∅` and the receive dies in the silent branch); its "good process" sanity check was wrong and
+the old checker never terminated on it, so this went unnoticed. The graph now forwards to `C`
+in both branches (with distinct labels — bisimilar-duplicate states would break `Stepback`).
 
 ## Syntax deltas from `main` (apply uniformly to every example)
 

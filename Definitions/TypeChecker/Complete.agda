@@ -1,20 +1,18 @@
 {-# OPTIONS --guardedness #-}
 
--- §5, §3.5, §6 of decidable.md: the cost measure, Theorem A (necessity of the
--- semantic skip characterisation), and the completeness theorem that turns the
--- fuelled algorithmic judgment `Alg` into a genuine `Dec` of the declarative
--- typing judgment.
+-- Theorem A: a `prod` skip tree whose main leaves lie in a `~`-closed set
+-- `L` witnesses the semantic-skip predicate `SemSkipP L P s` — the
+-- tree-to-semantics direction of the skip characterisation, together with
+-- its `~`-transport pack (T1–T6).  Used by the completeness proof in
+-- `Definitions/TypeChecker/Completeness.agda` (its converse, semantics-to-
+-- tree, is `SkipSem.theoremB` in `Core.agda`, used by soundness).
 --
--- This module imports `Definitions.TypeChecker.Core` (for `Alg`/`alg-sound`/…)
--- and `Safety.Skip`/`Safety.Head` (for the `~`-transport / main-leaf machinery
--- Theorem A needs). It is kept as its own file, separate from `Core`, purely
--- for that reason: `Safety.Skip`/`Safety.Head` only import the narrow
--- `Definitions.Typing`, not the `Definitions` aggregator, so there is no cycle
--- — `Definitions/TypeChecker.agda` re-exports this module's two entry points
--- (`typecheck`/`typecheckSession`, plus the `WBGraph` subtype and its smart
--- constructor `buildG`) via an anonymous parameterised module, so the
--- participant count `N` surfaces as an ordinary implicit argument rather
--- than a module parameter the caller has to apply.
+-- This module imports `Definitions.TypeChecker.Core` and `Safety.Skip`/
+-- `Safety.Head` (for the `~`-transport / main-leaf machinery Theorem A
+-- needs).  It is kept as its own file, separate from `Core`, purely for
+-- that reason: `Safety.Skip`/`Safety.Head` only import the narrow
+-- `Definitions.Typing`, not the `Definitions` aggregator, so there is no
+-- cycle.
 
 open import Data.Bool using (true; T)
 open import Data.Empty using (⊥-elim)
@@ -44,7 +42,6 @@ import Definitions.Typing as Typing
 
 import Safety.Skip
 import Safety.Head
-import Definitions.TypeChecker.Saturate
 
 module Definitions.TypeChecker.Complete (N : ℕ) where
 
@@ -66,8 +63,6 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
     open Typing.MPST wb hiding (_,_)
     module SK = Safety.Skip {N} {graphTheory G} wb
     module SH = Safety.Head {N} {graphTheory G} wb
-    open Definitions.TypeChecker.Saturate.GraphSaturate N G wb
-      using (F; sat; branchFuel-lb)
 
     -- ── §3.5 Theorem A, part 1: main leaves + the spine lemma (S1) ──
     --
@@ -325,217 +320,3 @@ module Definitions.TypeChecker.Complete (N : ℕ) where
       → SemSkipP L P s
     theoremA L Lcl std lc t (path , ¬Lt) =
       walk _ _ _ _ L Lcl std tt lc path ¬Lt
-
-    -- ════════════════════════════════════════════════════════════════
-    --  Phase C:  completeness up to `~`
-    --
-    --  `complete` mirrors `td/bisim` (`Safety/Skip.agda`) constructor by
-    --  constructor, but lands in the *algorithmic* judgment `Alg (F Pr)`
-    --  rather than a declarative one.  Quantifying over `~` (the `Δ~`/`s~`
-    --  arguments) means the induction hypothesis already covers every
-    --  `~`-image, so the `t/skip` leaf set
-    --  `L t = ∃ ℓ. Σ[ td ] MainLeaf td std × ℓ~t` is `~`-closed by `~trans`.
-    --  Every case injects `Alg (suc (F Pr))`-shaped
-    --  data and re-compresses with `sat` (Phase S); per-case fuel is never
-    --  tracked beyond the mechanical `F`-subterm bounds below.
-    -- ════════════════════════════════════════════════════════════════
-
-    -- `F` of a subterm is ≤ `F` of the compound process (RHS is the normal
-    -- form of `F` of the relevant constructor).
-    F-suc : ∀ {γ δ} (Pr : Proc γ δ)
-          → F Pr ≤ suc (size G) * suc (processFuel Pr)
-    F-suc Pr = *-monoʳ-≤ (suc (size G)) (n≤1+n (processFuel Pr))
-
-    F-if₁ : ∀ {γ δ} (Pr₁ Pr₂ : Proc γ δ)
-          → F Pr₁ ≤ suc (size G) * suc (processFuel Pr₁ + processFuel Pr₂)
-    F-if₁ Pr₁ Pr₂ =
-      *-monoʳ-≤ (suc (size G))
-        (≤-trans (m≤m+n (processFuel Pr₁) (processFuel Pr₂)) (n≤1+n _))
-
-    F-if₂ : ∀ {γ δ} (Pr₁ Pr₂ : Proc γ δ)
-          → F Pr₂ ≤ suc (size G) * suc (processFuel Pr₁ + processFuel Pr₂)
-    F-if₂ Pr₁ Pr₂ =
-      *-monoʳ-≤ (suc (size G))
-        (≤-trans (m≤n+m (processFuel Pr₂) (processFuel Pr₁)) (n≤1+n _))
-
-    F-recv : ∀ {γ δ I} (Br : Vec (Proc (suc γ) δ) (suc I)) (j : Fin (suc I))
-           → F (lookup Br j) ≤ suc (size G) * suc (branchesFuel Br)
-    F-recv Br j =
-      *-monoʳ-≤ (suc (size G)) (≤-trans (branchFuel-lb Br j) (n≤1+n _))
-
-    -- one saturation step: `Alg (suc (F Pr)) ⊆ Alg (F Pr)`.  `Pr` is explicit
-    -- because for the `v`/`∅`/`rec`/… cases the injected value does not mention
-    -- the leaf predicate, so `Pr` is not otherwise recoverable from it.
-    intoF :
-      ∀ {γ δ} {Γ : Vec Sort γ} {Δ′ : Vec (State G) δ} {P} (Pr : Proc γ δ) {s′}
-      → Alg (suc (F Pr)) Γ Δ′ P Pr s′ → Alg (F Pr) Γ Δ′ P Pr s′
-    intoF Pr x = sat _ _ _ Pr _ (suc (F Pr)) x
-
-    -- fold a `-[¬ P ]->*` trace into a chain of `Alg` unskip steps, saturating
-    -- after each so no fuel arithmetic ever appears
-    pred-fold :
-      ∀ {γ δ} {Γ : Vec Sort γ} {Δ′ : Vec (State G) δ} {P} {Pr : Proc γ δ} {a b}
-      → a -[¬ P ]->* b
-      → Alg (F Pr) Γ Δ′ P Pr a → Alg (F Pr) Γ Δ′ P Pr b
-    pred-fold skip/refl                      alg = alg
-    pred-fold {Pr = PP} (skip/step gr P∉ tr) alg =
-      pred-fold tr
-        (intoF PP (inj₂ (inj₁ (_ , (_ , step⇒listed {G = G} gr , P∉) , alg))))
-
-    mutual
-      complete :
-        ∀ {γ δ} {Γ : Vec Sort γ} {Δ : Vec (State G) δ} {P} {Pr : Proc γ δ} {s}
-        → (D : Γ & Δ ⊢p P ◂ Pr ∶ s)
-        → ∀ {Δ′ : Vec (State G) δ} {s′} → Δ ~ᵛ Δ′ → s ~ s′
-        → Alg (F Pr) Γ Δ′ P Pr s′
-      complete {Pr = PP} (t/send gr etd td) Δ~Δ′ s~s′ =
-        intoF PP (inj₁ ( _ , _ , etd , ~L→ s~s′ gr
-                       , alg-mono (F-suc _) (complete td Δ~Δ′ (~L→~ s~s′ gr))))
-      complete {Pr = PP} (t/recv {Br = Br} gr conts) Δ~Δ′ s~s′ =
-        intoF PP (inj₁
-          ( (_ , _ , _ , step⇒listed {G = G} (~L→ s~s′ gr))
-          , All.tabulate (λ {e} mem {j} {U} eq →
-              let gr′ = subst (λ β → BTheory._-<_>->_ (graphTheory G) _ β _)
-                              eq (listed⇒step {G = G} mem)
-              in alg-mono (F-recv Br j)
-                   (complete (conts (~R→ s~s′ gr′)) Δ~Δ′ (~R→~ s~s′ gr′)))))
-      complete {Pr = PP} (t/skip std) Δ~Δ′ s~s′ =
-        intoF PP (inj₂ (inj₂
-          (semSkipP-mono
-            (λ { (ℓ , td , hml , ℓ~u) → completeLeaf std hml Δ~Δ′ ℓ~u })
-            (semSkipP-bisim Lcl s~s′ (theoremA _ Lcl std lc)))))
-        where
-          Lcl : ∀ {u u′}
-              → (∃[ ℓ ] Σ[ td ∈ _ ] MainLeaf td std × ℓ ~ u)
-              → u ~ u′
-              → ∃[ ℓ ] Σ[ td ∈ _ ] MainLeaf td std × ℓ ~ u′
-          Lcl (ℓ , td , hml , ℓ~u) u~u′ = ℓ , td , hml , ~trans ℓ~u u~u′
-          lc : ∀ {ℓ} {td} → MainLeaf {G′ = ℓ} td std
-             → ∃[ ℓ₀ ] Σ[ td₀ ∈ _ ] MainLeaf td₀ std × ℓ₀ ~ ℓ
-          lc {ℓ} {td} hml = ℓ , td , hml , ~refl
-      complete (t/unskip tr td) Δ~Δ′ s~s′
-        with SK.skip/bisim s~s′ tr
-      ... | H₀ , G~H₀ , tr′ = pred-fold tr′ (complete td Δ~Δ′ G~H₀)
-      complete {Pr = PP} (t/if etd ttd ftd) Δ~Δ′ s~s′ =
-        intoF PP (inj₁ ( etd
-                       , alg-mono (F-if₁ _ _) (complete ttd Δ~Δ′ s~s′)
-                       , alg-mono (F-if₂ _ _) (complete ftd Δ~Δ′ s~s′)))
-      complete {Pr = PP} (t/rec mg td) Δ~Δ′ s~s′ =
-        intoF PP (inj₁ ( mg
-                       , alg-mono (F-suc _)
-                           (complete td (~ᵛ/∷ s~s′ Δ~Δ′) s~s′)))
-      complete {Pr = PP} (t/var eq) Δ~Δ′ s~s′ =
-        intoF PP (inj₁ (~trans (lookup/~ᵛ Δ~Δ′ _ eq) s~s′))
-      complete {Pr = PP} (t/end done) Δ~Δ′ s~s′ =
-        intoF PP (inj₁ (λ P∈ → done (∈~ (~sym s~s′) P∈)))
-
-      -- extract-and-complete a main leaf, up to `~`.  Recurses on the same
-      -- `D`/`MainLeaf` shape `spine` uses (structural on the `MainLeaf`
-      -- witness) rather than short-circuiting straight to the leaf's own
-      -- derivation `td`, since that's what the termination checker needs to
-      -- see: `td` itself isn't a syntactic subterm of `D`, but `hml′` is a
-      -- subterm of `hml` at every step.
-      completeLeaf :
-        ∀ {γ δ ξ m} {Γ : Vec Sort γ} {Δ : Vec (State G) δ}
-          {Ξ : Vec (State G) ξ} {P} {Pr : Proc γ δ} {r}
-        → (D : Γ & Δ & Ξ ⊢skip[ m ] P ◂ Pr ∶ r)
-        → ∀ {ℓ} {td : Γ & Δ ⊢p P ◂ Pr ∶ ℓ} → MainLeaf td D
-        → ∀ {Δ′ : Vec (State G) δ} {t} → Δ ~ᵛ Δ′ → ℓ ~ t
-        → Alg (F Pr) Γ Δ′ P Pr t
-      completeLeaf (skip/main leaf) main/here Δ~Δ′ ℓ~t =
-        complete leaf Δ~Δ′ ℓ~t
-      completeLeaf (skip/step gr na ktd prf) (main/step gr′ hml′) Δ~Δ′ ℓ~t =
-        completeLeaf (ktd gr′ .proj₂) hml′ Δ~Δ′ ℓ~t
-      completeLeaf (skip/cycle eq) ()
-
-    complete₀ :
-      ∀ {γ δ} {Γ : Vec Sort γ} {Δ : Vec (State G) δ} {P} {Pr : Proc γ δ} {s}
-      → (D : Γ & Δ ⊢p P ◂ Pr ∶ s) → Alg (F Pr) Γ Δ P Pr s
-    complete₀ D = complete D ~ᵛ-refl ~refl
-
-    -- ── Phase F, step 1: the process decision procedure ──
-    --
-    --  Soundness (`alg-sound`) and completeness (`complete₀`) close the loop:
-    --  `Alg (F Pr)` is decidable (`checkWithFuelD`), it *implies* the judgment
-    --  (yes-branch), and — by saturation to fuel `F Pr` — it is *implied by* the
-    --  judgment (no-branch, `complete₀`).  Hence the judgment is decidable.
-    checkD :
-      ∀ {γ δ} (Γ : Vec Sort γ) (Δ : Vec (State G) δ)
-        (P : Common.Part) (Pr : Syntax.Proc γ δ) (s : State G)
-      → Dec (Γ & Δ ⊢p P ◂ Pr ∶ s)
-    checkD Γ Δ P Pr s with checkWithFuelD (F Pr) Γ Δ P Pr s
-    ... | yes a = yes (alg-sound (F Pr) a)
-    ... | no ¬a = no (λ td → ¬a (complete₀ td))
-
-    checkClosedD :
-      ∀ {γ} (Γ : Vec Sort γ) (P : Common.Part) (Pr : Syntax.Proc γ 0)
-        (s : State G)
-      → Dec (Γ & [] ⊢p P ◂ Pr ∶ s)
-    checkClosedD Γ P Pr s = checkD Γ [] P Pr s
-
-    -- ── Phase F, step 2: the session decision procedure ──
-    --
-    --  `⊢s M ∶ s` is a finite conjunction over the participants `Fin N`, so it
-    --  is decided by deciding each projection and combining with `allDec`.
-    private
-      allDec :
-        ∀ {n} {A : Fin n → Set}
-        → (∀ i → Dec (A i)) → Dec (∀ i → A i)
-      allDec {zero}  d = yes (λ ())
-      allDec {suc n} d with d F.zero | allDec (λ i → d (F.suc i))
-      ... | yes a  | yes rest = yes λ { F.zero → a ; (F.suc i) → rest i }
-      ... | no ¬a  | _        = no  λ f → ¬a (f F.zero)
-      ... | _      | no ¬rest = no  λ f → ¬rest (λ i → f (F.suc i))
-
-    checkSessionD : (M : Syntax.Session) (s : State G) → Dec (⊢s M ∶ s)
-    checkSessionD M s = allDec (λ P → checkClosedD [] P (Syntax._[_]s M P) s)
-
-  -- ── The public interface ──
-  --
-  --  `WBGraph`: a *predicate subtype* of well-behaved rooted graphs, built on
-  --  the decision procedure `wellBehaved?` via the standard `T ⌊ _ ⌋` idiom
-  --  (irrelevant Boolean-reflected proof) rather than bundling a `WellBehaved`
-  --  witness as data — `wb-of` recovers the witness with `toWitness`. Since
-  --  every caller now supplies a `WBGraph`, there is no longer a second
-  --  "graph of unknown behaviour" witness floating around to reconcile, so
-  --  the earlier `WellBehaved`-irrelevance machinery (`WbIrr`) is unneeded.
-  --
-  --  `buildG`: the smart constructor — compiling an `OpenGraph 0` (the
-  --  ergonomic graph-description DSL of `LTS.Algebra`) and pairing the
-  --  result with the well-behavedness proof is all `WBGraph` asks for, and
-  --  for a concrete/closed graph Agda solves that proof on its own
-  --  (`T ⌊ _ ⌋` at a `yes` reduces to `⊤`, whose unique inhabitant `tt` is
-  --  filled in by unification), so callers can just write `buildG OG`.
-  --
-  --  `typecheck` / `typecheckSession`: mirror `Γ & Δ ⊢p P ◂ Pr ∶ G`
-  --  (`Γ = Δ = []`, `G` supplied by the rooted graph's `initial` state;
-  --  participant before process, matching `P ◂ Pr`). `typecheckSession` has
-  --  no participant argument — a session already covers every participant,
-  --  `⊢s M ∶ G`.
-
-  WBGraph : Set
-  WBGraph = Σ[ R ∈ RootedGraph ] T ⌊ wellBehaved? (underlying R) ⌋
-
-  wb-of : (WR : WBGraph) → WellBehaved (graphTheory (underlying (proj₁ WR)))
-  wb-of WR = toWitness (proj₂ WR)
-
-  buildG :
-    (OG : OpenGraph 0) → {p : T ⌊ wellBehaved? (underlying (compile OG)) ⌋}
-    → WBGraph
-  buildG OG {p} = compile OG , p
-
-  typecheck :
-    (WR : WBGraph) (P : Common.Part) (Pr : Syntax.Proc 0 0)
-    → Dec (ProcessTyping (underlying (proj₁ WR)) (wb-of WR) [] P Pr
-             (initial (proj₁ WR)))
-  typecheck WR P Pr =
-    GraphComplete.checkClosedD (underlying (proj₁ WR)) (wb-of WR) [] P Pr
-      (initial (proj₁ WR))
-
-  typecheckSession :
-    (WR : WBGraph) (M : Syntax.Session)
-    → Dec (SessionTyping (underlying (proj₁ WR)) (wb-of WR) M
-             (initial (proj₁ WR)))
-  typecheckSession WR M =
-    GraphComplete.checkSessionD (underlying (proj₁ WR)) (wb-of WR) M
-      (initial (proj₁ WR))

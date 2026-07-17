@@ -22,7 +22,7 @@ open import Definitions.TypeChecker.Core public
   using (TypedExpression; valueTyped; inferExpression)
 
 import Definitions.TypeChecker.Core as Core
-import Definitions.TypeChecker.Complete as Comp
+import Definitions.TypeChecker.Completeness as Comp
 
 module _ {N : ℕ} where
   open Core.Processes N public
