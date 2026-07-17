@@ -249,36 +249,70 @@ module Definitions.TypeChecker.Core where
         (P : Part)
         where
 
-        ∉L : State G → Bool
-        ∉L t = not ⌊ L? t ⌋
-
-        -- ── the Bool mark and the predicate filter agree ──
-        ¬L→T∉L : ∀ {t} → ¬ L t → T (∉L t)
-        ¬L→T∉L {t} ¬Lt with L? t
-        ... | yes Lt = ⊥-elim (¬Lt Lt)
-        ... | no  _  = tt
-
-        T∉L→¬L : ∀ {t} → T (∉L t) → ¬ L t
-        T∉L→¬L {t} with L? t
-        ... | no ¬Lt = λ _ → ¬Lt
-        ... | yes _  = λ h → ⊥-elim h
-
-        -- decide the predicate-filtered reachability via the Bool fixed point
-        pathViaP? : ∀ s t → Dec (PathViaP G (λ u → ¬ L u) s t)
-        pathViaP? s t with reachVia? G ∉L s t
-        ... | yes (_ , pv) = yes (pathVia→pathViaP G (λ _ → T∉L→¬L) pv)
-        ... | no ¬pv = no λ pvp → ¬pv (pathViaP→pathVia G (λ _ → ¬L→T∉L) pvp)
-
-        NL? : ∀ s t → Dec (NLP L s t)
-        NL? s t = pathViaP? s t ×-dec (¬? (L? t))
-
-        ReachL? : ∀ t → Dec (ReachLP L t)
-        ReachL? t =
-          Fin.any? (λ ℓ → reachVia? G (λ _ → true) t ℓ ×-dec L? ℓ)
-
+        -- `semSkip?` evaluates the leaf decider `L?` (typically an expensive
+        -- recursive checker) exactly once per state, into a Bool table that
+        -- every reachability sweep below consults by `lookup`.  The table is
+        -- passed as a *bound argument* (`go okv`): Agda's evaluator shares
+        -- argument thunks, so the single `tabulate` is forced once — whereas
+        -- a module-level definition would be re-unfolded (hence the whole
+        -- table re-computed) at every one of the O(size³) filter evaluations
+        -- inside `reachVia?`.  `L?` is only ever re-run to extract a witness
+        -- on a success path (`L?v`).
         semSkip? : ∀ s → Dec (SemSkipP L P s)
         semSkip? s =
-          Fin.all? (λ t → NL? s t →-dec (na? P t ×-dec ReachL? t))
+          go (tabulate (λ t → not ⌊ L? t ⌋))
+             (λ t → VecP.lookup∘tabulate (λ u → not ⌊ L? u ⌋) t)
+          where
+          go : (okv : Vec Bool (size G))
+             → (eqv : ∀ t → lookup okv t ≡ not ⌊ L? t ⌋)
+             → Dec (SemSkipP L P s)
+          go okv eqv =
+            Fin.all? (λ t → NL?′ t →-dec (na? P t ×-dec ReachL?′ t))
+            where
+            ok : State G → Bool
+            ok t = lookup okv t
+
+            -- ── the table and the predicate filter agree ──
+            ¬L→Tok : ∀ {t} → ¬ L t → T (ok t)
+            ¬L→Tok {t} ¬Lt with L? t | eqv t
+            ... | yes Lt | _  = ⊥-elim (¬Lt Lt)
+            ... | no  _  | eq = subst T (sym eq) tt
+
+            Tok→¬L : ∀ {t} → T (ok t) → ¬ L t
+            Tok→¬L {t} h with L? t | eqv t
+            ... | yes _  | eq = ⊥-elim (subst T eq h)
+            ... | no ¬Lt | _  = λ Lt → ¬Lt Lt
+
+            ¬Tok→L : ∀ {t} → ¬ T (ok t) → L t
+            ¬Tok→L {t} ¬∉ with L? t | eqv t
+            ... | yes Lt | _  = Lt
+            ... | no  _  | eq = ⊥-elim (¬∉ (subst T (sym eq) tt))
+
+            -- decisions of `L`/`¬ L` through the table
+            ¬L?v : ∀ t → Dec (¬ L t)
+            ¬L?v t with T? (ok t)
+            ... | yes ∉ = yes (Tok→¬L ∉)
+            ... | no ¬∉ = no λ ¬Lt → ¬∉ (¬L→Tok ¬Lt)
+
+            L?v : ∀ t → Dec (L t)
+            L?v t with T? (ok t)
+            ... | yes ∉ = no (Tok→¬L ∉)
+            ... | no ¬∉ = yes (¬Tok→L ¬∉)
+
+            -- decide the predicate-filtered reachability via the Bool
+            -- fixed point over the shared table
+            pathViaP?′ : ∀ a b → Dec (PathViaP G (λ u → ¬ L u) a b)
+            pathViaP?′ a b with reachVia? G ok a b
+            ... | yes (_ , pv) = yes (pathVia→pathViaP G (λ _ → Tok→¬L) pv)
+            ... | no ¬pv =
+              no λ pvp → ¬pv (pathViaP→pathVia G (λ _ → ¬L→Tok) pvp)
+
+            NL?′ : ∀ t → Dec (NLP L s t)
+            NL?′ t = pathViaP?′ s t ×-dec ¬L?v t
+
+            ReachL?′ : ∀ t → Dec (ReachLP L t)
+            ReachL?′ t =
+              Fin.any? (λ ℓ → reachVia? G (λ _ → true) t ℓ ×-dec L?v ℓ)
 
       module SkipSem
         {γ δ}
