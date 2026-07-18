@@ -145,6 +145,24 @@ used *exactly once* (as in `SendRecv`/`PingPong`) is fine; anything with two or
 more branches converging is not, regardless of whether it's a `Σ`-choice or a
 genuine diamond.
 
+## STATUS: all nine examples ported and green (July 2026)
+
+Every example from `main` now type-checks against the decision procedure, each with a
+full `⊢s M ∶ G` witness extracted via `toWitness` (including the 7-way `IndepW`
+session `main` never assembled, and the recursive `RoundRobin` variant `main`
+abandoned).  Warm-cache wall times (≈5s of each is interface loading):
+SendRecv/PingPong/NoSynGT/RoundRobin ≈ 6s; CounterExamples 6.1s; OAuth2 8.6s;
+Rec2Buy 12.3s; RecMW 32.3s; IndepW 32.9s.
+
+Getting Rec2Buy/RecMW/IndepW into that range required one performance fix in
+`SkipDecide.semSkip?` (`Definitions/TypeChecker/Core.agda`): the leaf decider is now
+evaluated once per state into a Bool table passed as a *bound argument* to the
+sweep, so `reachVia?`'s O(size³) filter evaluations are vector lookups instead of
+recursive checker runs (before: Rec2Buy 166s, RecMW killed after >1h).  The
+remaining known inefficiency is cross-call: `R?` results are still re-derived per
+sweep/anchor demand (no process-level memo tables), and bisimilarity is recomputed
+per queried pair — revisit only if bigger examples appear.
+
 ## RESOLVED: the fuel-based checker was exponential; replaced by the shape-restricted judgment (July 2026)
 
 The old `Alg`/`checkWithFuelD`/`Saturate.agda` decision procedure re-derived every sub-decision

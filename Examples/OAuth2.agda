@@ -51,20 +51,17 @@ passwd quit : Fin 2
 passwd = zero
 quit   = suc zero
 
--- s0 --S→C[login]--> s1 --C→A[passwd]--> s2 --A→S[auth]--> s3(end)
--- s0 --S→C[cancel]--> s4 --C→A[quit]---------------------> s3(end)
+-- s0 --S→C[login]--> s1 --C→A[passwd]--> s2 --A→S[auth]--> ended
+-- s0 --S→C[cancel]--> s3 --C→A[quit]----------------------> ended
 oauth : OpenGraph 0
-oauth = openGraph 5 (inj₂ zero)
-  ( ( ((S ⟶ C # mkChoice login s/nat) , inj₂ (suc zero))
-    ∷ ((S ⟶ C # mkChoice cancel s/nat) , inj₂ (suc (suc (suc (suc zero)))))
+oauth = openGraph 4 (node zero)
+  ( ( ((S ⟶ C # mkChoice login s/nat) , node (suc zero))
+    ∷ ((S ⟶ C # mkChoice cancel s/nat) , node (suc (suc (suc zero))))
     ∷ [] )                                                            -- s0
-  v∷ ( ((C ⟶ A # mkChoice passwd s/nat) , inj₂ (suc (suc zero)))
+  v∷ ( ((C ⟶ A # mkChoice passwd s/nat) , node (suc (suc zero)))
      ∷ [] )                                                           -- s1
-  v∷ ( ((A ⟶ S # mkChoice here s/bool) , inj₂ (suc (suc (suc zero))))
-     ∷ [] )                                                           -- s2
-  v∷ []                                                               -- s3 = end
-  v∷ ( ((C ⟶ A # mkChoice quit s/bool) , inj₂ (suc (suc (suc zero))))
-     ∷ [] )                                                           -- s4
+  v∷ ( ((A ⟶ S # mkChoice here s/bool) , ended) ∷ [] )                 -- s2
+  v∷ ( ((C ⟶ A # mkChoice quit s/bool) , ended) ∷ [] )                 -- s3
   v∷ v[]
   )
 

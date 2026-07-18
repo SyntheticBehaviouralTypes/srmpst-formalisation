@@ -12,10 +12,11 @@ import Data.List.Relation.Unary.Any as Any
 open import Data.Nat using (ℕ; suc)
 open import Data.Product using (_×_; _,_; Σ-syntax)
 open import Function using (_∘_)
-open import Relation.Binary.PropositionalEquality using (_≡_; refl)
+open import Data.Bool using (T)
+open import Relation.Binary.PropositionalEquality using (_≡_; refl; subst)
 open import Relation.Nullary using (Dec; yes; no)
 open import Relation.Nullary.Decidable
-  using (T?; _×-dec_; _→-dec_)
+  using (T?; _×-dec_; _→-dec_; map′)
 
 module LTS.Decision (N : ℕ) where
 
@@ -48,12 +49,40 @@ module LTS.Decision (N : ℕ) where
         (λ edge → ∀ t′ → StepbackAt G s edge t′)
         (edges G s)
 
+  -- `finiteStepback?` queries `bisim?` O(size² · edges) times, and every
+  -- `bisim?` application re-runs the whole `approximation` fixed point (the
+  -- evaluator shares argument thunks, never definition applications) — this
+  -- dominated `wellBehaved?` on medium graphs.  As with `SkipDecide.semSkip?`
+  -- (Definitions/TypeChecker/Core.agda), the matrix is computed once and
+  -- passed as a *bound argument*, so every query is a lookup into the one
+  -- shared thunk; the pointwise equation (instantiated with `refl`, since
+  -- `bisim? G = related G (approximation G)` definitionally) transports each
+  -- decision back to the `Bisimilar`-phrased proposition.
   finiteStepback? : (G : Graph) → Dec (FiniteStepback G)
   finiteStepback? G =
-    Fin.all? λ s →
-      All.all?
-        (λ edge → Fin.all? (stepbackAt? G s edge))
-        (edges G s)
+    go (approximation G) (λ _ _ → refl)
+    where
+    go :
+      (mat : Matrix G)
+      → (∀ s t → related G mat s t ≡ bisim? G s t)
+      → Dec (FiniteStepback G)
+    go mat eqv =
+      Fin.all? λ s →
+        All.all?
+          (λ edge → Fin.all? (stepbackAt′ s edge))
+          (edges G s)
+      where
+        bisimT? : ∀ s t → Dec (Bisimilar G s t)
+        bisimT? s t =
+          subst (λ b → Dec (T b)) (eqv s t) (T? (related G mat s t))
+
+        stepbackAt′ :
+          (s : State G) (edge : Edge (size G)) (t′ : State G)
+          → Dec (StepbackAt G s edge t′)
+        stepbackAt′ s (α , t) t′ =
+          bisimT? t t′ →-dec
+            Fin.any? λ s′ →
+              bisimT? s s′ ×-dec step? G s′ α t′
 
   stepback/sound :
     ∀ {G}
@@ -76,17 +105,19 @@ module LTS.Decision (N : ℕ) where
 
   open Conditions
 
+  -- `conditions?`/`wellBehavedWith?` are `map′`-based rather than `with`-
+  -- based: a `with` on the sub-decisions forces their `proof` fields (the
+  -- whole witness-construction pass) even when the caller only inspects
+  -- `⌊_⌋` — e.g. discharging `buildG`'s `T ⌊ wellBehaved? … ⌋` obligation.
+  -- With `map′` the `does` chain alone decides, and witnesses are built
+  -- lazily, only if someone actually extracts the `WellBehaved` record.
   conditions? : (G : Graph) → Dec (Conditions G)
-  conditions? G with localConditions? G | finiteStepback? G
-  ... | yes local′ | yes stepback′ =
-    yes record
-      { local = local′
-      ; stepback = stepback′
-      }
-  ... | no ¬local | _ =
-    no (¬local ∘ local)
-  ... | _ | no ¬stepback =
-    no (¬stepback ∘ stepback)
+  conditions? G =
+    map′
+      (λ (local′ , stepback′) →
+        record { local = local′ ; stepback = stepback′ })
+      (λ conditions → local conditions , stepback conditions)
+      (localConditions? G ×-dec finiteStepback? G)
 
   conditions/sound :
     ∀ {G}
@@ -357,11 +388,11 @@ module LTS.Decision (N : ℕ) where
     (G : Graph)
     → BisimulationCorrect G
     → Dec (WellBehaved (graphTheory G))
-  wellBehavedWith? G correct with conditions? G
-  ... | yes conditions =
-    yes (conditions/sound correct conditions)
-  ... | no ¬conditions =
-    no (¬conditions ∘ conditions/complete correct)
+  wellBehavedWith? G correct =
+    map′
+      (conditions/sound correct)
+      (conditions/complete correct)
+      (conditions? G)
 
   wellBehaved? :
     (G : Graph) → Dec (WellBehaved (graphTheory G))

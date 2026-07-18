@@ -100,9 +100,57 @@ module LTS.Bisimulation (N : ℕ) where
   iterate zero f x = x
   iterate (suc fuel) f x = iterate fuel f (f x)
 
+  -- `approximation` used to run the full `size²` pigeonhole bound of
+  -- refinement rounds unconditionally; the fixed point is virtually always
+  -- reached after a handful, so the *computational* iteration stops as soon
+  -- as a round is stable (`iterateFix`), with `iterateFix/iterate` bridging
+  -- back to the fuel-only `iterate` the correctness lemmas are stated
+  -- against.  (The nested `with` binds `f x` once, so the equality test and
+  -- the recursive call share the one computed round.)
+  iterateFix :
+    ∀ {A : Set}
+    → ((x y : A) → Dec (x ≡ y))
+    → ℕ → (A → A) → A → A
+  iterateFix eq? zero f x = x
+  iterateFix eq? (suc fuel) f x with f x
+  ... | fx with eq? fx x
+  ...   | yes _ = x
+  ...   | no  _ = iterateFix eq? fuel f fx
+
+  iterate/stable :
+    ∀ {A : Set} fuel (f : A → A) x
+    → f x ≡ x
+    → iterate fuel f x ≡ x
+  iterate/stable zero f x eq = refl
+  iterate/stable (suc fuel) f x eq =
+    trans (cong (iterate fuel f) eq) (iterate/stable fuel f x eq)
+
+  iterateFix/iterate :
+    ∀ {A : Set}
+      (eq? : (x y : A) → Dec (x ≡ y))
+      fuel (f : A → A) x
+    → iterateFix eq? fuel f x ≡ iterate fuel f x
+  iterateFix/iterate eq? zero f x = refl
+  iterateFix/iterate eq? (suc fuel) f x with f x in fxeq
+  ... | fx with eq? fx x
+  ...   | yes eq =
+    sym (trans (cong (iterate fuel f) eq)
+               (iterate/stable fuel f x (trans fxeq eq)))
+  ...   | no _ = iterateFix/iterate eq? fuel f fx
+
+  matrix≟ :
+    (G : Graph) → (left right : Matrix G) → Dec (left ≡ right)
+  matrix≟ G = Vec.≡-dec (Vec.≡-dec Bool._≟_)
+
   approximation : (G : Graph) → Matrix G
   approximation G =
-    iterate (size G * size G) (refine G) (top G)
+    iterateFix (matrix≟ G) (size G * size G) (refine G) (top G)
+
+  approximation/iterate :
+    ∀ {G}
+    → approximation G ≡ iterate (size G * size G) (refine G) (top G)
+  approximation/iterate {G} =
+    iterateFix/iterate (matrix≟ G) (size G * size G) (refine G) (top G)
 
   bisim? : (G : Graph) → State G → State G → Bool
   bisim? G = related G (approximation G)
@@ -398,8 +446,9 @@ module LTS.Bisimulation (N : ℕ) where
   approximation/symmetric :
     ∀ {G} → Symmetric G (approximation G)
   approximation/symmetric {G} =
-    iterate/symmetric {G} (size G * size G)
-      (top/symmetric {G = G})
+    subst (Symmetric G) (sym (approximation/iterate {G}))
+      (iterate/symmetric {G} (size G * size G)
+        (top/symmetric {G = G}))
 
   bit : Bool → ℕ
   bit false = zero
@@ -533,10 +582,6 @@ module LTS.Bisimulation (N : ℕ) where
       (matrixWeight/mono {left = lefts} {right = rights} λ i →
         included (Fin.suc i))
 
-  matrix≟ :
-    (G : Graph) → (left right : Matrix G) → Dec (left ≡ right)
-  matrix≟ G = Vec.≡-dec (Vec.≡-dec Bool._≟_)
-
   refine/weight≤ :
     ∀ {G} {relation : Matrix G}
     → matrixWeight (refine G relation) ≤ matrixWeight relation
@@ -632,12 +677,13 @@ module LTS.Bisimulation (N : ℕ) where
   approximation/stable :
     ∀ {G} → Stable G (approximation G)
   approximation/stable {G} =
-    stabilize {G} (size G * size G)
-      {relation = top G}
-      (subst
-        (λ weight → weight ≤ size G * size G)
-        (sym (top/weight {G}))
-        Nat.≤-refl)
+    subst (Stable G) (sym (approximation/iterate {G}))
+      (stabilize {G} (size G * size G)
+        {relation = top G}
+        (subst
+          (λ weight → weight ≤ size G * size G)
+          (sym (top/weight {G}))
+          Nat.≤-refl))
 
   stable⇒refined :
     ∀ {G}
@@ -737,8 +783,9 @@ module LTS.Bisimulation (N : ℕ) where
   approximation/complete :
     ∀ {G} → SemanticContained G (approximation G)
   approximation/complete {G} =
-    iterate/contains {G} (size G * size G)
-      (top/contains {G = G})
+    subst (SemanticContained G) (sym (approximation/iterate {G}))
+      (iterate/contains {G} (size G * size G)
+        (top/contains {G = G}))
 
   semantic⇒bisimilar :
     ∀ {G s t}

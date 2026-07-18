@@ -45,33 +45,31 @@ lbl0 = zero
 lbl1 = suc zero
 
 private
-  -- state references (`Ref 0 7`)
-  t0 t1 t2 t3 t4 t5 t6 : Ref 0 7
-  t0 = inj₂ zero
-  t1 = inj₂ (suc zero)
-  t2 = inj₂ (suc (suc zero))
-  t3 = inj₂ (suc (suc (suc zero)))
-  t4 = inj₂ (suc (suc (suc (suc zero))))
-  t5 = inj₂ (suc (suc (suc (suc (suc zero)))))
-  t6 = inj₂ (suc (suc (suc (suc (suc (suc zero))))))
+  -- state references (`Ref 0 6`)
+  t0 t1 t2 t3 t4 t5 : Ref 0 6
+  t0 = node zero
+  t1 = node (suc zero)
+  t2 = node (suc (suc zero))
+  t3 = node (suc (suc (suc zero)))
+  t4 = node (suc (suc (suc (suc zero))))
+  t5 = node (suc (suc (suc (suc (suc zero)))))
 
 -- s0 --A→S item(nat)--> s1 --S→A price(nat)--> s2
 -- s2 --A→B split(nat)--> s4 | --A→B cancel(unit)--> s3
 -- s4 --B→A yes(nat)--> s5   | --B→A no(unit)-----> s2   (the loop)
--- s3 --A→S no(unit)--> s6(end);  s5 --A→S buy(unit)--> s6(end)
+-- s3 --A→S no(unit)--> ended;  s5 --A→S buy(unit)--> ended
 rec2buy : OpenGraph 0
-rec2buy = openGraph 7 (inj₂ zero)
+rec2buy = openGraph 6 (node zero)
   (  ( ((A ⟶ S # mkChoice here s/nat) , t1) ∷ [] )                    -- s0
   v∷ ( ((S ⟶ A # mkChoice here s/nat) , t2) ∷ [] )                    -- s1
   v∷ ( ((A ⟶ B # mkChoice lbl0 s/nat) , t4)                           -- s2: split
      ∷ ((A ⟶ B # mkChoice lbl1 s/unit) , t3)                          --     cancel
      ∷ [] )
-  v∷ ( ((A ⟶ S # mkChoice lbl1 s/unit) , t6) ∷ [] )                   -- s3: no-s
+  v∷ ( ((A ⟶ S # mkChoice lbl1 s/unit) , ended) ∷ [] )                 -- s3: no-s
   v∷ ( ((B ⟶ A # mkChoice lbl0 s/nat) , t5)                           -- s4: yes
      ∷ ((B ⟶ A # mkChoice lbl1 s/unit) , t2)                          --     no (loop)
      ∷ [] )
-  v∷ ( ((A ⟶ S # mkChoice lbl0 s/unit) , t6) ∷ [] )                   -- s5: buy
-  v∷ []                                                               -- s6 = end
+  v∷ ( ((A ⟶ S # mkChoice lbl0 s/unit) , ended) ∷ [] )                 -- s5: buy
   v∷ v[]
   )
 

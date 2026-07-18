@@ -37,18 +37,19 @@ here = zero
 
 -- from s0: A picks to message B first or C first; both orders must converge
 -- on the *literally same* successor state for `wellBehaved?`'s diamond check
--- to close (see Examples/TODO.md) — `choice`/`_∙_`/`end` always allocate
--- fresh nodes, so this needs the raw `OpenGraph` record constructor with
--- explicit shared indices instead.
+-- to close (see Examples/TODO.md).  Since the DSL's `end`s all collapse to
+-- the one distinguished ended state, the two branches below genuinely
+-- converge and the plain `choice` combinator suffices (an earlier version of
+-- the DSL allocated a fresh node per `end`, which made this graph
+-- inexpressible without the raw record constructor).
 nosyn : OpenGraph 0
-nosyn = openGraph 4 (inj₂ zero)
-  ( ( ((A ⟶ B # mkChoice here s/unit) , inj₂ (suc zero))
-    ∷ ((A ⟶ C # mkChoice here s/unit) , inj₂ (suc (suc zero)))
-    ∷ [] )                                                                  -- s0
-  v∷ ( ((A ⟶ C # mkChoice here s/unit) , inj₂ (suc (suc (suc zero)))) ∷ [] ) -- s1
-  v∷ ( ((A ⟶ B # mkChoice here s/unit) , inj₂ (suc (suc (suc zero)))) ∷ [] ) -- s2
-  v∷ [] v∷ v[]                                                              -- s3 = end
-  )
+nosyn =
+  choice
+    ((A ⟶ B # mkChoice here s/unit) ⇒
+      ((A ⟶ C # mkChoice here s/unit) ∙ end))
+    ( ((A ⟶ C # mkChoice here s/unit) ⇒
+        ((A ⟶ B # mkChoice here s/unit) ∙ end))
+    ∷ [])
 
 wbg : WBGraph {N = 3}
 wbg = buildG nosyn {p = tt}

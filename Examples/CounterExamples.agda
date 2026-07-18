@@ -50,18 +50,16 @@ lbl0 lbl1 : Fin 2
 lbl0 = zero
 lbl1 = suc zero
 
--- s0 --A→B[0]--> s1 --B→C[0]--> s3(end)
--- s0 --A→B[1]--> s2 --B→C[1]--> s3(end)     (both branches share s3)
+-- s0 --A→B[0]--> s1 --B→C[0]--> ended
+-- s0 --A→B[1]--> s2 --B→C[1]--> ended    (`ended` is the DSL's unique end)
 round : OpenGraph 0
-round = openGraph 4 (inj₂ zero)
-  ( ( ((A ⟶ B # mkChoice lbl0 s/bool) , inj₂ (suc zero))
-    ∷ ((A ⟶ B # mkChoice lbl1 s/bool) , inj₂ (suc (suc zero)))
+round = openGraph 3 (node zero)
+  ( ( ((A ⟶ B # mkChoice lbl0 s/bool) , node (suc zero))
+    ∷ ((A ⟶ B # mkChoice lbl1 s/bool) , node (suc (suc zero)))
     ∷ [] )                                                            -- s0
-  v∷ ( ((B ⟶ C # mkChoice lbl0 s/bool) , inj₂ (suc (suc (suc zero))))
-     ∷ [] )                                                           -- s1
-  v∷ ( ((B ⟶ C # mkChoice lbl1 s/bool) , inj₂ (suc (suc (suc zero))))
-     ∷ [] )                                                           -- s2
-  v∷ [] v∷ v[]                                                        -- s3 = end
+  v∷ ( ((B ⟶ C # mkChoice lbl0 s/bool) , ended) ∷ [] )                 -- s1
+  v∷ ( ((B ⟶ C # mkChoice lbl1 s/bool) , ended) ∷ [] )                 -- s2
+  v∷ v[]
   )
 
 wbg : WBGraph {N = 3}

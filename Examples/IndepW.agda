@@ -3,24 +3,29 @@
 -- Port of `main`'s Examples/IndepW.agda: two independent worker pipelines
 -- `S → A1 → B1 → C1` and `S → A2 → B2 → C2` behind a shared source `S`,
 -- with all cross-pipeline steps interleavable — the stress test for the
--- diamond/independence machinery.  The 7-state graph is `main`'s, verbatim
--- (it is already diamond-closed: every independent pair converges on a
--- literally shared state), built raw since it is nothing but shared states
--- and loops.
+-- diamond/independence machinery.
+--
+-- Unlike the flattening-algebra version, this is built as a syntactic
+-- `Net` (`LTS/Network.agda`): three small base graphs combined with `∥`/`⨾`
+-- — no product graph is ever materialized. Well-behavedness is a
+-- compositional `WBNet` certificate (`Definitions/TypeChecker/Network.agda`):
+-- each `base` leaf is `wellBehaved?` on its own tiny presentation, `∥`
+-- needs only decided participant-disjointness (`ParWB`'s diamond is free),
+-- and `⨾` needs the decided seam-causality checks plus one decided
+-- `stepback/~` sweep over the *composite's* presentation (the one axiom
+-- that provably cannot be checked seam-locally — `LTS/NetworkSeq.agda`).
 --
 -- `main` needed ~1040 lines (custom `BTheory` + ~7 mutually recursive
 -- `Active?`/`Causal?` families per pipeline) and never assembled a full
 -- session judgment — only per-participant typings.  Here the whole 7-way
--- session is one `typecheckSession` call.
+-- session is one `typecheckSessionNet` call.
 
 module Examples.IndepW where
 
 open import Data.Fin using (Fin; zero; suc)
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Data.List using ([]; _∷_)
-open import Data.Sum using (inj₂)
-open import Data.Product using (_,_; proj₁)
-open import Data.Unit using (tt)
+open import Data.Product using (_,_)
 open import Relation.Nullary using (Dec)
 open import Relation.Nullary.Decidable using (toWitness)
 
@@ -28,7 +33,8 @@ open import Definitions.Expr using (s/unit; val; v/unit)
 open import Definitions.TypeChecker
 import Definitions.Typing as Typing
 
-open import LTS.Algebra 7 hiding (var)
+open import LTS.Algebra 7 using (OpenGraph; end; _∙_; μ; var; underlying; initial)
+open import LTS.Network 7 using (Net; base; _∥_; _⨾_; present)
 open import Definitions.Actions 7 renaming (_<_> to mkChoice) hiding (_,_)
 open import Definitions.Proc 7
 
@@ -45,35 +51,29 @@ here : Fin 1
 here = zero
 
 private
-  t0 t1 t2 t3 t4 t5 t6 : Ref 0 7
-  t0 = inj₂ zero
-  t1 = inj₂ (suc zero)
-  t2 = inj₂ (suc (suc zero))
-  t3 = inj₂ (suc (suc (suc zero)))
-  t4 = inj₂ (suc (suc (suc (suc zero))))
-  t5 = inj₂ (suc (suc (suc (suc (suc zero)))))
-  t6 = inj₂ (suc (suc (suc (suc (suc (suc zero))))))
-
   itm : Fin 7 → Fin 7 → _
   itm P Q = P ⟶ Q # mkChoice here s/unit
 
--- `main`'s 7-state interleaving graph, edge for edge
-indepw : OpenGraph 0
-indepw = openGraph 7 (inj₂ zero)
-  (  ( (itm S A1 , t1) ∷ [] )                                -- s0
-  v∷ ( (itm S A2 , t3) ∷ (itm A1 B1 , t2) ∷ [] )             -- s1
-  v∷ ( (itm S A2 , t4) ∷ (itm B1 C1 , t1) ∷ [] )             -- s2
-  v∷ ( (itm A1 B1 , t4) ∷ (itm A2 B2 , t5) ∷ [] )            -- s3
-  v∷ ( (itm B1 C1 , t3) ∷ (itm A2 B2 , t6) ∷ [] )            -- s4
-  v∷ ( (itm B2 C2 , t3) ∷ (itm A1 B1 , t6) ∷ [] )            -- s5
-  v∷ ( (itm B1 C1 , t5) ∷ (itm B2 C2 , t4) ∷ [] )            -- s6
-  v∷ v[]
-  )
+-- one worker pipeline loop: `Ai` feeds `Bi`, which feeds `Ci`, forever
+pipeTail : Fin 7 → Fin 7 → Fin 7 → OpenGraph 0
+pipeTail Ai Bi Ci = μ (itm Ai Bi ∙ itm Bi Ci ∙ var zero)
 
-wbg : WBGraph {N = 7}
-wbg = buildG indepw {p = tt}
+-- `main`'s specification: `S` seeds `A1` *first*; only then does the first
+-- pipeline run in parallel with (`S` seeding `A2`, then the second
+-- pipeline).  Written as a net of three base graphs: the outer `⨾` is the
+-- `S→A1 ≺ S→A2` precedence, the inner `∥` lets `A1→B1` overtake `S→A2`, and
+-- the inner `⨾` is `S→A2 ≺ A2→B2` — exactly `main`'s hand-interleaved
+-- graph, now never flattened into one product.
+indepw : Net
+indepw =
+  base (itm S A1 ∙ end)
+    ⨾ (base (pipeTail A1 B1 C1)
+        ∥ (base (itm S A2 ∙ end) ⨾ base (pipeTail A2 B2 C2)))
 
-open Typing.MPST (wb-of wbg) using (⊢s_∶_)
+wnet : WBNet indepw
+wnet = base ⨾ (base ∥ (base ⨾ base))
+
+open Typing.MPST (wb-net wnet) using (⊢s_∶_)
 
 p/S : Proc 0 0
 p/S = A1 ! here < val v/unit >∙ (A2 ! here < val v/unit >∙ ∅)
@@ -96,8 +96,8 @@ M : Session
 M = p/S v∷ p/A B1 v∷ p/B A1 C1 v∷ p/C B1
         v∷ p/A B2 v∷ p/B A2 C2 v∷ p/C B2 v∷ v[]
 
-wtd : Dec (⊢s M ∶ initial (proj₁ wbg))
-wtd = typecheckSession wbg M
+wtd : Dec (⊢s M ∶ initial (present indepw))
+wtd = typecheckSessionNet wnet M
 
-M-well-typed : ⊢s M ∶ initial (proj₁ wbg)
+M-well-typed : ⊢s M ∶ initial (present indepw)
 M-well-typed = toWitness {a? = wtd} _

@@ -25,10 +25,10 @@ open import Relation.Nullary.Decidable using (toWitness)
 
 open import Definitions.Expr
   using (s/bool; s/nat; val; v/nat; v/bool; is-zero; var)
-open import Definitions.TypeChecker
+open import Definitions.TypeChecker hiding (base; _∥_; _⨾_)
 import Definitions.Typing as Typing
 
-open import LTS.Algebra 4 hiding (var)
+open import LTS.Algebra 4 renaming (var to gvar)
 open import Definitions.Actions 4 renaming (_<_> to mkChoice) hiding (_,_)
 open import Definitions.Proc 4
 
@@ -46,40 +46,21 @@ lbl0 lbl1 : Fin 2
 lbl0 = zero
 lbl1 = suc zero
 
-private
-  t0 t1 t1a t1b t2 t3 t4 t5 t6 : Ref 0 9
-  t0  = inj₂ zero
-  t1  = inj₂ (suc zero)
-  t1a = inj₂ (suc (suc zero))
-  t1b = inj₂ (suc (suc (suc zero)))
-  t2  = inj₂ (suc (suc (suc (suc zero))))
-  t3  = inj₂ (suc (suc (suc (suc (suc zero)))))
-  t4  = inj₂ (suc (suc (suc (suc (suc (suc zero))))))
-  t5  = inj₂ (suc (suc (suc (suc (suc (suc (suc zero)))))))
-  t6  = inj₂ (suc (suc (suc (suc (suc (suc (suc (suc zero))))))))
-
--- s0 --M→W1 datum--> s1;  s1 --M→W2 datum--> s1a  |  s1 --W1→R result--> s1b
--- s1a --W1→R result--> s2;  s1b --M→W2 datum--> s2      (the diamond)
--- s2 --W2→R result--> s3
--- s3 --R→M continue--> s0 (loop)  |  s3 --R→M stop--> s4
--- s4 --M→W1 stop--> s5 --M→W2 stop--> s6(end)
+-- The protocol, written in the graph algebra: one round is `M→W1`, then the
+-- *parallel* pair `M→W2 ∥ W1→R` (the diamond of interleavings comes out of
+-- `∥` — no hand-placed convergence states), then `W2→R`; `R` then chooses
+-- to loop or to stop (`M` stopping both workers, ended).
 recmw : OpenGraph 0
-recmw = openGraph 9 (inj₂ zero)
-  (  ( ((M ⟶ W1 # mkChoice lbl0 s/nat) , t1) ∷ [] )                   -- s0
-  v∷ ( ((M ⟶ W2 # mkChoice lbl0 s/nat) , t1a)
-     ∷ ((W1 ⟶ R # mkChoice here s/nat) , t1b)
-     ∷ [] )                                                           -- s1
-  v∷ ( ((W1 ⟶ R # mkChoice here s/nat) , t2) ∷ [] )                   -- s1a
-  v∷ ( ((M ⟶ W2 # mkChoice lbl0 s/nat) , t2) ∷ [] )                   -- s1b
-  v∷ ( ((W2 ⟶ R # mkChoice here s/nat) , t3) ∷ [] )                   -- s2
-  v∷ ( ((R ⟶ M # mkChoice lbl0 s/nat) , t0)
-     ∷ ((R ⟶ M # mkChoice lbl1 s/bool) , t4)
-     ∷ [] )                                                           -- s3
-  v∷ ( ((M ⟶ W1 # mkChoice lbl1 s/bool) , t5) ∷ [] )                  -- s4
-  v∷ ( ((M ⟶ W2 # mkChoice lbl1 s/bool) , t6) ∷ [] )                  -- s5
-  v∷ []                                                               -- s6
-  v∷ v[]
-  )
+recmw =
+  μ ( (M ⟶ W1 # mkChoice lbl0 s/nat) ∙
+      (   ((M ⟶ W2 # mkChoice lbl0 s/nat) ∙ end)
+        ∥ ((W1 ⟶ R # mkChoice here s/nat) ∙ end)
+      ⨾ (W2 ⟶ R # mkChoice here s/nat) ∙
+        choice ((R ⟶ M # mkChoice lbl0 s/nat) ⇒ gvar zero)
+               ( ((R ⟶ M # mkChoice lbl1 s/bool) ⇒
+                   ((M ⟶ W1 # mkChoice lbl1 s/bool) ∙
+                    (M ⟶ W2 # mkChoice lbl1 s/bool) ∙ end))
+               ∷ []) ) )
 
 wbg : WBGraph {N = 4}
 wbg = buildG recmw {p = tt}

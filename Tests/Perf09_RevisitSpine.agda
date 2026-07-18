@@ -45,16 +45,15 @@ lbl0 lbl1 : Fin 2
 lbl0 = zero
 lbl1 = suc zero
 
--- states: 0 = u, 1 = t, 2 = ℓ, 3 = end
+-- states: 0 = u, 1 = t, 2 = ℓ, plus the DSL's distinguished end
 g : OpenGraph 0
-g = openGraph 4 (inj₂ zero)
-  ( ( ((A ⟶ B # mkChoice lbl0 s/bool) , inj₂ (suc zero))
-    ∷ ((A ⟶ B # mkChoice lbl1 s/bool) , inj₂ (suc (suc zero)))
+g = openGraph 3 (node zero)
+  ( ( ((A ⟶ B # mkChoice lbl0 s/bool) , node (suc zero))
+    ∷ ((A ⟶ B # mkChoice lbl1 s/bool) , node (suc (suc zero)))
     ∷ [] )                                                            -- u
-  v∷ ( ((B ⟶ A # mkChoice here s/bool) , inj₂ zero) ∷ [] )            -- t → u
-  v∷ ( ((A ⟶ C # mkChoice here s/bool) , inj₂ (suc (suc (suc zero))))
-     ∷ [] )                                                           -- ℓ
-  v∷ [] v∷ v[]                                                        -- end
+  v∷ ( ((B ⟶ A # mkChoice here s/bool) , node zero) ∷ [] )            -- t → u
+  v∷ ( ((A ⟶ C # mkChoice here s/bool) , ended) ∷ [] )                 -- ℓ
+  v∷ v[]
   )
 
 wbg : WBGraph {N = 3}
