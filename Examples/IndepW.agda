@@ -6,14 +6,14 @@
 -- diamond/independence machinery.
 --
 -- Unlike the flattening-algebra version, this is built as a syntactic
--- `Net` (`LTS/Network.agda`): three small base graphs combined with `∥`/`⨾`
+-- `Net` (`Definitions/Graph/Network.agda`): three small base graphs combined with `∥`/`⨾`
 -- — no product graph is ever materialized. Well-behavedness is a
 -- compositional `WBNet` certificate (`Definitions/TypeChecker/Network.agda`):
 -- each `base` leaf is `wellBehaved?` on its own tiny presentation, `∥`
 -- needs only decided participant-disjointness (`ParWB`'s diamond is free),
 -- and `⨾` needs the decided seam-causality checks plus one decided
 -- `stepback/~` sweep over the *composite's* presentation (the one axiom
--- that provably cannot be checked seam-locally — `LTS/NetworkSeq.agda`).
+-- that provably cannot be checked seam-locally — `Definitions/Graph/NetworkSeq.agda`).
 --
 -- `main` needed ~1040 lines (custom `BTheory` + ~7 mutually recursive
 -- `Active?`/`Causal?` families per pipeline) and never assembled a full
@@ -30,11 +30,11 @@ open import Relation.Nullary using (Dec)
 open import Relation.Nullary.Decidable using (toWitness)
 
 open import Definitions.Expr using (s/unit; val; v/unit)
-open import Definitions.TypeChecker
+open import Check
 import Definitions.Typing as Typing
 
-open import LTS.Algebra 7 using (OpenGraph; end; _∙_; μ; var; underlying; initial)
-open import LTS.Network 7 using (Net; base; _∥_; _⨾_; present)
+open import Definitions.Graph.Algebra 7 using (OpenGraph; end; _∙_; μ; var; underlying; initial)
+open import Definitions.Graph.Network 7 using (Net; base; _∥_; _⨾_; present)
 open import Definitions.Actions 7 renaming (_<_> to mkChoice) hiding (_,_)
 open import Definitions.Proc 7
 

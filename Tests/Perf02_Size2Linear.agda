@@ -14,10 +14,10 @@ open import Relation.Nullary using (Dec)
 open import Relation.Nullary.Decidable using (⌊_⌋)
 
 open import Definitions.Expr using (s/bool)
-open import Definitions.TypeChecker
+open import Check
 import Definitions.Typing as Typing
 
-open import LTS.Algebra 2
+open import Definitions.Graph.Algebra 2
 open import Definitions.Actions 2 renaming (_<_> to mkChoice)
 open import Definitions.Proc 2
 

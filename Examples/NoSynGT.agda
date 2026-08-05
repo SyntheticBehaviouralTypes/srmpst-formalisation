@@ -20,10 +20,10 @@ open import Relation.Nullary using (Dec)
 open import Relation.Nullary.Decidable using (toWitness)
 
 open import Definitions.Expr using (s/unit; s/nat; val; v/unit; v/nat; is-zero)
-open import Definitions.TypeChecker
+open import Check
 import Definitions.Typing as Typing
 
-open import LTS.Algebra 3
+open import Definitions.Graph.Algebra 3
 open import Definitions.Actions 3 renaming (_<_> to mkChoice) hiding (_,_)
 open import Definitions.Proc 3
 

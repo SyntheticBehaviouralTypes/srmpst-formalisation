@@ -32,6 +32,7 @@ open import Data.Vec.Properties
 
 open import Data.Product using (∃-syntax; _,_; _×_; proj₁; proj₂)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
+open import Data.List.Relation.Unary.Any using (here; there)
 open import Data.Maybe.Base using (just; nothing)
 
 open import Relation.Nullary using (yes; no)
@@ -41,15 +42,18 @@ open import Relation.Binary.PropositionalEquality
 
 open import Utils.Vec using (sum/map-update<)
 open import Definitions.Typing
+import Definitions.Typing.Algorithmic as Alg
 
 module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private
     module M = MPST wb
   open M
+  open Alg wb using (_&_⊢a_∶_; a/skip; a/if; a/end)
   open M.Subst
-  open import Safety.Head wb
+  open import Definitions.Typing.Norm wb using (norm; a/if/inv; a/rec/guarded)
   open import Safety.Preservation wb
   open import Safety.Progress wb
+  open import Definitions.Typing.Properties wb
 
   τ-depth/proc :
     ∀ {γ δ}
@@ -113,30 +117,15 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     rewrite τ-depth/unfold guarded =
     ≤-refl
 
-  mutual
-
-    rec/guarded :
-      ∀ {G P Pr}
-      → [] & [] ⊢p P ◂ rec Pr ∶ G
-      → MessageGuarded Pr
-    rec/guarded (t/skip std) =
-      rec/guarded-skip std refl
-    rec/guarded (t/unskip _ td) =
-      rec/guarded td
-    rec/guarded (t/rec guarded _) =
-      guarded
-
-    rec/guarded-skip :
-      ∀ {ξ m G P Pr}
-        {Ξ : Vec Behav ξ}
-      → [] & [] & Ξ ⊢skip[ m ] P ◂ rec Pr ∶ G
-      → m ≡ prod
-      → MessageGuarded Pr
-    rec/guarded-skip (skip/main td) _ =
-      rec/guarded td
-    rec/guarded-skip (skip/step gr _ ktd mode-gr) _ =
-      rec/guarded-skip (ktd gr .proj₂) mode-gr
-    rec/guarded-skip (skip/cycle _) ()
+  -- WAS ~65 lines of `head/rec/guarded*` over `⊢head`.  `⊢a` needs none
+  -- of it: `blocked/rec` carries `MessageGuarded Pr` as a field, so
+  -- `a/rec/guarded` (`Definitions/Typing/Norm.agda`) reads it straight off
+  -- a main leaf, with the `P ∈T` chase only for all-cycle trees.
+  rec/guarded :
+    ∀ {G P Pr}
+    → [] & [] ⊢a P ◂ rec Pr ∶ G
+    → MessageGuarded Pr
+  rec/guarded = a/rec/guarded
 
   τ-depth/session :
     Session
@@ -172,7 +161,7 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     sum/map-update< (τ-depth/proc {γ = 0} {δ = 0}) M P
       (τ-depth/lookup< proc≡
         (τ-depth/unfold<rec
-          (rec/guarded (td/lookup M⊢G proc≡))))
+          (rec/guarded (alg/lookup M⊢G proc≡))))
 
   catτ :
     ∀ {M M′ M″}
@@ -295,9 +284,9 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     M⊢G
     proc≡
     (done-if donePr donePr′)
-    with t/if/inv
+    with a/if/inv
            refl
-           (td/lookup
+           (alg/lookup
              {M = M}
              {P = P}
              M⊢G

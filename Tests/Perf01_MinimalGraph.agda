@@ -20,10 +20,10 @@ open import Data.Product using (proj₁)
 open import Relation.Nullary using (Dec)
 open import Relation.Nullary.Decidable using (⌊_⌋)
 
-open import Definitions.TypeChecker
+open import Check
 import Definitions.Typing as Typing
 
-open import LTS.Algebra 1
+open import Definitions.Graph.Algebra 1
 open import Definitions.Proc 1
 
 A : Fin 1

@@ -19,7 +19,7 @@
 --     `Stepback` axiom of well-behavedness (same finding as the diamond
 --     one: states meant to be "the same" need a literally shared node).
 --   * the shared final state forces the raw `openGraph` construction — the
---     `LTS.Algebra` DSL allocates a fresh node per use.
+--     `Definitions.Graph.Algebra` DSL allocates a fresh node per use.
 
 module Examples.CounterExamples where
 
@@ -33,10 +33,10 @@ open import Relation.Nullary using (Dec; ¬_)
 open import Relation.Nullary.Decidable using (toWitness; toWitnessFalse)
 
 open import Definitions.Expr using (s/bool)
-open import Definitions.TypeChecker
+open import Check
 import Definitions.Typing as Typing
 
-open import LTS.Algebra 3
+open import Definitions.Graph.Algebra 3
 open import Definitions.Actions 3 renaming (_<_> to mkChoice) hiding (_,_)
 open import Definitions.Proc 3
 

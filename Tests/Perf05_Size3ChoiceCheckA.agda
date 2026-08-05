@@ -12,7 +12,6 @@ module Tests.Perf05_Size3ChoiceCheckA where
 
 open import Data.Fin using (Fin; zero; suc)
 open import Data.Unit using (tt)
-open import Data.Sum using (inj₂)
 open import Data.Product using (_,_; proj₁)
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Data.List using ([]; _∷_)
@@ -21,10 +20,10 @@ open import Relation.Nullary using (Dec)
 open import Relation.Nullary.Decidable using (⌊_⌋)
 
 open import Definitions.Expr using (s/bool)
-open import Definitions.TypeChecker
+open import Check
 import Definitions.Typing as Typing
 
-open import LTS.Algebra 3
+open import Definitions.Graph.Algebra 3
 open import Definitions.Actions 3 renaming (_<_> to mkChoice) hiding (_,_)
 open import Definitions.Proc 3
 
@@ -40,13 +39,18 @@ lbl0 lbl1 : Fin 2
 lbl0 = zero
 lbl1 = suc zero
 
+-- The end state is `ended`, NOT a node of its own: `compile` already
+-- appends it, so a spare edge-less node would be bisimilar to it, and two
+-- distinct-but-bisimilar dead ends break `stepback/~`.  This file predates
+-- the `Ref` datatype — it used to say `inj₂`, from back when a reference
+-- was a plain sum with no `ended` case.
 round : OpenGraph 0
-round = openGraph 3 (inj₂ zero)
-  ( ( ((A ⟶ B # mkChoice lbl0 s/bool) , inj₂ (suc (suc zero)))
-    ∷ ((A ⟶ B # mkChoice lbl1 s/bool) , inj₂ (suc zero))
-    ∷ [] )                                                            -- s0
-  v∷ ( ((B ⟶ C # mkChoice here s/bool) , inj₂ (suc (suc zero))) ∷ [] ) -- s1
-  v∷ [] v∷ v[]                                                        -- s2 = end
+round = openGraph 2 (node zero)
+  ( ( ((A ⟶ B # mkChoice lbl0 s/bool) , ended)
+    ∷ ((A ⟶ B # mkChoice lbl1 s/bool) , node (suc zero))
+    ∷ [] )                                              -- s0
+  v∷ ( ((B ⟶ C # mkChoice here s/bool) , ended) ∷ [] )  -- s1
+  v∷ v[]
   )
 
 wbg : WBGraph {N = 3}

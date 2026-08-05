@@ -6,6 +6,12 @@ open import Data.Fin using (Fin; zero; suc)
 open import Data.Vec using (Vec; []; _∷_; lookup)
 open import Data.Product using (∃-syntax; _,_; _×_; proj₁; proj₂)
 
+open import Data.List using (List; []; _∷_; _++_)
+open import Data.List.Relation.Unary.Any using (Any; here; there)
+open import Data.List.Relation.Unary.All using (All; []; _∷_)
+import Data.List.Relation.Unary.Any.Properties as AnyProp
+import Data.List.Relation.Unary.All.Properties as AllProp
+
 open import Relation.Nullary using (¬_)
 
 open import Relation.Binary.PropositionalEquality
@@ -33,49 +39,59 @@ module Definitions.Behav where
     P not-active-in G =
       ∀ {α G′} → G -< α >-> G′ → P ∉α α
 
+    -- Traces: the single primitive multi-step judgement everything else is
+    -- built from.
+
+    infix 4 _-[_]->_
+
+    data _-[_]->_ : Behav → List Action → Behav → Set where
+      tr/refl :
+        ∀ {G} → G -[ [] ]-> G
+
+      tr/step :
+        ∀ {G G′ G″ α αs}
+        → G -< α >-> G′
+        → G′ -[ αs ]-> G″
+        → G -[ α ∷ αs ]-> G″
+
+    tr/trans :
+      ∀ {G G′ G″ αs βs}
+      → G -[ αs ]-> G′ → G′ -[ βs ]-> G″ → G -[ αs ++ βs ]-> G″
+    tr/trans tr/refl tr′         = tr′
+    tr/trans (tr/step gr tr) tr′ = tr/step gr (tr/trans tr tr′)
+
+    -- `P ∈T G`: there is a trace out of `G` somewhere along which `P` is
+    -- mentioned. `G -[¬ P ]->* G′`: there is a trace from `G` to `G′` none
+    -- of whose actions mention `P`. Both are existentials over `_-[_]->_`,
+    -- pairing a run with a property of the run's *labels alone*
+    -- (`Any`/`All` over `List Action`, independent of which `Behav` states
+    -- the run passes through) — that decoupling is what makes bisimulation
+    -- transport for both relations reduce to transporting the run and
+    -- reusing the label-level witness unchanged (see `tr-transport`/
+    -- `stepback/~*` below, and `∈~`/`skip/∈T-back`).
+
+    _∈T_ : Part → Behav → Set
+    P ∈T G = ∃[ αs ] ∃[ G′ ] (G -[ αs ]-> G′) × Any (P ∈α_) αs
+
+    _∉T_ : Part → Behav → Set
+    P ∉T G = ¬ P ∈T G
+
+    ended : Behav → Set
+    ended G = ∀ P → ¬ P ∈T G
+
     infix 4 _-[¬_]->*_
 
-    data _-[¬_]->*_ (G : Behav) (P : Part) : Behav → Set where
-      skip/refl :
-        G -[¬ P ]->* G
+    _-[¬_]->*_ : Behav → Part → Behav → Set
+    G -[¬ P ]->* G′ = ∃[ αs ] (G -[ αs ]-> G′) × All (P ∉α_) αs
 
-      skip/step :
-        ∀ {G′ G″ α}
-        → G -< α >-> G′
-        → P ∉α α
-        → G′ -[¬ P ]->* G″
-        → G -[¬ P ]->* G″
+    -- Small reusable helpers (kept because each is called at several sites
+    -- below, not to mirror any deleted constructor's name/shape).
 
-    skip/one :
-      ∀ {G G′ P α}
-      → G -< α >-> G′
-      → P ∉α α
-      → G -[¬ P ]->* G′
-    skip/one gr P∉α =
-      skip/step gr P∉α skip/refl
+    in/α : ∀ {P G G′ α} → G -< α >-> G′ → P ∈α α → P ∈T G
+    in/α gr px = _ ∷ [] , _ , tr/step gr tr/refl , here px
 
-    skip/cat :
-      ∀ {G G′ G″ P}
-      → G -[¬ P ]->* G′
-      → G′ -[¬ P ]->* G″
-      → G -[¬ P ]->* G″
-    skip/cat skip/refl tr′ =
-      tr′
-    skip/cat (skip/step gr P∉α tr) tr′ =
-      skip/step gr P∉α (skip/cat tr tr′)
-
-    data _∈T_ P : Behav → Set where
-      in/α :
-        ∀ {G G′ α}
-        → G -< α >-> G′
-        → P ∈α α
-        → P ∈T G
-
-      in/later :
-        ∀ {G G′ α}
-        → G -< α >-> G′
-        → P ∈T G′
-        → P ∈T G
+    in/later : ∀ {P G G′ α} → G -< α >-> G′ → P ∈T G′ → P ∈T G
+    in/later gr (αs , G″ , tr , mem) = _ ∷ αs , G″ , tr/step gr tr , there mem
 
     in/send : ∀ {G α G′} → G -< α >-> G′ → sender α ∈T G
     in/send gr =
@@ -85,23 +101,42 @@ module Definitions.Behav where
     in/recv gr =
       in/α gr (∈R refl)
 
+    skip/refl : ∀ {G P} → G -[¬ P ]->* G
+    skip/refl = [] , tr/refl , []
+
+    tr¬/step :
+      ∀ {G G′ G″ P α}
+      → G -< α >-> G′ → P ∉α α → G′ -[¬ P ]->* G″ → G -[¬ P ]->* G″
+    tr¬/step gr P∉α (αs , tr , allP) = _ ∷ αs , tr/step gr tr , P∉α ∷ allP
+
+    skip/one :
+      ∀ {G G′ P α}
+      → G -< α >-> G′
+      → P ∉α α
+      → G -[¬ P ]->* G′
+    skip/one gr P∉α =
+      tr¬/step gr P∉α skip/refl
+
+    skip/cat :
+      ∀ {G G′ G″ P}
+      → G -[¬ P ]->* G′
+      → G′ -[¬ P ]->* G″
+      → G -[¬ P ]->* G″
+    skip/cat (αs , tr , allP) (βs , tr′ , allP′) =
+      αs ++ βs , tr/trans tr tr′ , AllProp.++⁺ allP allP′
+
+    -- Trace concatenation, not a bisimulation transport, but the same
+    -- "membership witness only depends on the labels" character: the
+    -- prefix's trace is prepended via `tr/trans`, and `Q`'s membership
+    -- witness in the suffix is lifted across the append via `Any`'s own
+    -- append lemma, untouched otherwise.
     skip/∈T-back :
       ∀ {G G′ P Q}
       → G -[¬ P ]->* G′
       → Q ∈T G′
       → Q ∈T G
-    skip/∈T-back skip/refl Q∈T =
-      Q∈T
-    skip/∈T-back (skip/step gr _ tr) Q∈T =
-      in/later gr (skip/∈T-back tr Q∈T)
-
-    ended : Behav → Set
-    ended G =
-      ∀ P → ¬ P ∈T G
-
-    _∉T_ : Part → Behav → Set
-    P ∉T G =
-      ¬ P ∈T G
+    skip/∈T-back (αs , tr , _) (βs , H , tr′ , mem) =
+      αs ++ βs , H , tr/trans tr tr′ , AnyProp.++⁺ʳ αs mem
 
     -- Bisimilarity
 
@@ -208,11 +243,33 @@ module Definitions.Behav where
     ~R→~ G~G′ gr =
       ~R G~G′ gr .proj₂ .proj₂
 
+    -- Trace-level bisimulation transport, generalizing `~L` from a single
+    -- step to a whole run: if `G ~ G′`, then `G` and `G′` accept exactly
+    -- the same traces, with bisimilar endpoints.
+    tr-transport :
+      ∀ {G G′ H αs}
+      → G ~ G′
+      → G -[ αs ]-> H
+      → ∃[ H′ ] (G′ -[ αs ]-> H′) × (H ~ H′)
+    tr-transport G~G′ tr/refl =
+      _ , tr/refl , G~G′
+    tr-transport G~G′ (tr/step gr tr) =
+      let _ , gr′ , G″~G‴ = ~L G~G′ gr
+          _ , tr′ , H~H′  = tr-transport G″~G‴ tr
+      in _ , tr/step gr′ tr′ , H~H′
+
     ∈~ : ∀ {P G G′} → G ~ G′ → P ∈T G → P ∈T G′
-    ∈~ G~G′ (in/α gr P∈α) =
-      in/α (~L→ G~G′ gr) P∈α
-    ∈~ G~G′ (in/later gr P∈G″) =
-      in/later (~L→ G~G′ gr) (∈~ (~L→~ G~G′ gr) P∈G″)
+    ∈~ G~G′ (αs , H , tr , mem) =
+      let H′ , tr′ , _ = tr-transport G~G′ tr
+      in αs , H′ , tr′ , mem
+
+    na-bisim :
+      ∀ {P G G′}
+      → G ~ G′
+      → P not-active-in G
+      → P not-active-in G′
+    na-bisim G~G′ na gr =
+      na (~R→ G~G′ gr)
 
     -- Environment bisimilarity
 
@@ -335,6 +392,20 @@ module Definitions.Behav where
         → α ⋄ α′
         → ∃[ G′ ] (G₁ -< α′ >-> G′) × (G₂ -< α >-> G′)
 
+    -- Trace-level backward bisimulation transport, generalizing `stepback/~`
+    -- from a single step to a whole run.
+    stepback/~* :
+      ∀ {αs G₀ G₁ G₁′}
+      → G₁ ~ G₁′
+      → G₀ -[ αs ]-> G₁
+      → ∃[ G₀′ ] (G₀ ~ G₀′) × (G₀′ -[ αs ]-> G₁′)
+    stepback/~* G₁~G₁′ tr/refl =
+      _ , G₁~G₁′ , tr/refl
+    stepback/~* G₁~G₁′ (tr/step gr tr) =
+      let _ , H~H′ , tr′   = stepback/~* G₁~G₁′ tr
+          _ , G₀~G₀′ , gr′ = stepback/~ H~H′ gr
+      in _ , G₀~G₀′ , tr/step gr′ tr′
+
     active-inactive/⋄ :
       ∀ {G Gα Gβ P α β}
       → G -< α >-> Gα
@@ -357,20 +428,56 @@ module Definitions.Behav where
               (sym (recv-overlap⇒same-comm grβ grα rβ∈α))
               P∈α))
 
+    -- `skip/advance`/`no-new-branch/skip` recurse via `-aux` helpers that
+    -- take the run `tr : G -[ αs ]-> G′` as its own curried argument
+    -- (rather than re-packing it into a fresh tuple at each recursive
+    -- call) so the termination checker sees a plain, single-argument
+    -- structural recursion on `_-[_]->_` — bundling `tr` back together
+    -- with the `All`-witness into one Σ at the call site (as the public
+    -- wrappers below still take) obscures that from the checker, even
+    -- though every piece is individually a genuine subterm.
+
+    skip/advance-aux :
+      ∀ {G G′ Gα P α αs}
+      → G -[ αs ]-> G′
+      → All (P ∉α_) αs
+      → G -< α >-> Gα
+      → P ∈α α
+      → ∃[ G′α ] G′ -< α >-> G′α × Gα -[¬ P ]->* G′α
+    skip/advance-aux tr/refl [] grα _ =
+      _ , grα , skip/refl
+    skip/advance-aux (tr/step grβ tr) (P∉β ∷ allP) grα P∈α
+      with step-diamond grα grβ (active-inactive/⋄ grα grβ P∈α P∉β)
+    ... | G◇ , Gα↝G◇ , Gβ↝G◇
+      with skip/advance-aux tr allP Gβ↝G◇ P∈α
+    ... | G′α , G′↝G′α , G◇↝G′α =
+      G′α , G′↝G′α , tr¬/step Gα↝G◇ P∉β G◇↝G′α
+
     skip/advance :
       ∀ {G G′ Gα P α}
       → G -[¬ P ]->* G′
       → G -< α >-> Gα
       → P ∈α α
       → ∃[ G′α ] G′ -< α >-> G′α × Gα -[¬ P ]->* G′α
-    skip/advance skip/refl grα _ =
-      _ , grα , skip/refl
-    skip/advance (skip/step grβ P∉β tr) grα P∈α
-      with step-diamond grα grβ (active-inactive/⋄ grα grβ P∈α P∉β)
-    ... | G◇ , Gα↝G◇ , Gβ↝G◇
-      with skip/advance tr Gβ↝G◇ P∈α
-    ... | G′α , G′↝G′α , G◇↝G′α =
-      G′α , G′↝G′α , skip/step Gα↝G◇ P∉β G◇↝G′α
+    skip/advance (_ , tr , allP) =
+      skip/advance-aux tr allP
+
+    no-new-branch/skip-aux :
+      ∀ {G G′ Gᵢ Gⱼ′ γ αs}
+        {cᵢ cⱼ : Choice}
+      → G -[ αs ]-> G′
+      → All (Comm.receiver γ ∉α_) αs
+      → G  -< γ # cᵢ >-> Gᵢ
+      → G′ -< γ # cⱼ >-> Gⱼ′
+      → ∃[ Gⱼ ] G -< γ # cⱼ >-> Gⱼ
+    no-new-branch/skip-aux tr/refl [] grᵢ grⱼ =
+      _ , grⱼ
+    no-new-branch/skip-aux (tr/step grβ tr) (recvγ∉β ∷ allP) grᵢ grⱼ′
+      with step-diamond grᵢ grβ (active-inactive/⋄ grᵢ grβ (∈R refl) recvγ∉β)
+    ... | _ , _ , grᵢ′
+      with no-new-branch/skip-aux tr allP grᵢ′ grⱼ′
+    ... | _ , grⱼ =
+      no-new-branch/step grβ recvγ∉β grᵢ grⱼ
 
     no-new-branch/skip :
       ∀ {G G′ Gᵢ Gⱼ′ γ}
@@ -379,14 +486,8 @@ module Definitions.Behav where
       → G  -< γ # cᵢ >-> Gᵢ
       → G′ -< γ # cⱼ >-> Gⱼ′
       → ∃[ Gⱼ ] G -< γ # cⱼ >-> Gⱼ
-    no-new-branch/skip skip/refl grᵢ grⱼ =
-      _ , grⱼ
-    no-new-branch/skip (skip/step grβ recvγ∉β tr) grᵢ grⱼ′
-      with step-diamond grᵢ grβ (active-inactive/⋄ grᵢ grβ (∈R refl) recvγ∉β)
-    ... | _ , _ , grᵢ′
-      with no-new-branch/skip tr grᵢ′ grⱼ′
-    ... | _ , grⱼ =
-      no-new-branch/step grβ recvγ∉β grᵢ grⱼ
+    no-new-branch/skip (_ , tr , allP) =
+      no-new-branch/skip-aux tr allP
 
     branch/before :
       ∀ {G G′ Gᵢ Gⱼ′ γ}

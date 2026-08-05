@@ -25,10 +25,10 @@ open import Relation.Nullary.Decidable using (toWitness)
 
 open import Definitions.Expr
   using (s/bool; s/nat; s/unit; val; v/nat; v/unit; is-zero; var)
-open import Definitions.TypeChecker
+open import Check
 import Definitions.Typing as Typing
 
-open import LTS.Algebra 3 hiding (var)
+open import Definitions.Graph.Algebra 3 hiding (var)
 open import Definitions.Actions 3 renaming (_<_> to mkChoice) hiding (_,_)
 open import Definitions.Proc 3
 
