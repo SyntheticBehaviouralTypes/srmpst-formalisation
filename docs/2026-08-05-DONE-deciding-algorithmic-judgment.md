@@ -1,24 +1,69 @@
-# Deciding the algorithmic judgment `⊢a` — execution plan
+# DONE — 2026-08-05 — deciding the algorithmic judgment `⊢a`
 
-## HOW TO RESUME (read this first)
+> **STATUS: DONE. ARCHIVED. DO NOT WORK FROM THIS FILE.**
+>
+> Closed 2026-08-05. The live plan is `FUTURE_WORK.md` at the repo root.
+>
+> **What this plan achieved:**
+>
+> - `Check/Alg.agda` — the checker. Decides `⊢a` (`alg`) and `⊢p` through
+>   it (`tc? = map′ alg/typing (λ td → norm td skip/refl) …`). Hole-free,
+>   termination-checked, **no postulates and no `TERMINATING` pragmas**.
+>   It replaced `Check/Decide.agda`, which had 2 postulates and 4 holes
+>   and was deleted.
+> - `Check/{Graph,Network}.agda` + `Check.agda` — the API, restored over
+>   the new checker.
+> - **`Safety/*` migrated from `⊢head` to `⊢a`**, and `⊢head`/`⊢hskip`/
+>   `head/typing` plus `Definitions/Typing/Normalise.agda` deleted. `⊢p`
+>   now appears only at the `⊢s` boundary, via `norm` / `alg/typing`.
+> - ~2150 lines of dead code removed; `runall.sh` reduced to a plain
+>   ROOTS/TEST_ROOTS split with **no special cases**; past plans archived
+>   under `docs/`.
+> - The `opaque` fix for `wellBehaved?` witnesses (28 GB OOM → 1 GB).
+>
+> **Findings worth carrying forward:**
+>
+> 1. The forward search must be split **by regime** on `∈T? P s`. With
+>    `P ∈T s` (`treeA?`) `skip/cycle` closes a revisit; with `¬ P ∈T s`
+>    (`treeB?`) it is unusable and a revisit must be refuted — that is what
+>    `Justified`/`FailedFrom`/`failed⇒¬tree` are for.
+> 2. The four-component measure `(size/proc Pr , regime , remaining v ,
+>    phase)`. **The phase exists only for Agda's termination checker**:
+>    reconstructing `acc rs` reads as a constructor application, so `=`
+>    edges cannot compose unless every call passes `rs …`. `ac@(acc rs)`
+>    does not help — it desugars identically.
+> 3. A dead end in a hand-written graph must be `ended`, never a node of
+>    its own; a spare edge-less node is bisimilar to the appended `ended`
+>    state and breaks `stepback/~`.
+>
+> **Superseded by `FUTURE_WORK.md`, do not work from the sections below:**
+>
+> - "The actual problem with nets" and "Draft: a net-native checker" —
+>   `FUTURE_WORK.md` §A/§C/§D. In particular the projection lemma is
+>   claimed there as an `↔`; **it is not**, the converse is false and
+>   `FUTURE_WORK.md` §A.3 has the counterexamples.
+> - "Future — batch the `rec` anchor search" — generalised from `rec` to
+>   the whole judgment as `FUTURE_WORK.md` §B. Both of its caveats carried
+>   over intact: the `Δ`-indexing blow-up is §B.5 (and is the gating
+>   item), the "cycles do NOT force the typing to be iterated"
+>   decomposition is §B.4.
+>
+> The plan this one replaced is
+> `docs/2026-08-04-DONE-algorithmic-normalisation.md`.
 
-This file is the handoff. If you have no context: read this section, then
-"Philosophy", then "Acceptance criterion", then the numbered step you are on.
-Everything below is written to be actionable cold.
+## HOW TO RESUME (historical — the plan is closed)
+
+This file was the handoff while the plan was live. It is kept because the
+"Philosophy" and "Acceptance criterion" sections explain *why* `Check/Alg.agda`
+is shaped the way it is, which is still the best account of that.
 
 **THIS PLAN IS DONE (2026-08-05).** All six steps are complete and
 `./runall.sh --tests` is green on every root and every test, with no file
 reporting holes and no `postulate` anywhere under `Check/`.
 
-**The dead-code cull that followed is also done** — see "Cleanup" below.
-
-**WHAT TO DO NEXT, in the owner's stated priority order:**
-
 1. ~~Migrate `Safety/*` from `⊢head` to `⊢a`, then delete `⊢head`.~~
    **DONE 2026-08-05** — see the section below.
-2. **Make type checking net-native.** THIS IS NOW THE TOP ITEM. State
-   explosion, not well-behavedness compositionality, is the real problem —
-   see "The actual problem with nets".
+2. ~~Make type checking net-native.~~ **Moved to `FUTURE_WORK.md`.**
 
 The plan this replaces is archived at
 `docs/2026-08-04-DONE-algorithmic-normalisation.md` — read its header box

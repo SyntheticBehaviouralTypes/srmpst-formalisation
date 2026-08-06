@@ -46,7 +46,7 @@ NOTES:
     Forcing decisions used to be ruinous: Tests/SkipBeforeVar.agda alone
     cost ~28 GB and OOM-killed the machine, because `wb = toWitness
     (wellBehaved? G)` was re-evaluated at every use site.  The witnesses
-    are `opaque` now (see TODO.md) and the whole --tests run is cheap.
+    are `opaque` now (see CLAUDE.md) and the whole --tests run is cheap.
 EOF
     exit 0
 }

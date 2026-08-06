@@ -36,6 +36,7 @@ open import Definitions.Behav using (BTheory; WellBehaved)
 module Definitions.Graph.NetworkWB (N : ℕ) where
 
   open import Definitions.Actions N
+  open import Definitions.Common N using (Part)
   open import Definitions.Graph.Network N
 
   -- ── quantification over all edges of a network ──
@@ -59,6 +60,29 @@ module Definitions.Graph.NetworkWB (N : ℕ) where
     All.lookup (ep (nix n s))
       (subst (λ z → (α , t) ∈ nedges n z) (sym (nst-nix n s))
         (nstep⇒listed n {s = s} st))
+
+  -- ── a participant taking no part in a network ──
+  --
+  -- NOT implied by `Disjoint` below, which separates *receivers* only: a
+  -- sender may well appear on both sides of a `∥`.  This is the side
+  -- condition the `∥` projection needs — "every edge of `n` is a `¬P`
+  -- step" — and it is checked per participant, so a net degrades to the
+  -- flattened checker only for the participants that actually straddle.
+
+  PFree : Part → Net → Set
+  PFree P n = EdgePred n (λ α → P ∉α α)
+
+  pfree? : ∀ P n → Dec (PFree P n)
+  pfree? P n = edgePred? n (λ α → P ∉α? α)
+
+  -- `PFree` in the form the skip judgment wants it: `P not-active-in s`
+  -- for every state of `n`.
+  pfree⇒na :
+    ∀ {P n s α t}
+    → PFree P n
+    → NStep n s α t
+    → P ∉α α
+  pfree⇒na {n = n} pf st = step-edge n pf st
 
   -- ── receiver-disjointness of two networks ──
 
