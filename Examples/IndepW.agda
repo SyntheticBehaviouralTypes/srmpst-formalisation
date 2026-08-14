@@ -80,17 +80,17 @@ p/S = A1 ! here < val v/unit >∙ (A2 ! here < val v/unit >∙ ∅)
 
 -- generic pipeline stages, as on `main`
 p/A : Fin 7 → Proc 0 0
-p/A B = Σ S ？[ s/unit v∷ v[] ]·
+p/A B = Σ S ？·
           (  (B ! here < val v/unit >∙
               (rec (B ! here < val v/unit >∙ v zero)))
           v∷ v[])
 
 p/B : Fin 7 → Fin 7 → Proc 0 0
-p/B A C = rec (Σ A ？[ s/unit v∷ v[] ]·
+p/B A C = rec (Σ A ？·
                 ((C ! here < val v/unit >∙ v zero) v∷ v[]))
 
 p/C : Fin 7 → Proc 0 0
-p/C B = rec (Σ B ？[ s/unit v∷ v[] ]· (v zero v∷ v[]))
+p/C B = rec (Σ B ？· (v zero v∷ v[]))
 
 M : Session
 M = p/S v∷ p/A B1 v∷ p/B A1 C1 v∷ p/C B1

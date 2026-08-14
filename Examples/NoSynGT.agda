@@ -63,10 +63,10 @@ p/A =
     else (C ! here < val v/unit >∙ (B ! here < val v/unit >∙ ∅))
 
 p/B : Proc 0 0
-p/B = Σ A ？[ s/unit v∷ v[] ]· (∅ v∷ v[])
+p/B = Σ A ？· (∅ v∷ v[])
 
 p/C : Proc 0 0
-p/C = Σ A ？[ s/unit v∷ v[] ]· (∅ v∷ v[])
+p/C = Σ A ？· (∅ v∷ v[])
 
 M : Session
 M = p/A v∷ p/B v∷ p/C v∷ v[]

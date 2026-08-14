@@ -63,7 +63,7 @@ open Typing.MPST (wb-of wbg) using (_&_⊢p_∶_)
 
 -- C waits for A's message — deliverable only through the revisiting spine
 p : Proc 0 0
-p = Σ A ？[ s/bool v∷ v[] ]· (∅ v∷ v[])
+p = Σ A ？· (∅ v∷ v[])
 
 wtd : Dec (v[] & v[] ⊢p C ◂ p ∶ initial (proj₁ wbg))
 wtd = typecheck wbg C p

@@ -555,7 +555,7 @@ module Definitions.Typing.Norm
   -- now one of these — that is the whole point of `blocked/rec`, and it
   -- is why this case no longer needs a common anchor.
   push {Pr = _ ! _ < _ >∙ _}  std = a/skip (agraft (λ { (a/skip t) → t }) std)
-  push {Pr = Σ _ ？[ _ ]· _}  std = a/skip (agraft (λ { (a/skip t) → t }) std)
+  push {Pr = Σ _ ？· _}  std = a/skip (agraft (λ { (a/skip t) → t }) std)
   push {Pr = v _}             std = a/skip (agraft (λ { (a/skip t) → t }) std)
   push {Pr = rec _}           std = a/skip (agraft (λ { (a/skip t) → t }) std)
   push {Pr = ∅}               std = a/end (λ inT → a∅/notin inT std)

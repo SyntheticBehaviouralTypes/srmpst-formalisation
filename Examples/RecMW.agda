@@ -70,15 +70,15 @@ open Typing.MPST (wb-of wbg) using (⊢s_∶_)
 p/M : Proc 0 0
 p/M = rec (W1 ! lbl0 < val (v/nat 0) >∙
           (W2 ! lbl0 < val (v/nat 1) >∙
-          (Σ R ？[ s/nat v∷ s/bool v∷ v[] ]·
+          (Σ R ？·
             (  v zero
             v∷ (W1 ! lbl1 < val (v/bool false) >∙
                 (W2 ! lbl1 < val (v/bool false) >∙ ∅))
             v∷ v[]))))
 
 p/R : Proc 0 0
-p/R = rec (Σ W1 ？[ s/nat v∷ v[] ]·
-            (  (Σ W2 ？[ s/nat v∷ v[] ]·
+p/R = rec (Σ W1 ？·
+            (  (Σ W2 ？·
                  (  (ifp is-zero (var zero)
                      then (M ! lbl1 < val (v/bool true) >∙ ∅)
                      else (M ! lbl0 < var (suc zero) >∙ v zero))
@@ -88,9 +88,9 @@ p/R = rec (Σ W1 ？[ s/nat v∷ v[] ]·
 -- both workers run the same shape: receive a datum, then loop reporting to
 -- `R` until `M` says stop
 p/W : Proc 0 0
-p/W = Σ M ？[ s/nat v∷ s/bool v∷ v[] ]·
+p/W = Σ M ？·
         (  (rec (R ! here < val (v/nat 0) >∙
-                 (Σ M ？[ s/nat v∷ s/bool v∷ v[] ]·
+                 (Σ M ？·
                    (v zero v∷ ∅ v∷ v[]))))
         v∷ ∅
         v∷ v[])

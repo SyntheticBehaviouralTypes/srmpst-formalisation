@@ -108,7 +108,7 @@ module Check.Core where
         ∀ {γ δ} (Pr : Proc γ δ)
         → Dec (MessageGuarded Pr)
       messageGuarded? (_ ! _ < _ >∙ _) = yes mg/send
-      messageGuarded? (Σ _ ？[ _ ]· _) = yes mg/recv
+      messageGuarded? (Σ _ ？· _) = yes mg/recv
       messageGuarded? (ifp _ then Pr else Pr′)
         with messageGuarded? Pr | messageGuarded? Pr′
       ... | yes guarded | yes guarded′ =

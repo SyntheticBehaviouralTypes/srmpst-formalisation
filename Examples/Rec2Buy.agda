@@ -81,10 +81,10 @@ open Typing.MPST (wb-of wbg) using (⊢s_∶_)
 p/A : Proc 0 0
 p/A =
   S ! here < val (v/nat 0) >∙
-  (Σ S ？[ s/nat v∷ v[] ]·
+  (Σ S ？·
     ( rec (ifp is-zero (var zero)
            then (B ! lbl0 < val (v/nat 0) >∙
-                 (Σ B ？[ s/nat v∷ s/unit v∷ v[] ]·
+                 (Σ B ？·
                    (  (S ! lbl0 < val v/unit >∙ ∅)
                    v∷ v zero
                    v∷ v[])))
@@ -94,7 +94,7 @@ p/A =
 
 p/B : Proc 0 0
 p/B =
-  rec (Σ A ？[ s/nat v∷ s/unit v∷ v[] ]·
+  rec (Σ A ？·
         (  (ifp is-zero (var zero)
             then (A ! lbl0 < val (v/nat 0) >∙ ∅)
             else (A ! lbl1 < val v/unit >∙ v zero))
@@ -103,9 +103,9 @@ p/B =
 
 p/S : Proc 0 0
 p/S =
-  Σ A ？[ s/nat v∷ v[] ]·
+  Σ A ？·
     (  (A ! here < val (v/nat 0) >∙
-        (Σ A ？[ s/unit v∷ s/unit v∷ v[] ]· (∅ v∷ ∅ v∷ v[])))
+        (Σ A ？· (∅ v∷ ∅ v∷ v[])))
     v∷ v[])
 
 M : Session

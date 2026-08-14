@@ -29,8 +29,9 @@
 -- wrong — `M/good` below is the case a `s/bool`-only reading rejects, and
 -- `M/bad` is the case a `s/nat`-only reading unsoundly accepts.
 --
--- Note also that `p/B`'s DECLARED sort vector says `s/nat` and it is accepted
--- at the `s/bool` leaf: the vector is not used by `blocked/recv`.
+-- This file is also why `Σ` carries no declared sort vector: a single receive
+-- covers leaves whose sorts differ, so there is no one sort to declare.  Each
+-- branch's sort is read off the graph edge it matches.
 
 module Tests.LabelSorts where
 
@@ -86,14 +87,14 @@ p/A =
   else (C ! lbl1 < val v/unit >∙ (B ! here < val (v/bool true) >∙ ∅))
 
 p/C : Proc 0 0
-p/C = Σ A ？[ s/unit v∷ s/unit v∷ v[] ]· (∅ v∷ ∅ v∷ v[])
+p/C = Σ A ？· (∅ v∷ ∅ v∷ v[])
 
 -- ══════════════════════════════════════════════════════════════════════
 --  Accepted: the branch ignores its bound variable, so both sorts are fine
 -- ══════════════════════════════════════════════════════════════════════
 
 p/B : Proc 0 0
-p/B = Σ A ？[ s/nat v∷ v[] ]· (∅ v∷ v[])
+p/B = Σ A ？·(∅ v∷ v[])
 
 M/good : Session
 M/good = p/A v∷ p/B v∷ p/C v∷ v[]
@@ -113,7 +114,7 @@ well-typed = toWitness {a? = wtd/good} _
 -- `toWitnessFalse` would fail to elaborate.
 
 p/B′ : Proc 0 0
-p/B′ = Σ A ？[ s/nat v∷ v[] ]· ((ifp is-zero (var zero) then ∅ else ∅) v∷ v[])
+p/B′ = Σ A ？·((ifp is-zero (var zero) then ∅ else ∅) v∷ v[])
 
 M/bad : Session
 M/bad = p/A v∷ p/B′ v∷ p/C v∷ v[]

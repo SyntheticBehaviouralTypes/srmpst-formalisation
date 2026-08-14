@@ -48,9 +48,8 @@ module MPST {N : ℕ} {B : BTheory N} (wb : WellBehaved B) where
 
     mg/recv :
       ∀ {P I}
-        {S  : Vec Sort (suc I)}
         {Br : Vec (Proc (suc γ) δ) (suc I)}
-      → MessageGuarded (Σ P ？[ S ]· Br)
+      → MessageGuarded (Σ P ？· Br)
 
     mg/if :
       ∀ {E : Exp γ}
@@ -112,14 +111,13 @@ module MPST {N : ℕ} {B : BTheory N} (wb : WellBehaved B) where
        {i  : Fin (suc I)}
        {T  : Sort}
        {G G' : Behav}
-       {S  : Vec Sort (suc I)}
        {Br : Vec (Proc (suc γ) δ) (suc I)}
      → (gr : G -< P ⟶ Q # i < T > >-> G')
      → (conts :
          ∀ {j U G″}
          → (gr′ : G -< P ⟶ Q # j < U > >-> G″)
          → (U ∷ Γ) & Δ ⊢p Q ◂ lu Br j ∶ G″)
-     → Γ & Δ ⊢p Q ◂ Σ P ？[ S ]· Br ∶ G
+     → Γ & Δ ⊢p Q ◂ Σ P ？· Br ∶ G
 
    t/skip :
      ∀ {PPr G}

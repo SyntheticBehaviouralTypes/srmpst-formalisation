@@ -46,7 +46,7 @@ module NonRecursive where
   p/A = B ! here < val (v/bool true) >∙ ∅
 
   p/B : Proc 0 0
-  p/B = Σ A ？[ s/bool ∷ [] ]· (∅ ∷ [])
+  p/B = Σ A ？· (∅ ∷ [])
 
   M : Session
   M = p/A ∷ p/B ∷ []
@@ -72,7 +72,7 @@ module Recursive where
   p/A = rec (B ! here < val (v/bool true) >∙ v zero)
 
   p/B : Proc 0 0
-  p/B = rec (Σ A ？[ s/bool ∷ [] ]· (v zero ∷ []))
+  p/B = rec (Σ A ？· (v zero ∷ []))
 
   M : Session
   M = p/A ∷ p/B ∷ []
@@ -95,7 +95,7 @@ module RecursiveUnfoldOnce where
   p/A = B ! here < val (v/bool true) >∙ (rec (B ! here < val (v/bool true) >∙ v zero))
 
   p/B : Proc 0 0
-  p/B = rec (Σ A ？[ s/bool ∷ [] ]· (v zero ∷ []))
+  p/B = rec (Σ A ？· (v zero ∷ []))
 
   M : Session
   M = p/A ∷ p/B ∷ []

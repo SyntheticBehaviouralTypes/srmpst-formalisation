@@ -61,7 +61,7 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     → ℕ
   τ-depth/proc (_ ! _ < _ >∙ _) =
     0
-  τ-depth/proc (Σ _ ？[ _ ]· _) =
+  τ-depth/proc (Σ _ ？· _) =
     0
   τ-depth/proc (ifp _ then Pr else Pr′) =
     suc (τ-depth/proc Pr ⊔ τ-depth/proc Pr′)

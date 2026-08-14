@@ -25,8 +25,14 @@ module Definitions.Proc (N : ℕ) where
   data Proc (γ δ : ℕ) : Set where
     _!_<_>∙_ :
       Part → {I : ℕ} → Fin (suc I) → Exp γ → Proc γ δ → Proc γ δ
-    Σ_？[_]·_ :
-      Part → {I : ℕ} → Vec Sort (suc I)
+    -- The branch sorts are NOT recorded here: `blocked/recv` reads each
+    -- branch's sort off the graph edge it matches (`(U ∷ Γ) & Δ ⊢a …`), so a
+    -- declared vector was never consulted by any premise.  See
+    -- `Tests/LabelSorts.agda`: one label can carry different sorts at
+    -- different states, and a single receive must cover all of them.  The
+    -- arity `I` stays pinned by the branch vector.
+    Σ_？·_ :
+      Part → {I : ℕ}
       → Vec (Proc (suc γ) δ) (suc I) → Proc γ δ
     ifp_then_else_ : Exp γ → Proc γ δ → Proc γ δ → Proc γ δ
     rec : Proc γ (suc δ) → Proc γ δ
@@ -34,7 +40,7 @@ module Definitions.Proc (N : ℕ) where
     ∅ : Proc γ δ
 
   infixr 8 _!_<_>∙_
-  infixr 8 Σ_？[_]·_
+  infixr 8 Σ_？·_
   infix  6 ifp_then_else_
 
   data NProc (γ δ : ℕ) : Set where
@@ -55,7 +61,7 @@ module Definitions.Proc (N : ℕ) where
       weaken/proc :
         ∀ {γ δ} → Proc γ δ → Fin (suc δ) → Proc γ (suc δ)
       weaken/proc (P ! L < E >∙ Pr) X = P ! L < E >∙ (weaken/proc Pr X)
-      weaken/proc (Σ P ？[ I ]· Br) X = Σ P ？[ I ]· (weaken/proc/branch Br X)
+      weaken/proc (Σ P ？· Br) X = Σ P ？· (weaken/proc/branch Br X)
       weaken/proc (ifp E then Pr else Pr′) X =
         ifp E then weaken/proc Pr X else weaken/proc Pr′ X
       weaken/proc (rec Pr) X = rec (weaken/proc Pr (suc X))
@@ -76,8 +82,8 @@ module Definitions.Proc (N : ℕ) where
         ∀ {γ δ} → Proc γ δ → Fin (suc γ) → Proc (suc γ) δ
       weaken/proc/exp (P ! L < E >∙ Pr) x =
         P ! L < weaken/exp E x >∙ (weaken/proc/exp Pr x)
-      weaken/proc/exp (Σ P ？[ I ]· Br) x =
-        Σ P ？[ I ]· weaken/exp/branch Br (suc x)
+      weaken/proc/exp (Σ P ？· Br) x =
+        Σ P ？· weaken/exp/branch Br (suc x)
       weaken/proc/exp (ifp E then Pr else Pr′) x =
         ifp weaken/exp E x
           then weaken/proc/exp Pr x
@@ -99,7 +105,7 @@ module Definitions.Proc (N : ℕ) where
       [_/_]pr_ :
         ∀ {γ δ} → Proc γ δ → Fin (suc δ) → Proc γ (suc δ) → Proc γ δ
       [ Pr / y ]pr (P ! L < E >∙ Pr') = P ! L < E >∙ ([ Pr / y ]pr Pr')
-      [ Pr / y ]pr (Σ P ？[ I ]· Br) = Σ P ？[ I ]· ([ Pr / y ]prch Br)
+      [ Pr / y ]pr (Σ P ？· Br) = Σ P ？· ([ Pr / y ]prch Br)
       [ Pr / y ]pr (ifp E then Prₜ else Prₑ) =
         ifp E then [ Pr / y ]pr Prₜ else [ Pr / y ]pr Prₑ
       [ Pr / y ]pr rec Pr' = rec ([ weaken/proc Pr zero / suc y ]pr Pr')
@@ -123,8 +129,8 @@ module Definitions.Proc (N : ℕ) where
       [ E / y ]e (P ! L < E′ >∙ Pr′) =
         P ! L < [ E / y ]exp E′ >∙ [ E / y ]e Pr′
       -- y will be weakned per branch
-      [ E / y ]e (Σ P ？[ I ]· Br) =
-        Σ P ？[ I ]· [ weaken/exp E zero / y ]ech Br
+      [ E / y ]e (Σ P ？· Br) =
+        Σ P ？· [ weaken/exp E zero / y ]ech Br
       [ E / y ]e (ifp E′ then Prₜ else Prₑ) =
         ifp [ E / y ]exp E′
           then [ E / y ]e Prₜ
@@ -156,11 +162,11 @@ module Definitions.Proc (N : ℕ) where
 
   data _[_]⇒_ (M : Session) : Maybe Action → Session → Set where
     s/comm :
-      ∀ {I S} {i : Fin (suc I)} {E V Pr Br}
+      ∀ {I} {i : Fin (suc I)} {E V Pr Br}
       → (P Q : Part)
       → M [ P ]= Q ! i < E >∙ Pr
       → E ⇓ V
-      → M [ Q ]= Σ P ？[ S ]· Br
+      → M [ Q ]= Σ P ？· Br
       → M [ just (P ⟶ Q # i < sort/value V >) ]⇒
           (M [ P ]≔ Pr [ Q ]≔ Subst.[ val V / zero ]e (lu Br i))
 

@@ -153,11 +153,10 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       {i : Fin (suc I)}
       {E : Exp 0}
       {Pr : Proc 0 0}
-      {S : Vec Sort (suc I)}
       {Br : Vec (Proc 1 0) (suc I)}
     → ([] & [] ⊢blocked_∶_) & [] ⊢skip P ◂ Q ! i < E >∙ Pr ∶ G
     → P ∈T G
-    → ([] & [] ⊢blocked_∶_) & [] ⊢skip Q ◂ Σ P ？[ S ]· Br ∶ G
+    → ([] & [] ⊢blocked_∶_) & [] ⊢skip Q ◂ Σ P ？· Br ∶ G
     → ∃[ T ] ∃[ G′ ] G -< P ⟶ Q # i < T > >-> G′
 
   comm/ready-from-∈T (skip/main (blocked/send gr _ _)) _ _ =
@@ -195,10 +194,9 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       {i : Fin (suc I)}
       {E : Exp 0}
       {Pr : Proc 0 0}
-      {S : Vec Sort (suc I)}
       {Br : Vec (Proc 1 0) (suc I)}
     → ([] & [] ⊢blocked_∶_) & Ξ ⊢skip P ◂ Q ! i < E >∙ Pr ∶ G
-    → ([] & [] ⊢blocked_∶_) & [] ⊢skip Q ◂ Σ P ？[ S ]· Br ∶ G
+    → ([] & [] ⊢blocked_∶_) & [] ⊢skip Q ◂ Σ P ？· Br ∶ G
     → (∃[ T ] ∃[ G′ ] G -< P ⟶ Q # i < T > >-> G′) ⊎ P ∈T G
 
   -- Under `⊢head` this clause had to call back into `comm/ready`; the leaf
@@ -225,10 +223,9 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       {i : Fin (suc I)}
       {E : Exp 0}
       {Pr : Proc 0 0}
-      {S : Vec Sort (suc I)}
       {Br : Vec (Proc 1 0) (suc I)}
     → [] & [] ⊢a P ◂ Q ! i < E >∙ Pr ∶ G
-    → [] & [] ⊢a Q ◂ Σ P ？[ S ]· Br ∶ G
+    → [] & [] ⊢a Q ◂ Σ P ？· Br ∶ G
     → ∃[ T ] ∃[ G′ ] G -< P ⟶ Q # i < T > >-> G′
   comm/ready (a/skip stdP) (a/skip stdQ)
     with comm/ready-or-∈T stdP stdQ
@@ -241,9 +238,8 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     ∀ {G G′ P Q I}
       {i : Fin (suc I)}
       {T : Sort}
-      {S : Vec Sort (suc I)}
       {Br : Vec (Proc 1 0) (suc I)}
-    → ([] & [] ⊢blocked_∶_) & [] ⊢skip Q ◂ Σ P ？[ S ]· Br ∶ G
+    → ([] & [] ⊢blocked_∶_) & [] ⊢skip Q ◂ Σ P ？· Br ∶ G
     → (gr : G -< P ⟶ Q # i < T > >-> G′)
     → (T ∷ []) & [] ⊢a Q ◂ lookup Br i ∶ G′
   recv/cont-skip (skip/main (blocked/recv _ conts)) gr = conts gr
@@ -254,9 +250,8 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     ∀ {G G′ P Q I}
       {i : Fin (suc I)}
       {T : Sort}
-      {S : Vec Sort (suc I)}
       {Br : Vec (Proc 1 0) (suc I)}
-    → [] & [] ⊢a Q ◂ Σ P ？[ S ]· Br ∶ G
+    → [] & [] ⊢a Q ◂ Σ P ？· Br ∶ G
     → (gr : G -< P ⟶ Q # i < T > >-> G′)
     → (T ∷ []) & [] ⊢a Q ◂ lookup Br i ∶ G′
   recv/cont (a/skip std) gr = recv/cont-skip std gr

@@ -51,13 +51,13 @@ module NonRecursive where
   open Typing.MPST (wb-of wbg) using (⊢s_∶_)
 
   p/A : Proc 0 0
-  p/A = B ! here < val (v/bool true) >∙ (Σ C ？[ s/bool ∷ [] ]· (∅ ∷ []))
+  p/A = B ! here < val (v/bool true) >∙ (Σ C ？· (∅ ∷ []))
 
   p/B : Proc 0 0
-  p/B = Σ A ？[ s/bool ∷ [] ]· ((C ! here < val (v/bool true) >∙ ∅) ∷ [])
+  p/B = Σ A ？· ((C ! here < val (v/bool true) >∙ ∅) ∷ [])
 
   p/C : Proc 0 0
-  p/C = Σ B ？[ s/bool ∷ [] ]· ((A ! here < val (v/bool true) >∙ ∅) ∷ [])
+  p/C = Σ B ？· ((A ! here < val (v/bool true) >∙ ∅) ∷ [])
 
   M : Session
   M = p/A ∷ p/B ∷ p/C ∷ []
@@ -84,14 +84,14 @@ module Recursive where
 
   p/A : Proc 0 0
   p/A = rec (B ! here < val (v/bool true) >∙
-              (Σ C ？[ s/bool ∷ [] ]· (v zero ∷ [])))
+              (Σ C ？· (v zero ∷ [])))
 
   p/B : Proc 0 0
-  p/B = rec (Σ A ？[ s/bool ∷ [] ]·
+  p/B = rec (Σ A ？·
               ((C ! here < val (v/bool true) >∙ v zero) ∷ []))
 
   p/C : Proc 0 0
-  p/C = rec (Σ B ？[ s/bool ∷ [] ]·
+  p/C = rec (Σ B ？·
               ((A ! here < val (v/bool true) >∙ v zero) ∷ []))
 
   M : Session

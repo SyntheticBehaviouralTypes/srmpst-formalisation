@@ -69,7 +69,7 @@ open Typing.MPST (wb-of wbg) using (_&_⊢p_∶_)
 
 -- the well-typed reference: `C` receives `B`'s (2-ary) forward, then ends
 p/C-good : Proc 0 0
-p/C-good = Σ B ？[ s/bool v∷ s/bool v∷ v[] ]· (∅ v∷ ∅ v∷ v[])
+p/C-good = Σ B ？· (∅ v∷ ∅ v∷ v[])
 
 wtd/good : Dec (v[] & v[] ⊢p C ◂ p/C-good ∶ initial (proj₁ wbg))
 wtd/good = typecheck wbg C p/C-good
@@ -80,9 +80,9 @@ C-good-well-typed = toWitness {a? = wtd/good} _
 -- `C` waits for two sequential messages from `B` — but `B` only ever
 -- forwards *one* message to `C`, so this is ill-typed.
 p/C2 : Proc 0 0
-p/C2 = Σ B ？[ s/bool v∷ s/bool v∷ v[] ]·
-         (  Σ B ？[ s/bool v∷ s/bool v∷ v[] ]· (∅ v∷ ∅ v∷ v[])
-         v∷ Σ B ？[ s/bool v∷ s/bool v∷ v[] ]· (∅ v∷ ∅ v∷ v[])
+p/C2 = Σ B ？·
+         (  Σ B ？· (∅ v∷ ∅ v∷ v[])
+         v∷ Σ B ？· (∅ v∷ ∅ v∷ v[])
          v∷ v[])
 
 wtd/C2 : Dec (v[] & v[] ⊢p C ◂ p/C2 ∶ initial (proj₁ wbg))
@@ -94,8 +94,8 @@ C2-illtyped = toWitnessFalse {a? = wtd/C2} _
 -- `C` waits to receive from `A` first — but `A` never messages `C`
 -- directly, so this is ill-typed.
 p/C3 : Proc 0 0
-p/C3 = Σ A ？[ s/bool v∷ v[] ]·
-         (Σ B ？[ s/bool v∷ s/bool v∷ v[] ]· (∅ v∷ ∅ v∷ v[]) v∷ v[])
+p/C3 = Σ A ？·
+         (Σ B ？· (∅ v∷ ∅ v∷ v[]) v∷ v[])
 
 wtd/C3 : Dec (v[] & v[] ⊢p C ◂ p/C3 ∶ initial (proj₁ wbg))
 wtd/C3 = typecheck wbg C p/C3

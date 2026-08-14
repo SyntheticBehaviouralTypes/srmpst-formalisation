@@ -97,13 +97,12 @@ module Definitions.Typing.Algorithmic
           {i  : Fin (suc I)}
           {T  : Sort}
           {G G′ : Behav}
-          {S  : Vec Sort (suc I)}
           {Br : Vec (Proc (suc γ) δ) (suc I)}
         → G -< P ⟶ Q # i < T > >-> G′
         → (∀ {j U G″}
             → G -< P ⟶ Q # j < U > >-> G″
             → (U ∷ Γ) & Δ ⊢a Q ◂ lu Br j ∶ G″)
-        → Γ & Δ ⊢blocked Q ◂ Σ P ？[ S ]· Br ∶ G
+        → Γ & Δ ⊢blocked Q ◂ Σ P ？· Br ∶ G
 
       -- A `rec` blocks a skip too, because `t/unskip` does: the body is
       -- proved at its OWN anchor `W`, and `W` reaches this leaf.  Keeping

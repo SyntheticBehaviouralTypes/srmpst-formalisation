@@ -80,13 +80,13 @@ p/A =
 
 -- USES the bound variable, at two different sorts, in one derivation
 p/B : Proc 0 0
-p/B = Σ A ？[ s/nat v∷ v[] ]· ((C ! here < var zero >∙ ∅) v∷ v[])
+p/B = Σ A ？· ((C ! here < var zero >∙ ∅) v∷ v[])
 
 p/C : Proc 0 0
 p/C =
-  Σ A ？[ s/unit v∷ s/unit v∷ v[] ]·
-    (  (Σ B ？[ s/nat  v∷ v[] ]· (∅ v∷ v[]))
-    v∷ (Σ B ？[ s/bool v∷ v[] ]· (∅ v∷ v[]))
+  Σ A ？·
+    (  (Σ B ？· (∅ v∷ v[]))
+    v∷ (Σ B ？· (∅ v∷ v[]))
     v∷ v[])
 
 M : Session

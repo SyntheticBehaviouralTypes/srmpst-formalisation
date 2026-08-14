@@ -261,7 +261,7 @@ module Check.Alg (N : ℕ) where
     size/branches : ∀ {γ δ I} → Vec (Proc γ δ) I → ℕ
 
     size/proc (_ ! _ < _ >∙ Pr)        = suc (size/proc Pr)
-    size/proc (Σ _ ？[ _ ]· Br)        = suc (size/branches Br)
+    size/proc (Σ _ ？· Br)             = suc (size/branches Br)
     size/proc (ifp _ then Pr else Pr′) = suc (size/proc Pr + size/proc Pr′)
     size/proc (rec Pr)                 = suc (size/proc Pr)
     size/proc (v _)                    = 0
@@ -685,8 +685,8 @@ module Check.Alg (N : ℕ) where
       ... | yes std = yes (a/skip std)
       ... | no ¬std = no λ { (a/skip std) → ¬std std }
 
-      alg? Γ Δ P (Σ Q ？[ S ]· Br) s (acc rs)
-        with tree? Γ Δ [] P (Σ Q ？[ S ]· Br) s empty covers-empty
+      alg? Γ Δ P (Σ Q ？· Br) s (acc rs)
+        with tree? Γ Δ [] P (Σ Q ？· Br) s empty covers-empty
                (rs (≺phase 4<6))
       ... | yes std = yes (a/skip std)
       ... | no ¬std = no λ { (a/skip std) → ¬std std }
@@ -739,7 +739,7 @@ module Check.Alg (N : ℕ) where
                           gr)
                         td′) }
 
-      blocked? Γ Δ P (Σ Q ？[ S ]· Br) s (acc rs)
+      blocked? Γ Δ P (Σ Q ？· Br) s (acc rs)
         with findRecv Q P _ (edges G s)
       ... | no ¬f =
         no λ { (blocked/recv gr conts) →

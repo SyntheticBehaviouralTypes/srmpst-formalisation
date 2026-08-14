@@ -76,14 +76,14 @@ p/S = C ! cancel < val (v/nat 0) >∙ ∅
 
 -- the client covers both offers: forward the password, or tell `A` to quit
 p/C : Proc 0 0
-p/C = Σ S ？[ s/nat v∷ s/nat v∷ v[] ]·
+p/C = Σ S ？·
         (  (A ! passwd < val (v/nat 0) >∙ ∅)
         v∷ (A ! quit < val (v/bool true) >∙ ∅)
         v∷ v[])
 
 -- the auth service: authorize towards `S`, or stop
 p/A : Proc 0 0
-p/A = Σ C ？[ s/nat v∷ s/bool v∷ v[] ]·
+p/A = Σ C ？·
         (  (S ! here < val (v/bool true) >∙ ∅)
         v∷ ∅
         v∷ v[])

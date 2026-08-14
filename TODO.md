@@ -35,7 +35,7 @@ membership.
 | D1 | **`rec` anchors are SINGLETONS** (`s/rec₁`, below), not sets | `Δ : Vec Behav δ` stays a vector of *states*; nothing is indexed by environments; the rule is pointwise equivalent to `blocked/rec` |
 | D2 | **Replacement**, not a second judgment | `⊢a`/`⊢skip`/`⊢blocked`/`Norm.agda` are deleted at the end; `Safety/` is restated |
 | D3 | Rules live at the **abstract** level (`Definitions/Typing/`), over `Pred Behav` | keeps "prove once over `BTheory`, instantiate for graphs"; `Check/` gets the finite realisation only |
-| D5 | **Remove the declared sort vector** `S` in `Σ P ？[ S ]· Br` — FIRST, as its own green commit | it is unused by `blocked/recv`; arity stays pinned by the branch vector's length |
+| D5 | **Remove the declared sort vector** `S` — FIRST, as its own green commit. **DONE**, see §7 step 1 | it was unused by `blocked/recv`; arity stays pinned by the branch vector's length. The constructor is now `Σ_？·_` |
 | D6 | **Replace `Check/Alg.agda` in place** (no permanent side-by-side) | the `Tests/`+`Examples/` corpus is the only oracle; see §7 |
 | — | **Do NOT add global sort/arity consistency** as a well-formedness condition | refuted by evidence: `Tests/LabelSorts.agda` and `Tests/LabelSortsForward.agda` are well behaved *and* typeable, and such a condition outlaws both |
 
@@ -94,7 +94,7 @@ s/send ────────────────────────�
        𝒮 ⊆ Wait Q { s | (∃ j U t. s -< P ⟶ Q # j < U > >-> t)
                       ∧ (∀ j U t. s -< P ⟶ Q # j < U > >-> t → t ∈ 𝒯 j U) }
 s/recv ───────────────────────────────────────────────────────────────────
-                    Γ & Δ ⊢ Q ◂ Σ P ？[ S ]· Br ∶ 𝒮          -- `S` goes away, D5
+                    Γ & Δ ⊢ Q ◂ Σ P ？· Br ∶ 𝒮
 
 
        Γ ⊢e E ∶ s/bool     Γ & Δ ⊢ P ◂ A ∶ 𝒮     Γ & Δ ⊢ P ◂ B ∶ 𝒮
@@ -143,7 +143,9 @@ Why each rule is shaped that way, in one line each:
   * `Tests/LabelSorts.agda`, `Tests/LabelSortsForward.agda` — new, both **exit 0**,
     all decisions forced. See §6.
   * `FUTURE_WORK.md` — untracked, pre-existing.
-* **Nothing else has been touched.** No rule has been written in Agda yet.
+* **Step 1 of §7 is done** (the sort vector); see there. Everything since is
+  committed and `./runall.sh --tests` was green at that commit.
+* **No rule has been written in Agda yet** — §7 step 3 is the first that does.
 * `Definitions/Graph/NetworkProject.agda` typechecked clean on 2026-08-13
   (`agda --guardedness Definitions/Graph/NetworkProject.agda`, exit 0). It is
   not in `ROOTS`, so nothing re-checks it. See "Casualties".
@@ -231,9 +233,16 @@ discarding *and* forwarding but not inspection. **Consequence: indexing `𝒯` b
 
 Each step ends green. The corpus is the oracle (§8).
 
-1. **[D5] Remove the declared sort vector** from `Σ P ？[ S ]· Br`
-   (`Definitions/Proc.agda` and every `Σ` in `Examples/`, `Tests/`). Own commit.
-   *Done when:* `./runall.sh --tests` green.
+1. ~~**[D5] Remove the declared sort vector**~~ — **DONE 2026-08-14**, commit
+   `41d3a29`. `Σ_？[_]·_` became `Σ_？·_` (`Definitions/Proc.agda:28`); 68 sites
+   across `Definitions/`, `Check/`, `Safety/`, `Tests/`, `Examples/`.
+   `./runall.sh --tests` exit 0 (incremental; everything downstream of
+   `Proc.agda` rebuilt regardless). Two things learned, both worth knowing:
+   `I` stayed inferable everywhere (the branch vector pins it, so no `{I = …}`
+   had to be added), and the *dead* `{S : Vec Sort (suc I)}` binders had to be
+   deleted alongside — leaving one in a signature where `S` no longer occurs
+   turns it into an unsolvable metavariable at every use site.
+   `Stale/` still uses the old syntax; it is not typechecked, so it was left.
 2. **Answer D4 (§5.1) and D5.2 (§5.2).** Falsification attempt for D4; owner call
    for `~`-closure.
 3. **Write the abstract statements only** — `Wait`/`Reach∀`/`Guard`/`Reach₀`/`Reach~`
