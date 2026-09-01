@@ -234,7 +234,7 @@ discarding *and* forwarding but not inspection. **Consequence: indexing `𝒯` b
 Each step ends green. The corpus is the oracle (§8).
 
 1. ~~**[D5] Remove the declared sort vector**~~ — **DONE 2026-08-14**, commit
-   `41d3a29`. `Σ_？[_]·_` became `Σ_？·_` (`Definitions/Proc.agda:28`); 68 sites
+   `c70377d`. `Σ_？[_]·_` became `Σ_？·_` (`Definitions/Proc.agda:28`); 68 sites
    across `Definitions/`, `Check/`, `Safety/`, `Tests/`, `Examples/`.
    `./runall.sh --tests` exit 0 (incremental; everything downstream of
    `Proc.agda` rebuilt regardless). Two things learned, both worth knowing:
