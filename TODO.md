@@ -39,8 +39,8 @@ membership.
 | D6 | **Replace `Check/Alg.agda` in place** (no permanent side-by-side) | the `Tests/`+`Examples/` corpus is the only oracle; see §7 |
 | — | **Do NOT add global sort/arity consistency** as a well-formedness condition | refuted by evidence: `Tests/LabelSorts.agda` and `Tests/LabelSortsForward.agda` are well behaved *and* typeable, and such a condition outlaws both |
 
-D4 (`Loop P = ∅`, §5.1) and the `~`-closure question (§5.2) are **still open and
-need the owner**, not a guess.
+D4 (`Loop P = ∅`, §5.1) and the `~`-closure question (§5.2) were **both closed on
+2026-09-01** — D4 proved, `~`-closure decided as uniform. See those sections.
 
 ## 3. The rules
 
@@ -49,29 +49,47 @@ Sets are predicates `Behav → Set` abstractly, `Vec Bool (size G)` concretely.
 ### 3.1 The two operators — note they point in OPPOSITE directions
 
 ```
-Wait P 𝒮   =  ν W. Reach∀ P (𝒮 ∪ Guard P W)            -- was ⊢skip; ∀-backward
+Wait P 𝒮   =  ν W. Reach∀⁺ P 𝒮 (Guard P W)             -- was ⊢skip; ∀-backward
 
-  Reach∀ P 𝒳 = μ R. 𝒳 ∪ { s | P not-active-in s
-                             ∧ (∃ α t. s -< α >-> t)          -- skip/step's witness
-                             ∧ (∀ α t. s -< α >-> t → t ∈ R) }-- skip/step's ktd
-  Guard  P W = { s | P ∈T s ∧ s ∈ Reach∀ P (Guard P W) }      -- skip/cycle's guard
+  Reach∀  P 𝒳   = μ R. 𝒳 ∪ { s | P not-active-in s
+                                ∧ (∃ α t. s -< α >-> t)       -- skip/step's witness
+                                ∧ (∀ α t. s -< α >-> t → t ∈ R) }  -- skip/step's ktd
+
+  Reach∀⁺ P 𝒮 𝒢 =      𝒮 ∪ { s | P not-active-in s            -- NO 𝒢-leaf at depth 0
+                                ∧ (∃ α t. s -< α >-> t)
+                                ∧ (∀ α t. s -< α >-> t
+                                          → t ∈ Reach∀ P (𝒮 ∪ 𝒢)) }
+
+  Guard   P W   = { s | P ∈T s ∧ s ∈ W }                      -- skip/cycle's guard
 
 Reach₀ P 𝒜 = { s | ∃ a ∈ 𝒜. a -[¬ P ]->* s }                  -- was t/unskip; ∃-backward
-Reach~ P 𝒜 = { s | ∃ a ∈ 𝒜. ∃ H. a -[¬ P ]->* H ∧ H ~ s }
+Reach~ P 𝒜 = { s | ∃ a ∈ 𝒜. ∃ H. a -[¬ P ]->* H ∧ H ~ s }     -- = Reach₀ on ~-closed 𝒜
 ```
 
 `Wait` reads: *along every path, within finitely many P-inactive steps you
-either land in `𝒮` or reach a `P ∈T` state from which the same holds again.*
+either land in `𝒮`, or — **after at least one step** — reach a `P ∈T` state
+from which the same holds again.*
 
-**Three things that are load-bearing and easy to get wrong:**
+**Four things that are load-bearing and easy to get wrong:**
 
 * `Reach∀` is **universal** — the environment picks the branch. An existential
   backward closure here produces a checker that says `yes` when it must not.
 * the `∃ α t` conjunct is `skip/step`'s own step witness: a P-inactive **dead
   end** is not skippable (it must be caught by `s/end` instead).
+* **the ν must be PRODUCTIVE — a `Guard` leaf only STRICTLY below a step.**
+  That is the whole point of `Reach∀⁺`, and it was got wrong once already.
+  Writing `Wait P 𝒮 = ν W. Reach∀ P (𝒮 ∪ Guard P W)` with the obvious
+  `Guard P W = { s | P ∈T s ∧ s ∈ W }` is **refuted**: `Wait P ∅` is then
+  inhabited at every state where `P` is live, by `force w = r/leaf (inj₂ (pin , w))`,
+  taking no step at all — which contradicts D4 (§5.1), now proved. `skip/cycle`
+  cannot do this: `lu Ξ X ~ G` closes against a **strict** ancestor and every
+  ancestor edge is a `skip/step`, so ≥1 step separates two cycle closures.
+  Closing against a *distant* ancestor needs no extra machinery: `t ~ A` plus
+  `Wait P 𝒮 A` gives `Wait P 𝒮 t` by `~`-closure (§5.2).
 * the μ/ν split is **forced**, not stylistic: `P ∈T` is backward-closed
   (`in/later`, `Definitions/Behav.agda:93`), so `P ∉T` is forward-closed, so the
-  `∉T` region is a sink where `Guard` is empty and `Wait = Reach∀`, a plain lfp.
+  `∉T` region is a sink where `Guard` is empty and `Wait` collapses to
+  `Reach∀⁺ P 𝒮 ∅`, a plain lfp.
   Cycles exist only in the `∈T` region. **The two fixpoints are ordered, not
   nested** — compute the `∉T` lfp first, then the `∈T` gfp over it. This is what
   replaces `Justified`/`FailedFrom`/`failed⇒¬tree` and the four-component
@@ -131,7 +149,16 @@ Why each rule is shaped that way, in one line each:
 * **`s/if`/`s/end` take no `Wait`** — `a/if`/`a/end` are top-level in `⊢a` and
   no `⊢blocked` constructor covers `ifp`/`∅`. **Modulo D4** (§5.1).
 
-## 4. Current status (all verified this session unless marked)
+## 4. Current status
+
+**Updated 2026-09-01.** Steps 1–3 of §7 are done. Two new files, both
+`agda --guardedness` exit 0, no holes, no `postulate`s, no `TERMINATING`:
+`Definitions/Typing/NoLoop.agda` (D4) and `Definitions/Typing/Sets.agda` (the
+operators and the seven rules). **Neither is in `ROOTS`, so nothing re-checks
+them** — check them by hand until they are wired in. Next is step 3a.
+
+*The rest of this section is from 2026-08-14 and is retained for the parts that
+have not moved:*
 
 * Branch **`set-typing`**, forked from `simplified-theory` @ `15bf5bf`, which
   is the rollback point (last known-green commit).
@@ -155,9 +182,27 @@ Why each rule is shaped that way, in one line each:
   `pathVia→pathViaP`. Used nowhere, including inside its own file except by
   each other. ~45 lines, free to delete.
 
-## 5. Open questions — these need the owner, do not guess
+## 5. Open questions — BOTH NOW CLOSED (2026-09-01)
 
-### 5.1 D4: is `Loop P = Wait P ∅` empty?
+### 5.1 D4: is `Loop P = Wait P ∅` empty? — **ANSWERED: YES**
+
+**Proved**, `Definitions/Typing/NoLoop.agda` (`loop/empty`, `Loop-empty`), which
+typechecks clean. So §3.2's `s/if`/`s/end` do **not** need `∪ Loop P`. The
+falsification attempt suggested below is unnecessary: no counterexample exists.
+
+The proof recurses structurally on the `Any (P ∈α_) αs` witness, **not** on the
+tree — the `skip/cycle` jump walks back *up*, so the tree is not decreasing. That
+works only because `P ∈T` is an existential over a run and `tr-transport` keeps
+the label list, hence the `Any` witness, literally unchanged.
+
+Two things this does NOT settle. It is the `⊥`-leaf statement only, so it does
+not discharge `Norm.agda:169`'s `MainLeaf` hypothesis, which needs a constructive
+witness where the leafless argument yields only `¬¬∃`. And it says nothing yet
+about `Wait P ∅` for the **corrected** `Reach∀⁺` (§3.1) — that is the next task.
+
+*Historical, kept because it is what exposed the §3.1 bug:*
+
+### 5.1′ (superseded) the original conjecture
 
 `⟦if⟧`/`⟦∅⟧` as written in §3.2 are faithful to `⊢a` **only if** no skip tree
 consists purely of `skip/step`/`skip/cycle` with no `skip/main` leaf. Otherwise
@@ -182,15 +227,25 @@ tree as a `Tests/` file. Either you get a counterexample — which settles D4 as
 "carry `∪ Loop P`" and says something surprising about the current system — or
 the attempt shows you the proof.
 
-### 5.2 Should all sets be `~`-closed?
+### 5.2 Should all sets be `~`-closed? — **DECIDED: YES (uniform closure)**
 
-Currently inherited, not designed: `blocked/var` closes up to `~` (`Reach~`),
-`blocked/rec` does not (`Reach₀`). Options: require every set in the judgment to
-be `~`-closed (uniform rules; `Wait`/`Reach` commute with `td/bisim` for free;
-the graph implementation can work over the bisimilarity quotient, which is a
-state-space reduction using the matrix that is already computed), or keep the
-asymmetry (no new obligations, but it propagates into every lemma). **Decide
-before writing the statements** — it changes their shape.
+Owner's call, 2026-09-01. The load-bearing assumption was **verified, not
+assumed**: `Reach∀`, `Wait` and `Reach₀` all preserve `~`-closure
+(`reach∀/~`, `wait/~`, `reach₀/~` in `Definitions/Typing/Sets.agda`), and
+`reach~→reach₀` proves `Reach₀ = Reach~` on `~`-closed sets. So the
+`blocked/rec` / `blocked/var` asymmetry **collapses**: `s/var` and `s/rec` both
+use `Reach₀`, and `Reach~` survives only as the bridge lemma.
+
+Three readings taken where the plan was ambiguous, all cheap to revisit:
+
+* `⌈W⌉` is the `~`-**closed** singleton `{s | W ~ s}`, not §3.2's raw singleton.
+  A raw singleton is not `~`-closed, so it would contradict this very decision,
+  and it is what lets both anchor rules use `Reach₀`.
+* `Closed` is deliberately **not** a premise of any rule — it would break the
+  downward closure of `𝒮` that §3.2's "each `Pr` has a largest `𝒮`" relies on.
+  It is a hypothesis of the lemmas that need it instead.
+* `⊢s′` is primed only to coexist with `Declarative`'s `⊢s`; it loses the prime
+  at D2.
 
 ### 5.3 Recorded, deliberately deferred by D1
 
@@ -243,18 +298,89 @@ Each step ends green. The corpus is the oracle (§8).
    deleted alongside — leaving one in a signature where `S` no longer occurs
    turns it into an unsolvable metavariable at every use site.
    `Stale/` still uses the old syntax; it is not typechecked, so it was left.
-2. **Answer D4 (§5.1) and D5.2 (§5.2).** Falsification attempt for D4; owner call
-   for `~`-closure.
-3. **Write the abstract statements only** — `Wait`/`Reach∀`/`Guard`/`Reach₀`/`Reach~`
-   and the seven rules, in a new `Definitions/Typing/Sets.agda`, as declarations
-   with `postulate`d or holed proofs *only if* the file is not in `ROOTS` yet.
-   `Wait` is a coinductive `record` whose field is the inductive `Reach∀` — the
-   regime ordering means the two fixpoints are **sequenced, not nested**, which
-   is what keeps the guardedness checker out of it.
-   *Done when:* the file typechecks and the rule shapes are as in §3.2.
-4. **Prove the `Wait` characterisation** — the load-bearing lemma, both
-   directions: `s ∈ Wait P 𝒮 ⟺ (Leaf = 𝒮) & [] ⊢skip P ◂ Pr ∶ s`. `⟸` is
-   needed for "no bogus `no`", `⟹` for soundness.
+2. ~~**Answer D4 (§5.1) and D5.2 (§5.2).**~~ — **DONE 2026-09-01.** D4 proved
+   (`NoLoop.agda`); `~`-closure decided as option 1 and its assumption verified.
+   See §5.1 and §5.2, both rewritten.
+3. ~~**Write the abstract statements only**~~ — **DONE 2026-09-01**, in
+   `Definitions/Typing/Sets.agda`: the operators, the seven rules, `⊢s′`. No
+   `postulate`s, no holes, `agda --guardedness` exit 0. `Wait` is a coinductive
+   `record` whose field is the inductive `Reach∀⁺`, so the fixpoints stay
+   **sequenced, not nested** and the guardedness checker stays out of it.
+   **This step also corrected §3.1** — see the `Reach∀⁺` bullet there.
+   *Not in `ROOTS`; nothing re-checks it.*
+3a. ~~**Prove `Wait P ∅ = ∅` for the corrected `Reach∀⁺`.**~~ — **DONE 2026-09-01**,
+   `wait/∅` in `Sets.agda`. The corrected definition now agrees with D4, so
+   `Reach∀⁺` is the *right* repair and not merely *a* repair.
+   Simpler than `NoLoop.agda`: no ancestor context is needed, because a `Guard`
+   leaf already packages the `Wait` it closes against. Recursion is again on the
+   `Any (P ∈α_) αs` witness — `waitR/∅` hands it on unchanged at a guard leaf,
+   but every cycle back through `waitR/∅` strictly decreases it, which Agda's
+   termination checker accepts as-is.
+4. **Prove the `Wait` characterisation** — both directions:
+   `s ∈ Wait P 𝒮 ⟺ (Leaf = 𝒮) & [] ⊢skip P ◂ Pr ∶ s`. `⟸` is needed for
+   "no bogus `no`", `⟹` for soundness.
+
+   **`⟸` is DONE 2026-09-01** — `skip⇒wait` in `Definitions/Typing/SetsEquiv.agda`,
+   exit 0, no holes. Two things it forced, both worth keeping:
+   the bisimilarity is carried *into* the statement
+   (`… ∶ G → G ~ s → Wait P 𝒮 s`) rather than applied afterwards, because a
+   post-hoc `wait/~` puts the corecursive call in an ARGUMENT position where it
+   is not guarded; and `Anc` stores each ancestor's `skip/step` **premises**, not
+   its derivation, because `Reach∀⁺` admits no guard leaf at depth 0, so the node
+   a cycle re-enters must be known to be a `skip/step`.
+
+   **`⟹` is FALSE at the abstract level — MECHANIZED**, `Tests/WaitNotSkip.agda`,
+   exit 0, no holes. A concrete `BTheory` with all **ten** `WellBehaved` axioms
+   discharged (not nine — an earlier count here missed `recv-overlap⇒same-comm`),
+   carrying `ce/wait : Wait P 𝒮 (g 0)` and
+   `ce/no-skip : ¬ (Lf & [] ⊢skip P ◂ Pr ∶ g 0)`.
+
+   The theory is an infinite chain `g i -< a i >-> g (suc i)`, `g i -< b i >-> e`,
+   `e -< p >-> z`, with `a`/`b` free of `P` and `p` the only `P`-action.
+   `𝒮` is "`P` is immediately active", which is `~`-closed (`𝒮/closed`) and is
+   exactly the shape `s/send`'s leaf family takes — so this is not an artefact of
+   an exotic `𝒮` nor of dropping §5.2. What separates the `g i` is the **arity**:
+   at `g i` the branching is over `Fin (suc (suc i))`, so `a i ≠ a j`, so
+   `g i ≁ g j`. Both steps out of `g i` share that arity and the comm `Q⟶R`,
+   which is what keeps `step-arity-deterministic`, `recv-overlap⇒same-comm` and
+   `step-diamond` satisfied. Bisimilarity on this theory is equality (`~⇒≡`),
+   which is what makes `skip/cycle` unusable.
+
+   This does NOT contradict `wait/∅` (step 3a): that argument needs the covered
+   set to be step-closed, which fails here precisely because the `𝒮`-leaf at `e`
+   is where `P ∈T (g i)` comes from.
+
+   **Diagnosis — the ν is the problem, not the rules.** A `⊢skip` derivation is a
+   FINITE tree whose leaves close against ANCESTORS; a greatest fixpoint over
+   `Pred Behav` admits infinite unfoldings. The two coincide exactly when there
+   are finitely many `~`-classes. So **no plain fixpoint over sets of states can
+   be equivalent** — the property is genuinely one of the *(state, ancestor-set)*
+   pair. Adding a finiteness axiom and proving `⟹` graph-only are both **ruled
+   out by the owner**: the type systems must be equivalent, and `WellBehaved` must
+   not change.
+
+4b. **NEXT: re-base `Wait` as a μ over (state, visited SET).** Keeps everything
+   the owner requires — the seven typing rules of §3.2 are untouched, they still
+   speak only of sets of states, and there is still no `skip` sub-judgment
+   interleaved with typing. Only `Wait`'s internal definition changes, from a ν
+   over states to an inductive family indexed by a visited *set*:
+
+   ```
+   data WaitV (P)(𝒮)(V : Pred) : Pred where
+     wv/leaf  : 𝒮 s                                  → WaitV P 𝒮 V s
+     wv/cycle : (∃ a. V a ∧ a ~ s) → P ∈T s          → WaitV P 𝒮 V s
+     wv/step  : P-inactive s → (∃ step from s)
+              → (∀ t. s -< _ >-> t → WaitV P 𝒮 (V ∪ ⌈s⌉) t)
+                                                     → WaitV P 𝒮 V s
+   Wait P 𝒮 = WaitV P 𝒮 ∅
+   ```
+
+   This is `⊢skip` with `Ξ` as a SET rather than a vector, so the equivalence
+   becomes near-definitional and holds for every theory. The §1 win survives
+   where it matters — the typing derivation is still one rule per process form and
+   still `O(|Pr|)` — but §1's stronger claim that graph-walking collapses to "two
+   closure operators" does NOT survive, and the `Justified`/`FailedFrom` idea
+   returns in set form. **That trade needs the owner's sign-off before step 5.**
 5. **Prove `set ⟺ ⊢a`** for the whole judgment, using step 4.
 6. **[Phase a] Move `Check/` onto the set form and delete `Check/Alg.agda`.**
    Finite realisation: sets as `Vec Bool (size G)`; `Wait` as the ordered
@@ -315,6 +441,8 @@ restate §A against the new judgment later.
 ## 10. Do not do these
 
 * Do not use an existential backward closure for the skip side (§3.1).
+* Do not drop the progress condition from `Reach∀⁺` — i.e. do not "simplify"
+  `Wait` back to `ν W. Reach∀ P (𝒮 ∪ Guard P W)`. Machine-refuted (§3.1).
 * Do not index `𝒯` by `j` alone (§6).
 * Do not add global sort/arity consistency as a well-formedness condition (§2).
 * Do not re-introduce set-valued `rec` anchors without re-opening D1 (§5.3).
