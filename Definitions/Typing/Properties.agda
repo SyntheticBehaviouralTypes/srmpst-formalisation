@@ -363,3 +363,23 @@ module Definitions.Typing.Properties {N : ℕ}{B : BTheory N}(wb : WellBehaved B
         (skip/remember-leaves base)
         (skip/remember-leaves td))
 
+
+  -- Rewriting the leaf family of a `⊢skip` tree.  The translation is only
+  -- required at `PPr`, the process the tree is about, because that is the
+  -- only process at which `skip/main` can fire inside it: `skip/step` and
+  -- `skip/cycle` both keep `P ◂ Pr` fixed.
+  skip/map :
+    ∀ {γ δ ξ}{L₁ L₂ : NProc γ δ → Behav → Set}
+      {Ξ : Vec Behav ξ}{PPr G}
+    → (∀ {H} → L₁ PPr H → L₂ PPr H)
+    → L₁ & Ξ ⊢skip PPr ∶ G
+    → L₂ & Ξ ⊢skip PPr ∶ G
+
+  skip/map f (skip/main x) =
+    skip/main (f x)
+
+  skip/map f (skip/step gr na ktd) =
+    skip/step gr na (λ gr′ → skip/map f (ktd gr′))
+
+  skip/map f (skip/cycle eq inT) =
+    skip/cycle eq inT

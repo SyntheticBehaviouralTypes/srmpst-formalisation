@@ -82,8 +82,8 @@ done
 ROOTS=(
     Definitions.agda
     Definitions/Graph.agda
-    Definitions/Typing/Algorithmic.agda
-    Definitions/Typing/Norm.agda
+    Definitions/Typing/SetsNorm.agda
+    Definitions/Typing/SetsDeclarative.agda
     Safety.agda
     Check.agda
 )

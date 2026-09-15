@@ -1,5 +1,17 @@
 {-# OPTIONS --guardedness #-}
 
+-- STALE, 2026-09-15.  Not typechecked; not in ROOTS; imported by nothing.
+--
+-- This is `FUTURE_WORK.md` §A's proved investment (`project`, `projL`/`projR`,
+-- `mkPair-proj`, `pstep-invP`, `skip-projL`, `inT-lift`, `inT-projL`,
+-- `stuck∉T`).  It typechecked clean on 2026-08-13, but it is stated over
+-- `⊢a[ netTheory (n₁ ∥ n₂) ]`, and `Definitions/Typing/Algorithmic.agda` was
+-- deleted when `⊢a` was retired in favour of the set-based judgment
+-- (TODO.md D2).  It is kept verbatim rather than deleted because the proofs
+-- are the content: restating them over `_&_⊢_∷_` is a port, not a rewrite --
+-- the projection argument itself never mentions the skip machinery that
+-- changed.  See TODO.md §9.
+
 -- Projection for `∥`: typing a participant against a parallel composition
 -- reduces to typing it against the side it acts in, so the product state
 -- space is never traversed.

@@ -23,8 +23,8 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   open M
   open import Definitions.Typing.Sets wb
     using (_&_⊢_∶_; s/send; s/recv; s/if; s/end; s/var; s/rec; waitActive; waitStep; waitLeaf)
-  open import Definitions.Typing.SetsAlg wb
-    using (_&_⊨_∶_; ⊨⇒alg; alg⇒⊨; ⊨/if-inv; ⊨/rec-guarded; ⊨/end-inv)
+  open import Definitions.Typing.Sets wb
+    using (_&_⊨_∶_; ⊨/if-inv; ⊨/rec-guarded; ⊨/end-inv)
   open M.Subst
   open import Definitions.Typing.Substitution wb
   open import Safety.Preservation wb

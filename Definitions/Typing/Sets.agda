@@ -387,6 +387,62 @@ module Definitions.Typing.Sets {N : ℕ}{B : BTheory N}(wb : WellBehaved B) wher
       → (sub : ∀ {s} → 𝒮 s → Wait P (Reach₀ P 𝒜) s)
       → Γ & Δ ⊢ P ◂ rec Pr ∶ 𝒮
 
+  -- Downward closure of `𝒮`: it occurs only in `⊆`-premises.  This is what
+  -- "each `Pr` has a largest `𝒮`" means operationally — prove the judgment
+  -- once at the largest set, then narrow to any subset, `⌈ G ⌉` included.
+  set/mono :
+    ∀ {Γ : Vec Sort γ}{Δ : Vec Behav δ}{PPr}{𝒮 𝒮′ : Pred}
+    → (∀ {s} → 𝒮′ s → 𝒮 s)
+    → Γ & Δ ⊢ PPr ∶ 𝒮
+    → Γ & Δ ⊢ PPr ∶ 𝒮′
+
+  set/mono f (s/send etd td tc sub) = s/send etd td tc (λ x → sub (f x))
+  set/mono f (s/recv conts tc sub)  = s/recv conts tc (λ x → sub (f x))
+  set/mono f (s/if etd ttd ftd)     = s/if etd (set/mono f ttd) (set/mono f ftd)
+  set/mono f (s/end done)           = s/end (λ x → done (f x))
+  set/mono f (s/var sub)            = s/var (λ x → sub (f x))
+  set/mono f (s/rec g td sub)       = s/rec g td (λ x → sub (f x))
+
+  -- ══════════════════════════════════════════════════════════════════
+  --  The pointwise form
+  -- ══════════════════════════════════════════════════════════════════
+  --
+  -- `Safety/` needs "this process is typed AT this state".  The judgment
+  -- says it about a whole set, so the pointwise form is the set plus a
+  -- membership.  This is the form `Safety/` is stated over.
+
+  infix 4 _&_⊨_∶_
+
+  _&_⊨_∶_ :
+    ∀ {γ δ} → Vec Sort γ → Vec Behav δ → NProc γ δ → Behav → Set₁
+  Γ & Δ ⊨ PPr ∶ G = Σ[ 𝒮 ∈ Pred ] (Γ & Δ ⊢ PPr ∶ 𝒮) × 𝒮 G
+
+  -- Inversions for `Safety/`.  Each is ONE clause, because the judgment is
+  -- syntax directed: there is no skip wrapper to look past and no tree to
+  -- chase.
+
+  ⊨/if-inv :
+    ∀ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Behav δ}{P E}{A B : Proc γ δ}{G}
+    → Γ & Δ ⊨ P ◂ ifp E then A else B ∶ G
+    → (Γ ⊢e E ∶ s/bool) × (Γ & Δ ⊨ P ◂ A ∶ G) × (Γ & Δ ⊨ P ◂ B ∶ G)
+
+  ⊨/if-inv (𝒮 , s/if etd ttd ftd , mem) =
+    etd , (𝒮 , ttd , mem) , (𝒮 , ftd , mem)
+
+  ⊨/rec-guarded :
+    ∀ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Behav δ}{P}{Pr : Proc γ (suc δ)}{G}
+    → Γ & Δ ⊨ P ◂ rec Pr ∶ G
+    → MessageGuarded Pr
+
+  ⊨/rec-guarded (_ , s/rec guarded _ _ , _) = guarded
+
+  ⊨/end-inv :
+    ∀ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Behav δ}{P}{G}
+    → Γ & Δ ⊨ P ◂ ∅ ∶ G
+    → ¬ P ∈T G
+
+  ⊨/end-inv (_ , s/end done , mem) = done mem
+
   -- `⊢s M ∶ G` becomes "`G` is in every participant's set" (TODO.md §3.2).
   -- Primed only to coexist with `Declarative`'s `⊢s_∶_`, which is still in
   -- scope; it loses the prime when D2 deletes the old judgment.

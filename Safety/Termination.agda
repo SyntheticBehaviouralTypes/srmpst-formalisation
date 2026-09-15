@@ -47,10 +47,9 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private
     module M = MPST wb
   open M
-  open import Definitions.Typing.SetsAlg wb
+  open import Definitions.Typing.Sets wb
     using (_&_⊨_∶_; ⊨/if-inv; ⊨/rec-guarded)
   open M.Subst
-  open import Definitions.Typing.Norm wb using (norm)
   open import Safety.Preservation wb
   open import Safety.Progress wb
   open import Definitions.Typing.Properties wb

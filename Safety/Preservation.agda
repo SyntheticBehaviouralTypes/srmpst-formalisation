@@ -27,13 +27,11 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   open import Definitions.Typing.Sets wb
     using ( _&_⊢_∶_; s/send; s/recv; s/if; s/end; s/var; s/rec
           ; Pred; Closed; WaitV; wv/leaf; wv/cycle; wv/step
-          ; waitLeaf; waitV/unfold-top )
-  open import Definitions.Typing.SetsAlg wb
-    using (_&_⊨_∶_; ⊨⇒alg; alg⇒⊨; ⊨/if-inv; ⊨/rec-guarded; ⊨/end-inv)
+          ; waitLeaf; waitV/unfold-top
+          ; _&_⊨_∶_; ⊨/if-inv; ⊨/rec-guarded; ⊨/end-inv )
+  open import Definitions.Typing.SetsNorm wb using (td⇒⊨)
   open import Definitions.Typing.SetsDeclarative wb using (⊨⇒typing)
   open import Definitions.Typing.Properties wb
-  open import Definitions.Typing.Norm wb
-    using (norm)
 
   td/lookup :
     ∀ {M G P Pr}
@@ -43,17 +41,17 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   td/lookup {P = P} ts luP with ts P
   ... | ptd rewrite []=⇒lookup luP = ptd
 
-  -- THE BOUNDARY, and the last place in `Safety/` that knows `⊢a` exists —
-  -- it does not even appear in the type.  `⊢s` is stated over `⊢p`, so coming
-  -- IN needs `⊢p → ⊢set`, and the only proof of that direction is still
-  -- `norm` (`⊢p → ⊢a`, 830 lines) followed by `alg⇒set`.  Going OUT is direct,
-  -- via `⊨⇒typing`.  Everything downstream consumes `⊨/lookup`.
+  -- THE BOUNDARY.  `⊢s` is stated over `⊢p`, so coming IN needs
+  -- `⊢p → ⊢set` — `td⇒⊨` (`SetsNorm.agda`).  Going OUT is `⊨⇒typing`
+  -- (`SetsDeclarative.agda`).  Both are direct; `⊢a` is gone from the
+  -- development and neither direction passes through anything else.
+  -- Everything downstream consumes `⊨/lookup`.
   ⊨/lookup :
     ∀ {M G P Pr}
     → ⊢s M ∶ G
     → M [ P ]= Pr
     → [] & [] ⊨ P ◂ Pr ∶ G
-  ⊨/lookup ts luP = alg⇒⊨ (norm (td/lookup ts luP) skip/refl)
+  ⊨/lookup ts luP = td⇒⊨ (td/lookup ts luP)
 
   ⊢s-update :
     ∀ (M : Session) {G P Pr}
@@ -95,9 +93,11 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     Ptd
   ...   | no R≢P
     rewrite lookup∘update′ R≢P M Pr =
-    -- R is uninvolved, so its typing rides the step across.  `norm` does
-    -- in one call what `head/typing ∘ td/head` did in two.
-    ⊨⇒typing (alg⇒⊨ (norm (M⊢G R) (skip/one gr (R≢P , R≢Q))))
+    -- R is uninvolved, so its typing rides the step across — and that is
+    -- exactly `t/unskip`.  This used to detour `⊢p → ⊢a → ⊨ → ⊢p` because
+    -- `norm` was the only thing that could absorb a trace; the declarative
+    -- rule could do it all along.
+    t/unskip (skip/one gr (R≢P , R≢Q)) (M⊢G R)
 
   -- `P` is the sender, so `P` is ACTIVE at `G` and `waitLeaf` says the `Wait`
   -- can only be a leaf.  That is the whole of what `send/cont-skip` was.

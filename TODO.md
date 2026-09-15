@@ -168,7 +168,39 @@ Why each rule is shaped that way, in one line each:
 
 ## 4. Current status
 
-**Updated 2026-09-11. Steps 1–5 of §7 are done: `⊢a ⟺ ⊢set` is PROVED.**
+**Updated 2026-09-15.  ALL of §7 is done: `⊢a` IS DELETED.**  The development
+now has exactly TWO systems — the declarative `⊢p` and the set-based `⊢`
+— and nothing in between.  `agda --guardedness` exit 0 on every root from a
+clean build, no holes, no `postulate`s, no `TERMINATING`:
+
+| file | what |
+|---|---|
+| `Definitions/Typing/SetsNorm.agda` | `typing⇒set` — `⊢p → ⊢set` DIRECTLY (735 lines) |
+| `Definitions/Typing/SetsDeclarative.agda` | `set⇒typing` — the converse |
+
+Deleted: `Typing/Algorithmic.agda`, `Typing/Norm.agda` (830 lines),
+`Typing/AlgProperties.agda`, `Typing/SetsAlg.agda`.  `Definitions/Graph/
+NetworkProject.agda` moved to `Stale/` (§9 — write-off, not a port).
+`ROOTS` updated; `Check/Sets.agda` now decides `⊢p` outright.
+
+**THE ONE IDEA, recorded so it is not undone.**  `⊢p`'s `t/skip` is
+SELF-REFERENTIAL — its leaf family is `⊢p` again.  So a fact dug out of one
+past a `skip/cycle` may need unwrapping once more, and that unwrap is not a
+subterm anything can see: BOTH an `Anc`/`findRun` chase (`MainLeaf.agda`'s
+technique) and an unfold chase (`Norm.agda`'s) fail the termination checker
+here, and no rearrangement of either fixes it.  Killing the self-reference is
+precisely what `⊢a`'s two-layer `a/skip`/`⊢blocked` split was FOR — and
+`WaitV` does it too, for nothing: its leaf family is a plain `Pred`.  So
+**convert to `Wait` FIRST** (structural, `skip/cycle ↦ wv/cycle` one-for-one,
+no chase at all), **then read the fact off with `waitFind`** — which is just
+`findMain ∘ wait⇒skip`, both already proved.  Every leaf family in
+`SetsNorm.agda` carries exactly the state-free facts its rule needs for that
+reason: `SendE` the sort, `RecG` the guardedness, `IfE` the guard's typing.
+`∅` is the one exception — `s/end`'s `done` must hold at EVERY state, not
+just one, so `waitFind` is no use and it keeps an `a∅/notin`-style chase over
+the (non-self-referential) `¬ P ∈T` family.
+
+*The 2026-09-11 entry, for the record:* **Steps 1–5 of §7 were done: `⊢a ⟺ ⊢set` is PROVED.**
 Six files, all `agda --guardedness` exit 0, no holes, no `postulate`s, no
 `TERMINATING`:
 
@@ -552,10 +584,31 @@ Each step ends green. The corpus is the oracle (§8).
    asymptotic claim is about derivation SIZE, and these graphs are small. The
    table and its two correctness facts are passed into `wait?/acc` as
    arguments; **do not fold them back into the module.**
-7. **[Phase b] Migrate `Safety/`** by transporting along step 5, then delete
-   `⊢a`, `⊢skip`, `⊢blocked`, `Norm.agda`, and finally the equivalence itself.
-8. Update `FUTURE_WORK.md` (§B is superseded by this file; note §A's status) and
-   `CLAUDE.md`'s architecture section.
+7. ~~**[Phase b] Migrate `Safety/`**, then delete `⊢a`, `⊢blocked`,
+   `Norm.agda`, and the equivalence itself.~~ — **DONE 2026-09-15.**
+   `⊢skip` STAYS: it is `Declarative.agda`'s, shared with `⊢p`'s own
+   `t/skip`, and was never `⊢a`'s to delete.
+
+   The seam turned out to be four sites, all the same shape — a `⊢p`-level
+   operation with `⊢a` wrapped around it for no reason:
+
+   * `Preservation.⊨/lookup` → `td⇒⊨` (was `norm` then `alg⇒⊨`).
+   * `Preservation`'s uninvolved-participant case → **`t/unskip`**.  It was
+     `⊨⇒typing (alg⇒⊨ (norm … tr))`: a `⊢p → ⊢a → ⊨ → ⊢p` round trip to
+     absorb a trace that the declarative rule absorbs by itself.
+   * `Substitution.⊨/rec/unfold` and `⊨/subst-expr` → `⊨⇒typing` out,
+     `td⇒⊨` back, with `t/rec/unfold` / `typing/subst-expr` in the middle.
+     `a/rec/unfold` and `alg/subst-expr` are gone; that file's own comment
+     had already called these the two that would need a direct proof.
+
+   Moved rather than re-proved, all `⊢a`-free already: `set/mono` and the
+   `⊨` family (`_&_⊨_∷_`, `⊨/if-inv`, `⊨/rec-guarded`, `⊨/end-inv`) to
+   `Sets.agda`; `skip/map` to `Properties.agda`.  `MainLeaf.agda` and
+   `NoLoop.agda` STAY — `findMain` is generic in the leaf family and is now
+   what `waitFind` is built from.
+8. Update `FUTURE_WORK.md` (§B is superseded by this file; §A's investment is
+   now in `Stale/NetworkProject.agda.stale`) and `CLAUDE.md`'s architecture
+   section.  **STILL OPEN.**
 
 Optional, independent, any time: delete the dead `PathViaP` family (§4).
 
@@ -591,7 +644,16 @@ Optional, independent, any time: delete the dead `PathViaP` family (§4).
   bound-once tables by construction, so this should not be fixed separately —
   but if you want a number to compare against, measure before step 6, not after.
 
-## 9. Casualties of D2, decide before step 7
+## 9. Casualties of D2 — **DECIDED 2026-09-15: written off, kept verbatim**
+
+`NetworkProject.agda` is now `Stale/NetworkProject.agda.stale`, alongside
+`PushRecDerivations.agda.stale`.  Nothing imported it, it was not in `ROOTS`,
+and porting it is a separate exercise: the projection argument never mentions
+the skip machinery that changed, so restating it over `_&_⊢_∷_` is a port,
+not a rewrite, and can be done whenever §A is picked up again.  The text is
+kept precisely so that stays true.
+
+*The original note:*
 
 **`Definitions/Graph/NetworkProject.agda` (497 lines) is stated over
 `⊢a[ netTheory (n₁ ∥ n₂) ]`.** Deleting `⊢a` stops it compiling, and because it
@@ -620,3 +682,7 @@ restate §A against the new judgment later.
 * Do not resurrect `⊢head`/`⊢hskip`/`head/typing`, `Definitions/Types.agda`,
   `Definitions/TypeChecker*`, `Definitions/Typing/Normalise.agda`, or
   `Check/Decide.agda`.
+* **Do not dig a fact out of a `⊢p` derivation directly** — convert to `Wait`
+  first, then `waitFind`.  `t/skip`'s leaf family is `⊢p` itself, so a chase
+  past a `skip/cycle` does not terminate-check, whichever of the two known
+  chase techniques you reach for.  See §4.

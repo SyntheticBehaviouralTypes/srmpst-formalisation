@@ -27,9 +27,9 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
   open import Definitions.Typing.Properties wb using (td/bisim)
   -- For `a/rec/unfold` at the bottom of this file.  `Norm.agda` does not
   -- import this module, so there is no cycle.
-  open import Definitions.Typing.Algorithmic wb using (_&_⊢a_∶_; alg/typing)
-  open import Definitions.Typing.SetsAlg wb using (_&_⊨_∶_; ⊨⇒alg; alg⇒⊨)
-  open import Definitions.Typing.Norm wb using (norm)
+  open import Definitions.Typing.Sets wb using (_&_⊨_∶_)
+  open import Definitions.Typing.SetsNorm wb using (td⇒⊨)
+  open import Definitions.Typing.SetsDeclarative wb using (⊨⇒typing)
 
   private
     variable
@@ -465,36 +465,16 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
   -- deleted: it buys nothing, because `typing/subst-proc` just above has
   -- to stay for `t/rec/unfold` regardless, so the `⊢p` substitution
   -- theory was never going away.
-  a/rec/unfold :
-    ∀ {G P Pr}
-    → [] & [] ⊢a P ◂ rec Pr ∶ G
-    → [] & [] ⊢a P ◂ unfold/proc Pr ∶ G
-  a/rec/unfold td = norm (t/rec/unfold (alg/typing td)) skip/refl
-
-  -- Expression substitution's `⊢a` face, same discipline as
-  -- `a/rec/unfold`: the round trip lives here, and `Safety/*` only ever
-  -- sees the `⊢a` statement.
-  alg/subst-expr :
-    ∀ {γ δ G P E Pr}
-      {Γ : Vec Sort (suc γ)}
-      {Δ : Vec Behav δ}
-      {X : Fin (suc γ)}
-    → (Γ - X)     ⊢e E                ∶ lu Γ X
-    → Γ       & Δ ⊢a P ◂ Pr           ∶ G
-    → (Γ - X) & Δ ⊢a P ◂ [ E / X ]e Pr ∶ G
-  alg/subst-expr etd td =
-    norm (typing/subst-expr etd (alg/typing td)) skip/refl
-
-  -- The same two facts as the SET judgment sees them.  `Safety/` imports only
-  -- these; the round trip stays confined here, exactly as it was for the `⊢a`
-  -- faces above.  When `⊢a` goes these are the two lemmas that need a direct
-  -- proof — everything else in `Safety/` is already native.
-
+  -- The two facts as the SET judgment sees them.  `Safety/` imports only
+  -- these.  The round trip is `⊨⇒typing` out and `td⇒⊨` back — the
+  -- DECLARATIVE system in the middle, where `typing/subst-proc` and
+  -- `t/rec/unfold` already live.  It used to detour through `⊢a` (`norm`
+  -- out, `alg⇒⊨` back); nothing else about these two lemmas changed.
   ⊨/rec/unfold :
     ∀ {G P Pr}
     → [] & [] ⊨ P ◂ rec Pr ∶ G
     → [] & [] ⊨ P ◂ unfold/proc Pr ∶ G
-  ⊨/rec/unfold td = alg⇒⊨ (a/rec/unfold (⊨⇒alg td))
+  ⊨/rec/unfold td = td⇒⊨ (t/rec/unfold (⊨⇒typing td))
 
   ⊨/subst-expr :
     ∀ {γ δ G P E Pr}
@@ -504,4 +484,4 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
     → (Γ - X)     ⊢e E                ∶ lu Γ X
     → Γ       & Δ ⊨ P ◂ Pr           ∶ G
     → (Γ - X) & Δ ⊨ P ◂ [ E / X ]e Pr ∶ G
-  ⊨/subst-expr etd td = alg⇒⊨ (alg/subst-expr etd (⊨⇒alg td))
+  ⊨/subst-expr etd td = td⇒⊨ (typing/subst-expr etd (⊨⇒typing td))

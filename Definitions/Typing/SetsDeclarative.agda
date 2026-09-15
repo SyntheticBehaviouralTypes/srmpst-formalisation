@@ -13,10 +13,9 @@
 -- `t/unskip` is exactly "walk forward along a `¬P` run", which is what `Reach₀`
 -- records.
 --
--- What this does NOT give is the other direction. `⊢p → ⊢set` still goes
--- through `norm` (`Definitions/Typing/Norm.agda`, 830 lines, the only proof of
--- `⊢p → ⊢a`) followed by `alg⇒set`.  That is the last thing keeping `⊢a` in
--- the tree; see TODO.md §7 step 7.
+-- The other direction is `SetsNorm.agda`'s `typing⇒set`, also direct.  With
+-- the two together `⊢a` is gone: there are TWO systems, the declarative one
+-- and the set-based one, and nothing in between.
 
 open import Data.Nat using (ℕ; suc)
 
@@ -38,7 +37,7 @@ module Definitions.Typing.SetsDeclarative
 
   open import Definitions.Typing.Sets wb
   open import Definitions.Typing.SetsEquiv wb using (wait⇒skip)
-  open import Definitions.Typing.SetsAlg wb using (skip/map; _&_⊨_∶_)
+  open import Definitions.Typing.Properties wb using (skip/map)
 
   private
     variable
