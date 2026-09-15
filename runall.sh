@@ -75,8 +75,9 @@ done
 
 # Explicit list, not `*.agda`: after the 2026-08 restructure the roots are
 # no longer all at top level (`Definitions/Graph.agda` is parameterised by
-# `N` and lives under `Definitions/`).  `Check.agda` pulls in Check/Alg,
-# Check/Graph and Check/Network.
+# `N` and lives under `Definitions/`).  `Check.agda` pulls in Check/Wait,
+# Check/Sets, Check/Graph and Check/Network -- and through Check/Sets, the
+# whole Definitions/Typing/Sets* family, which is therefore covered here.
 
 ROOTS=(
     Definitions.agda

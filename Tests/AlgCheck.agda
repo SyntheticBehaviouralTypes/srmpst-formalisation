@@ -1,6 +1,6 @@
 {-# OPTIONS --guardedness #-}
 
--- Smoke tests for `Check/Alg.agda` — the decision procedure for `⊢a`, and
+-- Smoke tests for `Check/Sets.agda` — the decision procedure for `⊢a`, and
 -- through it for `⊢p`.  Every result below is *forced* (`T ⌊ … ⌋`), so this
 -- file compiling is the checker actually running, not just type-checking.
 --
@@ -27,7 +27,7 @@ open import Relation.Nullary.Decidable using (⌊_⌋; toWitness)
 open import Definitions.Expr using (s/unit; val; v/unit)
 import Definitions.Typing as Typing
 
-import Check.Alg
+import Check.Sets
 
 -- ══════════════════════════════════════════════════════════════════════
 --  Ex6 — the anchor-before-the-root counterexample
@@ -70,7 +70,7 @@ module Ex6 where
   wb = toWitness {a? = wellBehaved? Gr} tt
 
   open module M₆ = Typing.MPST wb hiding (Action; _⟶_; _#_; _<_>)
-  open module K₆ = Check.Alg.AlgCheck 4 Gr wb using (alg; tc?)
+  open module K₆ = Check.Sets.SetCheck 4 Gr wb using (alg; tc?)
 
   G L M H : State Gr
   G = zero
@@ -138,7 +138,7 @@ module SkipVar where
   wb = toWitness {a? = wellBehaved? Gr} tt
 
   open module M₃ = Typing.MPST wb hiding (Action; _⟶_; _#_; _<_>)
-  open module K₃ = Check.Alg.AlgCheck 3 Gr wb using (tc?)
+  open module K₃ = Check.Sets.SetCheck 3 Gr wb using (tc?)
 
   s K : State Gr
   s = zero

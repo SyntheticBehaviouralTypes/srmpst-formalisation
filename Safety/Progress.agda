@@ -16,117 +16,76 @@ open import Relation.Nullary using (yes; no)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; subst; sym)
 open import Definitions.Typing
-import Definitions.Typing.Algorithmic as Alg
 
 module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private
     module M = MPST wb
   open M
-  open Alg wb using (_&_⊢a_∶_; _&_⊢blocked_∶_; a/skip; a/if; a/end;
-                     blocked/send; blocked/recv; blocked/var; blocked/rec)
+  open import Definitions.Typing.Sets wb
+    using (_&_⊢_∶_; s/send; s/recv; s/if; s/end; s/var; s/rec; waitActive; waitStep; waitLeaf)
+  open import Definitions.Typing.SetsAlg wb
+    using (_&_⊨_∶_; ⊨⇒alg; alg⇒⊨; ⊨/if-inv; ⊨/rec-guarded; ⊨/end-inv)
   open M.Subst
   open import Definitions.Typing.Substitution wb
-  open import Definitions.Typing.Norm wb using (norm)
   open import Safety.Preservation wb
 
-  -- `⊢a` splits these differently from `⊢head`: the six-way case becomes a
-  -- three-way one on `⊢a` (`a/skip`/`a/if`/`a/end`) with the send/recv/rec
-  -- analysis pushed down into the `⊢blocked` leaf.  Two clauses that had to
-  -- be written out under `⊢head` vanish, because `MessageGuarded` has no
-  -- constructor for `∅`/`v`/`rec` and `⊢blocked` has none for `ifp` —
-  -- Agda discharges all four by coverage.
-  mutual
+  -- Over `⊢head` this was a six-way case; over `⊢a` a three-way one plus two
+  -- companions (`-skip` for the tree, `-blocked` for the leaf family).  Over
+  -- the set rules it is THREE CLAUSES AND NO COMPANIONS: the judgment is
+  -- syntax directed, so `MessageGuarded` already narrows it to send/recv/if,
+  -- and the tree walk is `waitActive` (`Definitions/Typing/Sets.agda`), stated
+  -- once for any leaf family instead of once per judgment.
+  guarded/active :
+    ∀ {γ δ G P Pr}
+      {Γ : Vec Sort γ}
+      {Δ : Vec Behav δ}
+    → MessageGuarded Pr
+    → Γ & Δ ⊨ P ◂ Pr ∶ G
+    → P ∈T G
 
-    guarded/active :
-      ∀ {γ δ G P Pr}
-        {Γ : Vec Sort γ}
-        {Δ : Vec Behav δ}
-      → MessageGuarded Pr
-      → Γ & Δ ⊢a P ◂ Pr ∶ G
-      → P ∈T G
-    guarded/active guarded (a/skip std) =
-      guarded/active-skip guarded std
-    guarded/active (mg/if mg₁ _) (a/if _ ttd _) =
-      guarded/active mg₁ ttd
+  guarded/active mg/send (_ , s/send _ _ _ sub , mem) =
+    waitActive (λ { (_ , gr , _) → in/send gr }) (sub mem)
 
-    guarded/active-skip :
-      ∀ {γ δ ξ G P Pr}
-        {Γ : Vec Sort γ}
-        {Δ : Vec Behav δ}
-        {Ξ : Vec Behav ξ}
-      → MessageGuarded Pr
-      → (Γ & Δ ⊢blocked_∶_) & Ξ ⊢skip P ◂ Pr ∶ G
-      → P ∈T G
-    guarded/active-skip guarded (skip/main bl) =
-      guarded/blocked guarded bl
-    guarded/active-skip guarded (skip/step gr _ ktd) =
-      in/later gr (guarded/active-skip guarded (ktd gr))
-    guarded/active-skip guarded (skip/cycle _ inT) =
-      inT
+  guarded/active mg/recv (_ , s/recv _ _ sub , mem) =
+    waitActive (λ { ((_ , _ , _ , gr) , _) → in/recv gr }) (sub mem)
 
-    guarded/blocked :
-      ∀ {γ δ G P Pr}
-        {Γ : Vec Sort γ}
-        {Δ : Vec Behav δ}
-      → MessageGuarded Pr
-      → Γ & Δ ⊢blocked P ◂ Pr ∶ G
-      → P ∈T G
-    guarded/blocked mg/send (blocked/send gr _ _) =
-      in/send gr
-    guarded/blocked mg/recv (blocked/recv gr _) =
-      in/recv gr
+  guarded/active (mg/if mg₁ _) (𝒮 , s/if _ ttd _ , mem) =
+    guarded/active mg₁ (𝒮 , ttd , mem)
 
-  mutual
+  -- Again one function where there were three.  `s/var` is impossible because
+  -- Safety is all `δ = 0`, so `X : Fin 0`; `s/rec` reproduces the old `h/rec`
+  -- argument — unfold the recursion, where the guarded body forces `P ∈T`.
+  -- `⊨/rec/unfold` (`Typing/Substitution.agda`) is the set-stated face of that
+  -- unfolding, and the `⊢p` round trip proving it stays confined to that
+  -- module, exactly as the `⊢a` face did.
+  inactive/done :
+    ∀ {G P Pr}
+    → P ∉T G
+    → [] & [] ⊨ P ◂ Pr ∶ G
+    → done/proc Pr
 
-    inactive/done :
-      ∀ {G P Pr}
-      → P ∉T G
-      → [] & [] ⊢a P ◂ Pr ∶ G
-      → done/proc Pr
-    inactive/done P∉G (a/skip std) =
-      inactive/done-skip P∉G std
-    inactive/done P∉G (a/if _ ttd ftd) =
-      done-if
-        (inactive/done P∉G ttd)
-        (inactive/done P∉G ftd)
-    inactive/done _ (a/end _) =
-      done-∅
+  inactive/done P∉G (_ , s/send _ _ _ sub , mem) =
+    ⊥-elim (P∉G (waitActive (λ { (_ , gr , _) → in/send gr }) (sub mem)))
 
-    inactive/done-skip :
-      ∀ {ξ G P Pr}
-        {Ξ : Vec Behav ξ}
-      → P ∉T G
-      → ([] & [] ⊢blocked_∶_) & Ξ ⊢skip P ◂ Pr ∶ G
-      → done/proc Pr
-    inactive/done-skip P∉G (skip/main bl) =
-      inactive/done-blocked P∉G bl
-    inactive/done-skip P∉G (skip/step gr _ ktd) =
-      inactive/done-skip (P∉G ∘ in/later gr) (ktd gr)
-    inactive/done-skip P∉G (skip/cycle _ inT) =
-      ⊥-elim (P∉G inT)
+  inactive/done P∉G (_ , s/recv _ _ sub , mem) =
+    ⊥-elim (P∉G (waitActive (λ { ((_ , _ , _ , gr) , _) → in/recv gr }) (sub mem)))
 
-    -- `blocked/var` is impossible: Safety is all `δ = 0`, so `X : Fin 0`.
-    -- `blocked/rec` reproduces the old `h/rec` argument — unfold the
-    -- recursion AT THE LEAF, where the guarded body forces `P ∈T`.
-    -- Entirely within `⊢a` as far as this file is concerned:
-    -- `a/rec/unfold` (`Typing/Substitution.agda`) is `⊢a`-stated, and the
-    -- `⊢p` round trip that proves it is confined to that module.
-    inactive/done-blocked :
-      ∀ {G P Pr}
-      → P ∉T G
-      → [] & [] ⊢blocked P ◂ Pr ∶ G
-      → done/proc Pr
-    inactive/done-blocked P∉G (blocked/send gr _ _) =
-      ⊥-elim (P∉G (in/send gr))
-    inactive/done-blocked P∉G (blocked/recv gr _) =
-      ⊥-elim (P∉G (in/recv gr))
-    inactive/done-blocked P∉G (blocked/var {X = ()} _ _)
-    inactive/done-blocked P∉G btd@(blocked/rec _ guarded _) =
-      ⊥-elim
-        (P∉G
-          (guarded/active
-            (guarded/subst-proc guarded)
-            (a/rec/unfold (a/skip (skip/main btd)))))
+  inactive/done P∉G (𝒮 , s/if _ ttd ftd , mem) =
+    done-if
+      (inactive/done P∉G (𝒮 , ttd , mem))
+      (inactive/done P∉G (𝒮 , ftd , mem))
+
+  inactive/done _ (_ , s/end _ , _) =
+    done-∅
+
+  inactive/done _ (_ , s/var {X = ()} _ , _)
+
+  inactive/done P∉G td@(_ , s/rec _ _ _ , _) =
+    ⊥-elim
+      (P∉G
+        (guarded/active
+          (guarded/subst-proc (⊨/rec-guarded td))
+          (⊨/rec/unfold td)))
 
   data SessionStatus
     (M : Session)
@@ -174,50 +133,35 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       ; (fsuc i) → done i
       }
 
-  mutual
+  -- One function where there were three (`head/status`, `skip/status`,
+  -- `blocked/status`): the process form picks the rule, and the two
+  -- communication rules both reduce to "the root steps", which is `waitStep`.
+  head/status :
+    ∀ {I M G P Pr}
+      {Ps : Vec Part I}
+    → SessionStatus M G Ps
+    → M [ P ]= Pr
+    → [] & [] ⊨ P ◂ Pr ∶ G
+    → SessionStatus M G (P ∷ Ps)
 
-    head/status :
-      ∀ {I M G P Pr}
-        {Ps : Vec Part I}
-      → SessionStatus M G Ps
-      → M [ P ]= Pr
-      → [] & [] ⊢a P ◂ Pr ∶ G
-      → SessionStatus M G (P ∷ Ps)
-    head/status tail proc≡ (a/skip std) =
-      skip/status tail proc≡ std
-    head/status _ proc≡ (a/if etd _ _) =
-      ss/if etd proc≡
-    head/status tail _ (a/end done) =
-      status/cons done tail
+  head/status _ _ (_ , s/send _ _ _ sub , mem)
+    with waitStep (λ { (_ , gr , _) → _ , _ , gr }) (sub mem)
+  ... | _ , _ , gr = ss/step gr
 
-    -- `Ξ = []` kills `skip/cycle` (`X : Fin 0`), exactly as it did for
-    -- `⊢hskip`, so this still needs only the two clauses.
-    skip/status :
-      ∀ {I M G P Pr}
-        {Ps : Vec Part I}
-      → SessionStatus M G Ps
-      → M [ P ]= Pr
-      → ([] & [] ⊢blocked_∶_) & [] ⊢skip P ◂ Pr ∶ G
-      → SessionStatus M G (P ∷ Ps)
-    skip/status tail proc≡ (skip/main bl) =
-      blocked/status tail proc≡ bl
-    skip/status _ _ (skip/step gr _ _) =
-      ss/step gr
+  head/status _ _ (_ , s/recv _ _ sub , mem)
+    with waitStep (λ { ((_ , _ , _ , gr) , _) → _ , _ , gr }) (sub mem)
+  ... | _ , _ , gr = ss/step gr
 
-    blocked/status :
-      ∀ {I M G P Pr}
-        {Ps : Vec Part I}
-      → SessionStatus M G Ps
-      → M [ P ]= Pr
-      → [] & [] ⊢blocked P ◂ Pr ∶ G
-      → SessionStatus M G (P ∷ Ps)
-    blocked/status _ _ (blocked/send gr _ _) =
-      ss/step gr
-    blocked/status _ _ (blocked/recv gr _) =
-      ss/step gr
-    blocked/status _ _ (blocked/var {X = ()} _ _)
-    blocked/status _ proc≡ (blocked/rec _ _ _) =
-      ss/rec proc≡
+  head/status _ proc≡ (_ , s/if etd _ _ , _) =
+    ss/if etd proc≡
+
+  head/status tail _ (_ , s/end done , mem) =
+    status/cons (done mem) tail
+
+  head/status _ _ (_ , s/var {X = ()} _ , _)
+
+  head/status _ proc≡ (_ , s/rec _ _ _ , _) =
+    ss/rec proc≡
 
   session/status :
     ∀ {I M G}
@@ -231,8 +175,8 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   session/status {M = M} (P ∷ Ps) M⊢G =
     head/status
       (session/status Ps M⊢G)
-      (lookup⇒[]= _ _ refl)
-      (norm (M⊢G P) skip/refl)
+      (lookup⇒[]= P M refl)
+      (⊨/lookup M⊢G (lookup⇒[]= P M refl))
 
   all-parts/end :
     ∀ {G}
@@ -257,152 +201,115 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   ... | inj₂ e⇓false =
     nothing , _ , s/if/false P proc≡ e⇓false
 
-  mutual
+  -- Three functions become one, by the same route as `head/status`: `Q` is
+  -- ACTIVE at `G` (it is `gr`'s receiver), so `waitLeaf` says the `Wait` can
+  -- only be a leaf, and the leaf is the old `⊢blocked` case analysis.
+  receiver/head-progress :
+    ∀ {M G G′ P Q I}
+      {i : Fin (suc I)}
+      {S : Sort}
+      {E : Exp 0}
+      {Pr : Proc 0 0}
+      {QPr : Proc 0 0}
+    → ⊢s M ∶ G
+    → [] ⊢e E ∶ S
+    → G -< P ⟶ Q # i < S > >-> G′
+    → M [ P ]= Q ! i < E >∙ Pr
+    → M [ Q ]= QPr
+    → [] & [] ⊨ Q ◂ QPr ∶ G
+    → ∃[ α ] ∃[ M′ ] M [ α ]⇒ M′
 
-    receiver/head-progress :
-      ∀ {M G G′ P Q I}
-        {i : Fin (suc I)}
-        {S : Sort}
-        {E : Exp 0}
-        {Pr : Proc 0 0}
-        {QPr : Proc 0 0}
-      → ⊢s M ∶ G
-      → [] ⊢e E ∶ S
-      → G -< P ⟶ Q # i < S > >-> G′
-      → M [ P ]= Q ! i < E >∙ Pr
-      → M [ Q ]= QPr
-      → [] & [] ⊢a Q ◂ QPr ∶ G
-      → ∃[ α ] ∃[ M′ ] M [ α ]⇒ M′
-    receiver/head-progress M⊢G etd gr send≡ recv≡ (a/skip std) =
-      receiver/hskip-progress M⊢G etd gr send≡ recv≡ std
-    receiver/head-progress M⊢G etd gr send≡ recv≡ (a/if etd′ _ _) =
-      if/progress etd′ recv≡
-    receiver/head-progress M⊢G etd gr send≡ recv≡ (a/end done) =
-      ⊥-elim (done (in/recv gr))
+  -- `Q` cannot be sending here: the two actions would share a comm, making
+  -- `Q` its own sender and receiver.
+  receiver/head-progress M⊢G etd gr send≡ recv≡ (_ , s/send _ _ _ sub , mem)
+    with waitLeaf gr (∈R refl) (sub mem)
+  ... | _ , gr′ , _
+    with recv-overlap⇒same-comm gr gr′ (∈S refl)
+  ...   | refl =
+    ⊥-elim (sender≢receiver gr refl)
 
-    receiver/hskip-progress :
-      ∀ {M G G′ P Q I}
-        {i : Fin (suc I)}
-        {S : Sort}
-        {E : Exp 0}
-        {Pr : Proc 0 0}
-        {QPr : Proc 0 0}
-      → ⊢s M ∶ G
-      → [] ⊢e E ∶ S
-      → G -< P ⟶ Q # i < S > >-> G′
-      → M [ P ]= Q ! i < E >∙ Pr
-      → M [ Q ]= QPr
-      → ([] & [] ⊢blocked_∶_) & [] ⊢skip Q ◂ QPr ∶ G
-      → ∃[ α ] ∃[ M′ ] M [ α ]⇒ M′
-    receiver/hskip-progress M⊢G etd gr send≡ recv≡ (skip/main bl) =
-      receiver/blocked-progress M⊢G etd gr send≡ recv≡ bl
-    receiver/hskip-progress M⊢G etd gr send≡ recv≡
-      (skip/step _ Q∉G _) =
-      ⊥-elim (∉c→¬∈c (Q∉G gr) (∈R refl))
+  receiver/head-progress {P = P} {Q = Q} {i = i}
+    M⊢G etd gr send≡ recv≡ (_ , s/recv _ _ sub , mem)
+    with waitLeaf gr (∈R refl) (sub mem)
+  ... | (_ , _ , _ , gr′) , _
+    with recv-overlap⇒same-comm gr gr′ (∈R refl)
+  ...   | refl
+    with step-arity-deterministic gr gr′
+  ...     | refl
+    with eval-exp etd
+  ...       | V , e⇓v =
+    just (P ⟶ Q # i < sort/value V >) , _ ,
+    s/comm P Q send≡ e⇓v recv≡
 
-    receiver/blocked-progress :
-      ∀ {M G G′ P Q I}
-        {i : Fin (suc I)}
-        {S : Sort}
-        {E : Exp 0}
-        {Pr : Proc 0 0}
-        {QPr : Proc 0 0}
-      → ⊢s M ∶ G
-      → [] ⊢e E ∶ S
-      → G -< P ⟶ Q # i < S > >-> G′
-      → M [ P ]= Q ! i < E >∙ Pr
-      → M [ Q ]= QPr
-      → [] & [] ⊢blocked Q ◂ QPr ∶ G
-      → ∃[ α ] ∃[ M′ ] M [ α ]⇒ M′
-    receiver/blocked-progress M⊢G etd gr send≡ recv≡ (blocked/send gr′ _ _)
-      with recv-overlap⇒same-comm gr gr′ (∈S refl)
-    ... | refl =
-      ⊥-elim (sender≢receiver gr refl)
-    receiver/blocked-progress {P = P} {Q = Q} {i = i}
-      M⊢G etd gr send≡ recv≡ (blocked/recv gr′ _)
-      with recv-overlap⇒same-comm gr gr′ (∈R refl)
-    ... | refl
-      with step-arity-deterministic gr gr′
-    ...   | refl
-      with eval-exp etd
-    ...     | V , e⇓v =
-      just (P ⟶ Q # i < sort/value V >) , _ ,
-      s/comm P Q send≡ e⇓v recv≡
-    receiver/blocked-progress M⊢G etd gr send≡ recv≡
-      (blocked/var {X = ()} _ _)
-    receiver/blocked-progress {Q = Q} M⊢G etd gr send≡ recv≡
-      (blocked/rec _ _ _) =
-      nothing , _ , s/rec Q recv≡
+  receiver/head-progress M⊢G etd gr send≡ recv≡ (_ , s/if etd′ _ _ , _) =
+    if/progress etd′ recv≡
 
-    sender/head-progress :
-      ∀ {M G G′ P Q I}
-        {i : Fin (suc I)}
-        {S : Sort}
-        {Pr : Proc 0 0}
-      → ⊢s M ∶ G
-      → G -< P ⟶ Q # i < S > >-> G′
-      → M [ P ]= Pr
-      → [] & [] ⊢a P ◂ Pr ∶ G
-      → ∃[ β ] ∃[ M′ ] M [ β ]⇒ M′
-    sender/head-progress M⊢G gr send≡ (a/skip std) =
-      sender/hskip-progress M⊢G gr send≡ std
-    sender/head-progress M⊢G gr send≡ (a/if etd _ _) =
-      if/progress etd send≡
-    sender/head-progress M⊢G gr send≡ (a/end done) =
-      ⊥-elim (done (in/send gr))
+  receiver/head-progress M⊢G etd gr send≡ recv≡ (_ , s/end done , mem) =
+    ⊥-elim (done mem (in/recv gr))
 
-    sender/hskip-progress :
-      ∀ {M G G′ P Q I}
-        {i : Fin (suc I)}
-        {S : Sort}
-        {Pr : Proc 0 0}
-      → ⊢s M ∶ G
-      → G -< P ⟶ Q # i < S > >-> G′
-      → M [ P ]= Pr
-      → ([] & [] ⊢blocked_∶_) & [] ⊢skip P ◂ Pr ∶ G
-      → ∃[ β ] ∃[ M′ ] M [ β ]⇒ M′
-    sender/hskip-progress M⊢G gr send≡ (skip/main bl) =
-      sender/blocked-progress M⊢G gr send≡ bl
-    sender/hskip-progress M⊢G gr send≡ (skip/step _ P∉G _) =
-      ⊥-elim (∉c→¬∈c (P∉G gr) (∈S refl))
+  receiver/head-progress M⊢G etd gr send≡ recv≡ (_ , s/var {X = ()} _ , _)
 
-    sender/blocked-progress :
-      ∀ {M G G′ P Q I}
-        {i : Fin (suc I)}
-        {S : Sort}
-        {Pr : Proc 0 0}
-      → ⊢s M ∶ G
-      → G -< P ⟶ Q # i < S > >-> G′
-      → M [ P ]= Pr
-      → [] & [] ⊢blocked P ◂ Pr ∶ G
-      → ∃[ β ] ∃[ M′ ] M [ β ]⇒ M′
-    sender/blocked-progress M⊢G gr send≡ (blocked/send {Q = Q′} gr′ etd _) =
-      receiver/head-progress
-        M⊢G
-        etd
-        gr′
-        send≡
-        (lookup⇒[]= _ _ refl)
-        (norm (M⊢G Q′) skip/refl)
-    sender/blocked-progress M⊢G gr send≡ (blocked/recv gr′ _)
-      with recv-overlap⇒same-comm gr′ gr (∈S refl)
-    ... | refl =
-      ⊥-elim (sender≢receiver gr refl)
-    sender/blocked-progress M⊢G gr send≡ (blocked/var {X = ()} _ _)
-    sender/blocked-progress {P = P} M⊢G gr send≡ (blocked/rec _ _ _) =
-      nothing , _ , s/rec P send≡
+  receiver/head-progress {Q = Q}
+    M⊢G etd gr send≡ recv≡ (_ , s/rec _ _ _ , _) =
+    nothing , _ , s/rec Q recv≡
+
+  -- Same shape once more: `P` is active at `G` (it is `gr`'s sender), so
+  -- `waitLeaf` collapses the tree walk.
+  sender/head-progress :
+    ∀ {M G G′ P Q I}
+      {i : Fin (suc I)}
+      {S : Sort}
+      {Pr : Proc 0 0}
+    → ⊢s M ∶ G
+    → G -< P ⟶ Q # i < S > >-> G′
+    → M [ P ]= Pr
+    → [] & [] ⊨ P ◂ Pr ∶ G
+    → ∃[ β ] ∃[ M′ ] M [ β ]⇒ M′
+
+  -- `etd` is a premise of `s/send` itself, not of the leaf — the sort is
+  -- lifted out of the set (TODO.md §3), so it is available without unfolding
+  -- the `Wait` at all.
+  sender/head-progress {M = M} M⊢G gr send≡
+    (_ , s/send {Q = Q′} etd _ _ sub , mem)
+    with waitLeaf gr (∈S refl) (sub mem)
+  ... | _ , gr′ , _ =
+    receiver/head-progress
+      M⊢G
+      etd
+      gr′
+      send≡
+      (lookup⇒[]= Q′ M refl)
+      (⊨/lookup M⊢G (lookup⇒[]= Q′ M refl))
+
+  sender/head-progress M⊢G gr send≡ (_ , s/recv _ _ sub , mem)
+    with waitLeaf gr (∈S refl) (sub mem)
+  ... | (_ , _ , _ , gr′) , _
+    with recv-overlap⇒same-comm gr′ gr (∈S refl)
+  ...   | refl =
+    ⊥-elim (sender≢receiver gr refl)
+
+  sender/head-progress M⊢G gr send≡ (_ , s/if etd _ _ , _) =
+    if/progress etd send≡
+
+  sender/head-progress M⊢G gr send≡ (_ , s/end done , mem) =
+    ⊥-elim (done mem (in/send gr))
+
+  sender/head-progress M⊢G gr send≡ (_ , s/var {X = ()} _ , _)
+
+  sender/head-progress {P = P} M⊢G gr send≡ (_ , s/rec _ _ _ , _) =
+    nothing , _ , s/rec P send≡
 
   step/progress :
     ∀ {M G G′ α}
     → ⊢s M ∶ G
     → G -< α >-> G′
     → ∃[ β ] ∃[ M′ ] M [ β ]⇒ M′
-  step/progress {α = P ⟶ Q # i < S >} M⊢G gr =
+  step/progress {M = M} {α = P ⟶ Q # i < S >} M⊢G gr =
     sender/head-progress
       M⊢G
       gr
-      (lookup⇒[]= _ _ refl)
-      (norm (M⊢G P) skip/refl)
+      (lookup⇒[]= P M refl)
+      (⊨/lookup M⊢G (lookup⇒[]= P M refl))
 
   progress :
     ∀ {M G}
@@ -421,5 +328,5 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     inj₁ λ P →
       inactive/done
         (all-parts/end ended P)
-        -- `⊢s` gives `⊢p`; go straight to `⊢a` and stay there.
-        (norm (M⊢G P) skip/refl)
+        -- `⊢s` gives `⊢p`; go straight to the set judgment and stay there.
+        (⊨/lookup M⊢G (lookup⇒[]= P M refl))

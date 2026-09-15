@@ -28,6 +28,7 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
   -- For `a/rec/unfold` at the bottom of this file.  `Norm.agda` does not
   -- import this module, so there is no cycle.
   open import Definitions.Typing.Algorithmic wb using (_&_⊢a_∶_; alg/typing)
+  open import Definitions.Typing.SetsAlg wb using (_&_⊨_∶_; ⊨⇒alg; alg⇒⊨)
   open import Definitions.Typing.Norm wb using (norm)
 
   private
@@ -483,3 +484,24 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
     → (Γ - X) & Δ ⊢a P ◂ [ E / X ]e Pr ∶ G
   alg/subst-expr etd td =
     norm (typing/subst-expr etd (alg/typing td)) skip/refl
+
+  -- The same two facts as the SET judgment sees them.  `Safety/` imports only
+  -- these; the round trip stays confined here, exactly as it was for the `⊢a`
+  -- faces above.  When `⊢a` goes these are the two lemmas that need a direct
+  -- proof — everything else in `Safety/` is already native.
+
+  ⊨/rec/unfold :
+    ∀ {G P Pr}
+    → [] & [] ⊨ P ◂ rec Pr ∶ G
+    → [] & [] ⊨ P ◂ unfold/proc Pr ∶ G
+  ⊨/rec/unfold td = alg⇒⊨ (a/rec/unfold (⊨⇒alg td))
+
+  ⊨/subst-expr :
+    ∀ {γ δ G P E Pr}
+      {Γ : Vec Sort (suc γ)}
+      {Δ : Vec Behav δ}
+      {X : Fin (suc γ)}
+    → (Γ - X)     ⊢e E                ∶ lu Γ X
+    → Γ       & Δ ⊨ P ◂ Pr           ∶ G
+    → (Γ - X) & Δ ⊨ P ◂ [ E / X ]e Pr ∶ G
+  ⊨/subst-expr etd td = alg⇒⊨ (alg/subst-expr etd (⊨⇒alg td))

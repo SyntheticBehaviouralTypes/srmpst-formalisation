@@ -1,10 +1,16 @@
 {-# OPTIONS --guardedness #-}
 
--- TODO.md §7 step 4: `Wait ⟹ ⊢skip` is FALSE at the abstract level.
+-- TODO.md §7 step 4/4b.  This file was the COUNTEREXAMPLE that killed the
+-- ν-based `Wait`; it is now the REGRESSION TEST that the μ-based one is right.
 --
--- This is the counterexample, mechanized: a concrete `BTheory` with all ten
--- `WellBehaved` axioms discharged, a state `g 0` with `Wait P 𝒮 (g 0)`, and a
--- proof that NO `⊢skip` derivation exists at `g 0`.
+-- A concrete `BTheory` with all ten `WellBehaved` axioms discharged, in which
+-- no `⊢skip` derivation exists at `g 0`.  The old `Wait` (a ν over
+-- `Pred Behav`) held at `g 0` anyway, which made `Wait ⟹ ⊢skip`, hence
+-- `⊢ ⟹ ⊢set`, false.  `WaitV`'s visited set fixes that, and `ce/no-wait`
+-- below is the check: `Wait` now fails at `g 0` too.
+--
+-- Keep this file.  It is the only thing in the tree that would catch a
+-- "simplification" of `WaitV` back to a fixpoint over states alone.
 --
 -- The theory is an infinite chain
 --
@@ -17,11 +23,13 @@
 -- `𝒮` is "`P` is immediately active", so `e ∈ 𝒮` and no `g i ∈ 𝒮`.  It is
 -- `~`-closed (`𝒮/closed`), so this is not an artefact of dropping §5.2.
 --
--- `Wait P 𝒮 (g 0)` holds coinductively: every `g i` steps, the `e` branch is an
--- `𝒮`-leaf, and the `g (suc i)` branch is a guard leaf (`P ∈T (g i)` via
--- `b i` then `p`).  But no finite `⊢skip` tree exists: `skip/main` needs
--- `𝒮 (g i)`, false; `skip/cycle` needs a bisimilar ancestor, and the `g i` are
--- pairwise NON-bisimilar; so `skip/step` must descend forever.
+-- No finite `⊢skip` tree exists at `g 0`: `skip/main` needs `𝒮 (g i)`, false;
+-- `skip/cycle` needs a bisimilar ancestor, and the `g i` are pairwise
+-- NON-bisimilar; so `skip/step` would have to descend forever.  The old `Wait`
+-- accepted it coinductively — every `g i` steps, the `e` branch is an
+-- `𝒮`-leaf, and the `g (suc i)` branch was a guard leaf, justified by
+-- `P ∈T (g i)` via `b i` then `p`.  That is deferring forever on a promise the
+-- environment never has to keep.
 --
 -- What makes them non-bisimilar is the ARITY: at `g i` the branching is over
 -- `Fin (suc (suc i))`, so `a i` and `a j` are different actions for `i ≢ j`.
@@ -282,6 +290,7 @@ module Tests.WaitNotSkip where
       diam sP     sP     d = ⊥-elim (_∉c_.∉R (proj₁ d) refl)
 
   open import Definitions.Typing.Sets wb
+  open import Definitions.Typing.SetsEquiv wb using (wait⇒skip)
   open MPST wb using (_&_⊢skip_∶_; skip/main; skip/step; skip/cycle)
 
   ---------------------------------------------------------------------------
@@ -311,25 +320,6 @@ module Tests.WaitNotSkip where
   P∈T/g : ∀ i → P ∈T (g i)
   P∈T/g i =
     bA i ∷ pA ∷ [] , z , tr/step (sB i) (tr/step sP tr/refl) , there (here (∈S refl))
-
-  ---------------------------------------------------------------------------
-  -- `Wait P 𝒮 (g 0)` holds
-  ---------------------------------------------------------------------------
-
-  mutual
-
-    waitG : ∀ i → Wait P 𝒮 (g i)
-    force (waitG i) = r/step⁺ P/na (sA i) (contG i)
-
-    contG :
-      ∀ i {u β}
-      → g i ⇒ β ⇒ u
-      → Reach∀ P (λ v → 𝒮 v ⊎ (P ∈T v × Wait P 𝒮 v)) u
-    contG i (sA .i) = r/leaf (inj₂ (P∈T/g (suc i) , waitG (suc i)))
-    contG i (sB .i) = r/leaf (inj₁ e∈𝒮)
-
-  wait/g0 : Wait P 𝒮 (g 0)
-  wait/g0 = waitG 0
 
   ---------------------------------------------------------------------------
   -- No `⊢skip` derivation at `g 0`
@@ -373,15 +363,19 @@ module Tests.WaitNotSkip where
       ... | refl = refl
 
   ---------------------------------------------------------------------------
-  -- The counterexample
+  -- The regression test
   ---------------------------------------------------------------------------
 
-  -- `Wait` holds at `g 0` …
-  ce/wait : Wait P 𝒮 (g 0)
-  ce/wait = wait/g0
-
-  -- … while no `⊢skip` derivation does.  So `Wait ⟹ ⊢skip` is false, and no
-  -- amount of care in the RULES can recover it: the two objects genuinely
-  -- differ on this theory.
+  -- No `⊢skip` derivation at `g 0`: the `g i` are pairwise non-bisimilar, so
+  -- `skip/cycle` can never fire and `skip/step` would have to descend forever.
   ce/no-skip : ¬ (Lf & [] ⊢skip P ◂ Pr ∶ g 0)
   ce/no-skip = noSkip (λ ())
+
+  -- … and `Wait` agrees.  This is the statement that the OLD, ν-based `Wait`
+  -- got wrong: it held at `g 0` (by `force w = r/step⁺ P/na (sA i) …`,
+  -- deferring forever on the strength of `P ∈T (g i)`), which made
+  -- `Wait ⟹ ⊢skip` — hence `⊢ ⟹ ⊢set` — false.  `WaitV`'s visited set fixes
+  -- it: a cycle must point at a state actually on the path, and here there is
+  -- never one.
+  ce/no-wait : ¬ Wait P 𝒮 (g 0)
+  ce/no-wait w = ce/no-skip (wait⇒skip P Pr 𝒮 w)

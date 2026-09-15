@@ -7,7 +7,7 @@ open import Data.Vec
   using (Vec; []; _∷_; _[_]=_; _[_]≔_; lookup)
 open import Data.Vec.Properties
   using ([]=⇒lookup; lookup∘update; lookup∘update′)
-open import Data.Product using (∃-syntax; _,_; _×_; proj₁; proj₂)
+open import Data.Product using (Σ-syntax; ∃-syntax; _,_; _×_; proj₁; proj₂)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.List.Relation.Unary.Any using (here; there)
 open import Function using (_∘_)
@@ -15,21 +15,25 @@ open import Data.Maybe.Base using (Maybe; just; nothing)
 open import Relation.Nullary using (yes; no)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; subst)
+open import Data.Empty using (⊥)
 open import Definitions.Typing
-import Definitions.Typing.Algorithmic as Alg
 
 module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private
     module M = MPST wb
   open M
-  open Alg wb using (_&_⊢a_∶_; _&_⊢blocked_∶_; a/skip; a/if; a/end;
-                     blocked/send; blocked/recv; blocked/var; blocked/rec;
-                     alg/typing)
   open M.Subst
   open import Definitions.Typing.Substitution wb
+  open import Definitions.Typing.Sets wb
+    using ( _&_⊢_∶_; s/send; s/recv; s/if; s/end; s/var; s/rec
+          ; Pred; Closed; WaitV; wv/leaf; wv/cycle; wv/step
+          ; waitLeaf; waitV/unfold-top )
+  open import Definitions.Typing.SetsAlg wb
+    using (_&_⊨_∶_; ⊨⇒alg; alg⇒⊨; ⊨/if-inv; ⊨/rec-guarded; ⊨/end-inv)
+  open import Definitions.Typing.SetsDeclarative wb using (⊨⇒typing)
   open import Definitions.Typing.Properties wb
   open import Definitions.Typing.Norm wb
-    using (norm; a/if/inv; a/rec/guarded; bskip/unfold-top)
+    using (norm)
 
   td/lookup :
     ∀ {M G P Pr}
@@ -39,15 +43,17 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   td/lookup {P = P} ts luP with ts P
   ... | ptd rewrite []=⇒lookup luP = ptd
 
-  -- THE BOUNDARY.  `⊢s` is stated over `⊢p`, so this is where `⊢p` is
-  -- allowed to appear — and it is immediately left behind.  Everything
-  -- downstream in `Safety/*` consumes `alg/lookup`, never `td/lookup`.
-  alg/lookup :
+  -- THE BOUNDARY, and the last place in `Safety/` that knows `⊢a` exists —
+  -- it does not even appear in the type.  `⊢s` is stated over `⊢p`, so coming
+  -- IN needs `⊢p → ⊢set`, and the only proof of that direction is still
+  -- `norm` (`⊢p → ⊢a`, 830 lines) followed by `alg⇒set`.  Going OUT is direct,
+  -- via `⊨⇒typing`.  Everything downstream consumes `⊨/lookup`.
+  ⊨/lookup :
     ∀ {M G P Pr}
     → ⊢s M ∶ G
     → M [ P ]= Pr
-    → [] & [] ⊢a P ◂ Pr ∶ G
-  alg/lookup ts luP = norm (td/lookup ts luP) skip/refl
+    → [] & [] ⊨ P ◂ Pr ∶ G
+  ⊨/lookup ts luP = alg⇒⊨ (norm (td/lookup ts luP) skip/refl)
 
   ⊢s-update :
     ∀ (M : Session) {G P Pr}
@@ -91,132 +97,139 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     rewrite lookup∘update′ R≢P M Pr =
     -- R is uninvolved, so its typing rides the step across.  `norm` does
     -- in one call what `head/typing ∘ td/head` did in two.
-    alg/typing (norm (M⊢G R) (skip/one gr (R≢P , R≢Q)))
+    ⊨⇒typing (alg⇒⊨ (norm (M⊢G R) (skip/one gr (R≢P , R≢Q))))
 
-  mutual
+  -- `P` is the sender, so `P` is ACTIVE at `G` and `waitLeaf` says the `Wait`
+  -- can only be a leaf.  That is the whole of what `send/cont-skip` was.
+  send/cont :
+    ∀ {G G′ P Q I}
+      {i : Fin (suc I)}
+      {S : Sort}
+      {E : Exp 0}
+      {Pr : Proc 0 0}
+    → [] & [] ⊨ P ◂ Q ! i < E >∙ Pr ∶ G
+    → G -< P ⟶ Q # i < S > >-> G′
+    → [] ⊢e E ∶ S × [] & [] ⊨ P ◂ Pr ∶ G′
 
-    -- Note the continuation comes back as `⊢a` with no conversion: under
-    -- `⊢head` this clause had to call `head/typing td′`, because `h/send`
-    -- stores a `⊢head` and the caller wanted `⊢p`.  `blocked/send` stores
-    -- an `⊢a` already.
-    send/cont :
-      ∀ {G G′ P Q I}
-        {i : Fin (suc I)}
-        {S : Sort}
-        {E : Exp 0}
-        {Pr : Proc 0 0}
-      → [] & [] ⊢a P ◂ Q ! i < E >∙ Pr ∶ G
-      → G -< P ⟶ Q # i < S > >-> G′
-      → [] ⊢e E ∶ S × [] & [] ⊢a P ◂ Pr ∶ G′
+  send/cont (_ , s/send etd td _ sub , mem) gr
+    with waitLeaf gr (∈S refl) (sub mem)
+  ... | _ , gr₀ , 𝒯u′
+    with step-sort-deterministic gr gr₀
+  ...   | refl
+    rewrite step-deterministic gr gr₀ =
+    etd , (_ , td , 𝒯u′)
 
-    send/cont (a/skip std) gr =
-      send/cont-skip std gr
+  -- Same, on the receiving side; `conts` turns the leaf's obligation into the
+  -- branch's own set derivation.
+  recv/cont :
+    ∀ {G G′ P Q I}
+      {i : Fin (suc I)}
+      {T : Sort}
+      {Br : Vec (Proc 1 0) (suc I)}
+    → [] & [] ⊨ Q ◂ Σ P ？· Br ∶ G
+    → (gr : G -< P ⟶ Q # i < T > >-> G′)
+    → (T ∷ []) & [] ⊨ Q ◂ lookup Br i ∶ G′
 
-    send/cont-skip :
-      ∀ {G G′ P Q I}
-        {i : Fin (suc I)}
-        {S : Sort}
-        {E : Exp 0}
-        {Pr : Proc 0 0}
-      → ([] & [] ⊢blocked_∶_) & [] ⊢skip P ◂ Q ! i < E >∙ Pr ∶ G
-      → G -< P ⟶ Q # i < S > >-> G′
-      → [] ⊢e E ∶ S × [] & [] ⊢a P ◂ Pr ∶ G′
+  recv/cont (_ , s/recv conts _ sub , mem) gr
+    with waitLeaf gr (∈R refl) (sub mem)
+  ... | _ , k =
+    _ , conts (k gr) , k gr
 
-    send/cont-skip (skip/main (blocked/send gr₀ etd td′)) gr
-      with step-sort-deterministic gr gr₀
-    ... | refl
-      rewrite step-deterministic gr gr₀ =
-      etd , td′
-    send/cont-skip (skip/step gr′ na ktd) gr =
-      ⊥-elim (∉c→¬∈c (na gr) (∈S refl))
-
-  -- The two-sided readiness argument.
+  -- ══════════════════════════════════════════════════════════════════
+  --  The two-sided readiness argument
+  -- ══════════════════════════════════════════════════════════════════
   --
-  -- Under `⊢head` this was FIVE functions in two mutual blocks
-  -- (`comm/ready`, `-skip`, `-or-∈T`, `-from-∈T`, `-from-∈T-skip`), and
-  -- the reason was `h/skip`: a `skip/main` leaf could be *another*
-  -- `h/skip`, so each side needed a leaf/tree pair, and the leaf case had
-  -- to re-enter the tree case with a fresh, unrelated `P ∈T G` witness —
-  -- which is what forced `-from-∈T` to be kept separate from `comm/ready`
-  -- in the first place.
+  -- Under `⊢head` this was FIVE functions in two mutual blocks; under `⊢a`
+  -- three.  Over the set rules it is still three, but they are stated over
+  -- ARBITRARY leaf families rather than over the judgment, so the send/recv
+  -- specifics enter only as the two projections `fP`/`fQ` supplied by
+  -- `comm/ready` at the bottom.
   --
-  -- `⊢a` removes the nesting outright: a `skip/main` leaf is a
-  -- `blocked/send` or `blocked/recv`, never another tree.  So there are
-  -- three functions, none of them mutual, and the leaf cases just return.
+  -- The re-rooting that `bskip/unfold-top` did is `waitV/unfold-top`, and the
+  -- `Closed` it needs is the `tclosed` premise of `s/send`/`s/recv`.
 
-  -- The fold path: a cycle WAS hit on P's side, so walk the `P ∈T G`
-  -- witness instead, decreasing on it and folding both trees through
-  -- `bskip/unfold-top` in lockstep.  `Ξ = []` throughout, so `skip/cycle`
-  -- is absurd on P's side.
-  comm/ready-from-∈T :
+  -- The fast path: drive P's side structurally, carrying Q's along and
+  -- advancing it by the SAME edge at every step.  `no-new-comm/step` pushes a
+  -- communication found one level down back to the current state.
+  comm/ready-or-∈T :
     ∀ {G P Q I}
       {i : Fin (suc I)}
-      {E : Exp 0}
-      {Pr : Proc 0 0}
-      {Br : Vec (Proc 1 0) (suc I)}
-    → ([] & [] ⊢blocked_∶_) & [] ⊢skip P ◂ Q ! i < E >∙ Pr ∶ G
-    → P ∈T G
-    → ([] & [] ⊢blocked_∶_) & [] ⊢skip Q ◂ Σ P ？· Br ∶ G
-    → ∃[ T ] ∃[ G′ ] G -< P ⟶ Q # i < T > >-> G′
-
-  comm/ready-from-∈T (skip/main (blocked/send gr _ _)) _ _ =
-    _ , _ , gr
-
-  comm/ready-from-∈T
-    (skip/step gr na ktdP) (_ , H , tr/step gr' tr , here px) _ =
-    ⊥-elim (∉c→¬∈c (na gr') px)
-
-  comm/ready-from-∈T
-    (skip/step gr na ktdP) _ (skip/main (blocked/recv grQ _)) =
-    ⊥-elim (∉c→¬∈c (na grQ) (∈S refl))
-
-  comm/ready-from-∈T
-    stdP@(skip/step gr na ktdP)
-    (_ , H , tr/step gr' tr , there mem)
-    stdQ@(skip/step grQ Q∉G ktdQ) =
-    let stdP′ = bskip/unfold-top stdP (ktdP gr')
-        stdQ′ = bskip/unfold-top stdQ (ktdQ gr')
-        T , _ , grβ =
-          comm/ready-from-∈T stdP′ (_ , H , tr , mem) stdQ′
-        G′ , gr″ =
-          no-new-comm/step gr' (na gr') (Q∉G gr') grβ
-    in T , G′ , gr″
-
-  comm/ready-from-∈T (skip/cycle {X = ()} _ _) _ _
-
-  -- The fast path: drive P's side structurally (`ktdP gr` is a genuine
-  -- subterm), carrying Q's tree along and advancing it by the SAME edge at
-  -- every step.  `no-new-comm/step` pushes a communication found one level
-  -- down back to the current state.
-  comm/ready-or-∈T :
-    ∀ {ξ G P Q I}
-      {Ξ : Vec Behav ξ}
-      {i : Fin (suc I)}
-      {E : Exp 0}
-      {Pr : Proc 0 0}
-      {Br : Vec (Proc 1 0) (suc I)}
-    → ([] & [] ⊢blocked_∶_) & Ξ ⊢skip P ◂ Q ! i < E >∙ Pr ∶ G
-    → ([] & [] ⊢blocked_∶_) & [] ⊢skip Q ◂ Σ P ？· Br ∶ G
+      {S : Sort}
+      {𝒮P 𝒮Q V : Pred}
+    → (∀ {u} → 𝒮P u → ∃[ u′ ] (u -< P ⟶ Q # i < S > >-> u′))
+    → (∀ {u} → 𝒮Q u → ∃[ α ] ∃[ t ] (u -< α >-> t) × P ∈α α)
+    → Closed 𝒮Q
+    → WaitV P 𝒮P V G
+    → WaitV Q 𝒮Q (λ _ → ⊥) G
     → (∃[ T ] ∃[ G′ ] G -< P ⟶ Q # i < T > >-> G′) ⊎ P ∈T G
 
-  -- Under `⊢head` this clause had to call back into `comm/ready`; the leaf
-  -- now IS the edge.
-  comm/ready-or-∈T (skip/main (blocked/send gr _ _)) _ =
-    inj₁ (_ , _ , gr)
+  comm/ready-or-∈T fP fQ cQ (wv/leaf x) _ =
+    inj₁ (_ , proj₁ (fP x) , proj₂ (fP x))
 
-  comm/ready-or-∈T (skip/step gr na ktdP) (skip/main (blocked/recv grQ _)) =
-    ⊥-elim (∉c→¬∈c (na grQ) (∈S refl))
-
-  comm/ready-or-∈T (skip/cycle _ inT) _ =
+  comm/ready-or-∈T fP fQ cQ (wv/cycle _ inT) _ =
     inj₂ inT
 
-  comm/ready-or-∈T (skip/step gr na ktdP) stdQ@(skip/step grQ Q∉G ktdQ)
-    with comm/ready-or-∈T (ktdP gr) (bskip/unfold-top stdQ (ktdQ gr))
+  comm/ready-or-∈T fP fQ cQ (wv/step na _ _) (wv/leaf y)
+    with fQ y
+  ... | _ , _ , grQ , px =
+    ⊥-elim (∉c→¬∈c (na grQ) px)
+
+  comm/ready-or-∈T fP fQ cQ (wv/step _ _ _) (wv/cycle (_ , () , _) _)
+
+  comm/ready-or-∈T fP fQ cQ (wv/step na gr k) topQ@(wv/step naQ _ kQ)
+    with comm/ready-or-∈T fP fQ cQ (k gr)
+           (waitV/unfold-top cQ topQ (λ w → w) (kQ gr))
   ... | inj₁ (T , _ , grβ) =
-    let G′ , g = no-new-comm/step gr (na gr) (Q∉G gr) grβ
+    let G′ , g = no-new-comm/step gr (na gr) (naQ gr) grβ
     in inj₁ (T , G′ , g)
   ... | inj₂ pInT =
     inj₂ (in/later gr pInT)
+
+  -- The fold path: a cycle WAS hit on P's side, so walk the `P ∈T G` witness
+  -- instead, decreasing on it and re-rooting both trees in lockstep.
+  comm/ready-from-∈T :
+    ∀ {G P Q I}
+      {i : Fin (suc I)}
+      {S : Sort}
+      {𝒮P 𝒮Q : Pred}
+    → (∀ {u} → 𝒮P u → ∃[ u′ ] (u -< P ⟶ Q # i < S > >-> u′))
+    → (∀ {u} → 𝒮Q u → ∃[ α ] ∃[ t ] (u -< α >-> t) × P ∈α α)
+    → Closed 𝒮P
+    → Closed 𝒮Q
+    → WaitV P 𝒮P (λ _ → ⊥) G
+    → P ∈T G
+    → WaitV Q 𝒮Q (λ _ → ⊥) G
+    → ∃[ T ] ∃[ G′ ] G -< P ⟶ Q # i < T > >-> G′
+
+  comm/ready-from-∈T fP fQ cP cQ (wv/leaf x) _ _ =
+    _ , proj₁ (fP x) , proj₂ (fP x)
+
+  comm/ready-from-∈T fP fQ cP cQ (wv/cycle (_ , () , _) _) _ _
+
+  comm/ready-from-∈T fP fQ cP cQ
+    (wv/step na _ _) (_ , _ , tr/step gr′ _ , here px) _ =
+    ⊥-elim (∉c→¬∈c (na gr′) px)
+
+  comm/ready-from-∈T fP fQ cP cQ
+    (wv/step na _ _) _ (wv/leaf y)
+    with fQ y
+  ... | _ , _ , grQ , px =
+    ⊥-elim (∉c→¬∈c (na grQ) px)
+
+  comm/ready-from-∈T fP fQ cP cQ
+    (wv/step _ _ _) _ (wv/cycle (_ , () , _) _)
+
+  comm/ready-from-∈T fP fQ cP cQ
+    topP@(wv/step na _ kP)
+    (_ , H , tr/step gr′ tr , there mem)
+    topQ@(wv/step naQ _ kQ) =
+    let T , _ , grβ =
+          comm/ready-from-∈T fP fQ cP cQ
+            (waitV/unfold-top cP topP (λ w → w) (kP gr′))
+            (_ , H , tr , mem)
+            (waitV/unfold-top cQ topQ (λ w → w) (kQ gr′))
+        G′ , gr″ = no-new-comm/step gr′ (na gr′) (naQ gr′) grβ
+    in T , G′ , gr″
 
   comm/ready :
     ∀ {G P Q I}
@@ -224,37 +237,47 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       {E : Exp 0}
       {Pr : Proc 0 0}
       {Br : Vec (Proc 1 0) (suc I)}
-    → [] & [] ⊢a P ◂ Q ! i < E >∙ Pr ∶ G
-    → [] & [] ⊢a Q ◂ Σ P ？· Br ∶ G
+    → [] & [] ⊨ P ◂ Q ! i < E >∙ Pr ∶ G
+    → [] & [] ⊨ Q ◂ Σ P ？· Br ∶ G
     → ∃[ T ] ∃[ G′ ] G -< P ⟶ Q # i < T > >-> G′
-  comm/ready (a/skip stdP) (a/skip stdQ)
-    with comm/ready-or-∈T stdP stdQ
-  ... | inj₁ res  = res
-  ... | inj₂ pInT = comm/ready-from-∈T stdP pInT stdQ
 
-  -- Same collapse as `send/cont`: one function instead of a mutual pair,
-  -- and `blocked/recv`'s `conts` already yields `⊢a`.
-  recv/cont-skip :
-    ∀ {G G′ P Q I}
-      {i : Fin (suc I)}
-      {T : Sort}
-      {Br : Vec (Proc 1 0) (suc I)}
-    → ([] & [] ⊢blocked_∶_) & [] ⊢skip Q ◂ Σ P ？· Br ∶ G
-    → (gr : G -< P ⟶ Q # i < T > >-> G′)
-    → (T ∷ []) & [] ⊢a Q ◂ lookup Br i ∶ G′
-  recv/cont-skip (skip/main (blocked/recv _ conts)) gr = conts gr
-  recv/cont-skip (skip/step gr′ na ktd) gr =
-    ⊥-elim (∉c→¬∈c (na gr) (∈R refl))
+  -- The send/recv specifics enter here and nowhere else: `fP`/`fQ` project the
+  -- edge out of each rule's leaf family, and `cP`/`cQ` are the two `tclosed`
+  -- premises, lifted from the continuation sets to the leaf families.
+  comm/ready
+    {P = P} {Q = Q} {i = i}
+    (_ , s/send {S = S} {𝒯 = 𝒯P} _ _ tcP subP , memP)
+    (_ , s/recv {𝒯 = 𝒯Q} _ tcQ subQ , memQ) =
+    go (comm/ready-or-∈T fP fQ cQ (subP memP) (subQ memQ))
+    where
+      fP :
+        ∀ {u} → (∃[ u′ ] (u -< P ⟶ Q # i < S > >-> u′) × 𝒯P u′)
+              → ∃[ u′ ] (u -< P ⟶ Q # i < S > >-> u′)
+      fP (u′ , gr , _) = u′ , gr
 
-  recv/cont :
-    ∀ {G G′ P Q I}
-      {i : Fin (suc I)}
-      {T : Sort}
-      {Br : Vec (Proc 1 0) (suc I)}
-    → [] & [] ⊢a Q ◂ Σ P ？· Br ∶ G
-    → (gr : G -< P ⟶ Q # i < T > >-> G′)
-    → (T ∷ []) & [] ⊢a Q ◂ lookup Br i ∶ G′
-  recv/cont (a/skip std) gr = recv/cont-skip std gr
+      fQ :
+        ∀ {u}
+        → ((Σ[ j ∈ _ ] ∃[ U ] ∃[ t ] (u -< P ⟶ Q # j < U > >-> t))
+           × (∀ {j U t} → u -< P ⟶ Q # j < U > >-> t → 𝒯Q j U t))
+        → ∃[ α ] ∃[ t ] (u -< α >-> t) × P ∈α α
+      fQ ((_ , _ , _ , gr) , _) = _ , _ , gr , ∈S refl
+
+      cP : Closed (λ u → ∃[ u′ ] (u -< P ⟶ Q # i < S > >-> u′) × 𝒯P u′)
+      cP G~H (_ , gr , t) = _ , ~L→ G~H gr , tcP (~L→~ G~H gr) t
+
+      cQ :
+        Closed (λ u → (Σ[ j ∈ _ ] ∃[ U ] ∃[ t ] (u -< P ⟶ Q # j < U > >-> t))
+                    × (∀ {j U t} → u -< P ⟶ Q # j < U > >-> t → 𝒯Q j U t))
+      cQ G~H ((j , U , _ , gr) , k) =
+        (j , U , _ , ~L→ G~H gr) ,
+        λ gr′ → tcQ (~R→~ G~H gr′) (k (~R→ G~H gr′))
+
+      go :
+        ((∃[ T ] ∃[ G′ ] _ -< P ⟶ Q # i < T > >-> G′) ⊎ P ∈T _)
+        → ∃[ T ] ∃[ G′ ] _ -< P ⟶ Q # i < T > >-> G′
+      go (inj₁ res)  = res
+      go (inj₂ pInT) =
+        comm/ready-from-∈T fP fQ cP cQ (subP memP) pInT (subQ memQ)
 
   preservation/τ :
     ∀ {G M'}
@@ -263,22 +286,22 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     → M [ nothing ]⇒ M'
     → ⊢s M' ∶ G
 
-  -- `alg/lookup` in, `alg/typing` out: the work in between is `⊢a`, and
-  -- `⊢p` reappears only because `⊢s-update` has to rebuild a session
+  -- `⊨/lookup` in, `⊨⇒typing` out: the work in between is the set judgment,
+  -- and `⊢p` reappears only because `⊢s-update` has to rebuild a session
   -- derivation, which is stated over `⊢s`.
   preservation/τ M M⊢G (s/if/true P Ptt e⇓true)
-    with a/if/inv refl (alg/lookup M⊢G Ptt)
-  ... | _ , atd-then , _ =
-    ⊢s-update M M⊢G (alg/typing atd-then)
+    with ⊨/if-inv (⊨/lookup M⊢G Ptt)
+  ... | _ , std-then , _ =
+    ⊢s-update M M⊢G (⊨⇒typing std-then)
 
   preservation/τ M M⊢G (s/if/false P Ptt e⇓false)
-    with a/if/inv refl (alg/lookup M⊢G Ptt)
-  ... | _ , _ , atd-else =
-    ⊢s-update M M⊢G (alg/typing atd-else)
+    with ⊨/if-inv (⊨/lookup M⊢G Ptt)
+  ... | _ , _ , std-else =
+    ⊢s-update M M⊢G (⊨⇒typing std-else)
 
   preservation/τ M M⊢G (s/rec P Prec) =
     ⊢s-update M M⊢G
-      (alg/typing (a/rec/unfold (alg/lookup M⊢G Prec)))
+      (⊨⇒typing (⊨/rec/unfold (⊨/lookup M⊢G Prec)))
 
   preservation/comm :
     ∀ (M : Session)
@@ -289,10 +312,10 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
 
   preservation/comm M M⊢G (s/comm P Q Psnd e⇓v Precv)
     with comm/ready
-      (alg/lookup M⊢G Psnd)
-      (alg/lookup M⊢G Precv)
+      (⊨/lookup M⊢G Psnd)
+      (⊨/lookup M⊢G Precv)
   ... | T , G′ , gr =
-    let etd , atd′ = send/cont (alg/lookup M⊢G Psnd) gr
+    let etd , std′ = send/cont (⊨/lookup M⊢G Psnd) gr
         vtd        = exp-pres etd e⇓v
     in
     G′ ,
@@ -300,13 +323,13 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       (λ U → _ -< _ ⟶ _ # _ < U > >-> _)
       (sort/value-typed vtd)
       gr ,
-    -- `alg/typing` only at the very end, where `⊢s-comm-update` needs to
-    -- rebuild the session derivation.
-    ⊢s-comm-update M gr M⊢G (alg/typing atd′)
-      (alg/typing
-        (alg/subst-expr
+    -- `⊨⇒typing` only at the very end, where `⊢s-comm-update` needs to rebuild
+    -- the session derivation.
+    ⊢s-comm-update M gr M⊢G (⊨⇒typing std′)
+      (⊨⇒typing
+        (⊨/subst-expr
           (te/val vtd)
-          (recv/cont (alg/lookup M⊢G Precv) gr)))
+          (recv/cont (⊨/lookup M⊢G Precv) gr)))
 
   Step : Behav → Maybe Action → Behav → Set
   Step G (just α) G′ = G -< α >-> G′

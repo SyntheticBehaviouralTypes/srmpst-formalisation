@@ -24,9 +24,16 @@ whose target is a SET of states** rather than one state:
 the walking-the-graph part of typing becomes two closure operators inside
 `⊆`-premises. The shape of a derivation becomes the shape of `Pr`, so
 derivation size is `O(|Pr|)` **independent of the graph** — that is the source
-of both the proof-simplicity win and the performance win. Deciding the
-judgment becomes: compute the largest `𝒮` bottom-up over `Pr`, then test
-membership.
+of the proof-simplicity win. Deciding the judgment becomes: compute the largest
+`𝒮` bottom-up over `Pr`, then test membership.
+
+*Amended 2026-09-11.* Two claims in this paragraph did not survive contact:
+"the walking-the-graph part of typing becomes two closure operators" is FALSE
+as stated — `Wait` needs a visited set, see §7 step 4b — and the performance
+win is not one. Measured at step 6, the set-based checker is at **parity** with
+the checker it replaces on this corpus; the `O(|Pr|)` claim is about derivation
+size, and these graphs are small. The proof-simplicity win is real and is what
+the exercise bought.
 
 ## 2. Decisions taken by the owner (do NOT re-litigate)
 
@@ -47,6 +54,16 @@ D4 (`Loop P = ∅`, §5.1) and the `~`-closure question (§5.2) were **both clos
 Sets are predicates `Behav → Set` abstractly, `Vec Bool (size G)` concretely.
 
 ### 3.1 The two operators — note they point in OPPOSITE directions
+
+> **SUPERSEDED, 2026-09-11 — read §7 step 4b before implementing anything here.**
+> The `Wait = ν W. Reach∀⁺ P 𝒮 (Guard P W)` below is **refuted**
+> (`Tests/WaitNotSkip.agda`): a greatest fixpoint over `Pred Behav` admits
+> infinite unfoldings that a finite `⊢skip` tree does not, which made
+> `⊢ ⟺ ⊢set` unprovable. `Wait` is now a **μ indexed by a visited SET**
+> (`WaitV`, `Definitions/Typing/Sets.agda`). `Reach₀`/`Reach~` below are
+> unchanged and still accurate, and so is the `∈T`/`∉T` split in the last
+> bullet — that is exactly how `Check/Wait.agda` is organised. The rest of this
+> subsection is kept because it records WHY each premise is shaped as it is.
 
 ```
 Wait P 𝒮   =  ν W. Reach∀⁺ P 𝒮 (Guard P W)             -- was ⊢skip; ∀-backward
@@ -151,11 +168,21 @@ Why each rule is shaped that way, in one line each:
 
 ## 4. Current status
 
-**Updated 2026-09-01.** Steps 1–3 of §7 are done. Two new files, both
-`agda --guardedness` exit 0, no holes, no `postulate`s, no `TERMINATING`:
-`Definitions/Typing/NoLoop.agda` (D4) and `Definitions/Typing/Sets.agda` (the
-operators and the seven rules). **Neither is in `ROOTS`, so nothing re-checks
-them** — check them by hand until they are wired in. Next is step 3a.
+**Updated 2026-09-11. Steps 1–5 of §7 are done: `⊢a ⟺ ⊢set` is PROVED.**
+Six files, all `agda --guardedness` exit 0, no holes, no `postulate`s, no
+`TERMINATING`:
+
+| file | what |
+|---|---|
+| `Definitions/Typing/NoLoop.agda` | D4, `Loop P = ∅` |
+| `Definitions/Typing/MainLeaf.agda` | `findMain` — every `⊢skip` tree has a main leaf, constructively |
+| `Definitions/Typing/Sets.agda` | `WaitV`, `Reach₀`/`Reach~`, the seven rules |
+| `Definitions/Typing/SetsEquiv.agda` | `skip⇒wait` / `wait⇒skip`, both directions |
+| `Definitions/Typing/AlgProperties.agda` | `alg/bisim` / `alg/~` |
+| `Definitions/Typing/SetsAlg.agda` | `set⇒alg` / `alg⇒set` — the equivalence |
+
+**None is in `ROOTS`, so nothing re-checks them** — check them by hand until
+they are wired in. Next is step 6 (move `Check/` onto the set form).
 
 *The rest of this section is from 2026-08-14 and is retained for the parts that
 have not moved:*
@@ -246,6 +273,44 @@ Three readings taken where the plan was ambiguous, all cheap to revisit:
   It is a hypothesis of the lemmas that need it instead.
 * `⊢s′` is primed only to coexist with `Declarative`'s `⊢s`; it loses the prime
   at D2.
+
+### 5.2′ OPEN: is `tclosed` a consequence rather than a premise?
+
+**Raised by the owner 2026-09-11, not investigated.** `s/send` and `s/recv`
+carry `tclosed` — the CONTINUATION set `𝒯` is `~`-closed — added because
+`Safety/Preservation.agda`'s readiness argument re-roots both `Wait`s
+(`waitV/unfold-top`) and re-rooting transports a leaf along `~`. The `⊢a` proof
+got the same fact free from `blocked/bisim`; a `Pred` has no such theorem.
+
+What is already known, so nobody re-derives it:
+
+* The premise is **admissible**: it does not change what is typeable.
+  `alg⇒set` always picks `𝒯 = Alg …`, closed by `alg/~`, so `⊢a ⟺ ⊢set`
+  survives it. That is proved, and is why it was safe to add.
+* It is **not** derivable for an arbitrary derivation. `𝒯` is existentially
+  chosen and the judgment is downward closed, so a derivation may legitimately
+  pick `𝒯 = { G }` for one typeable `G`, and a raw singleton is not `~`-closed.
+  So "`tclosed` follows from `WellBehaved`" is false read literally.
+
+**The form the owner's intuition probably takes, and the attack to try:**
+every derivation should be *normalisable* to one whose sets are all `~`-closed,
+by replacing each set with its `~`-closure — i.e.
+
+```
+set/close : Γ & Δ ⊢ PPr ∶ 𝒮 → Γ & Δ ⊢ PPr ∶ ⌈ 𝒮 ⌉closure
+```
+
+with all inner sets closed too. The induction looks like it goes through
+BOTTOM-UP: at `s/send`, once the continuation's set has already been replaced by
+its closure it *is* closed, so the leaf family is closed, so `wait/~` transports
+`sub` from `s₀ ∈ 𝒮` to any `s ~ s₀` — which is exactly the missing step, and it
+is where well-behavedness enters (`wait/~` rests on `na-bisim`/`~L→`/`~R→~`).
+If that lemma exists, `tclosed` comes off the rules and is recovered as a lemma
+applied once at `Preservation`'s entry.
+
+Cost of leaving it as is: two premises on the rules that a reader will ask
+about. Cost of the attack: one derivation transformer, ~60 lines, plus
+re-proving the three places that pattern-match `s/send`/`s/recv`.
 
 ### 5.3 Recorded, deliberately deferred by D1
 
@@ -359,7 +424,20 @@ Each step ends green. The corpus is the oracle (§8).
    out by the owner**: the type systems must be equivalent, and `WellBehaved` must
    not change.
 
-4b. **NEXT: re-base `Wait` as a μ over (state, visited SET).** Keeps everything
+4b. ~~**Re-base `Wait` as a μ over (state, visited SET).**~~ — **DONE 2026-09-11.**
+   `WaitV` in `Sets.agda`; `Reach∀`, `Reach∀⁺`, the coinductive record, `reach∀/~`
+   and the mutual `wait/~` block are gone, replaced by `waitV/mono` and a
+   three-case `wait/~`. **Both directions** of step 4 are now in `SetsEquiv.agda`
+   (`skip⇒wait`, `wait⇒skip`), both plain structural recursions, no `Closed 𝒮`
+   hypothesis, no theory-specific assumption. `wait/∅` (D4) is now a transport
+   from `NoLoop.Loop-empty` rather than a second proof.
+   `Tests/WaitNotSkip.agda` was flipped from counterexample to **regression
+   test** (`ce/no-wait`): it is the only thing in the tree that would catch a
+   "simplification" of `WaitV` back to a fixpoint over states alone.
+   One lemma it forced: `waitV⇒skip` must be generalised over `V` with an
+   inclusion `V ⊆ Vof Ξ`, because reconciling `Vof Ξ ∪ ⌈G⌉` with `Vof (G ∷ Ξ)`
+   on the ARGUMENT of the recursive call loses structurality.
+   *Superseded plan, kept for the record:* Keeps everything
    the owner requires — the seven typing rules of §3.2 are untouched, they still
    speak only of sets of states, and there is still no `skip` sub-judgment
    interleaved with typing. Only `Wait`'s internal definition changes, from a ν
@@ -381,14 +459,99 @@ Each step ends green. The corpus is the oracle (§8).
    still `O(|Pr|)` — but §1's stronger claim that graph-walking collapses to "two
    closure operators" does NOT survive, and the `Justified`/`FailedFrom` idea
    returns in set form. **That trade needs the owner's sign-off before step 5.**
-5. **Prove `set ⟺ ⊢a`** for the whole judgment, using step 4.
-6. **[Phase a] Move `Check/` onto the set form and delete `Check/Alg.agda`.**
-   Finite realisation: sets as `Vec Bool (size G)`; `Wait` as the ordered
-   lfp-then-gfp; `Reach₀`/`Reach~` as rows of the transitive closure of the
-   `¬P`-restricted graph, composed with the `~` matrix. `Bisimulation.agda`'s
-   `Matrix`/`refine`/`iterate`/`approximation` is the template; `wt`/`Incl`/
-   `wt/strict` (`Reachability.agda`) is the termination measure.
-   *Done when:* corpus green with decisions forced, **including `Ex6`**.
+5. ~~**Prove `set ⟺ ⊢a`** for the whole judgment, using step 4.~~ — **DONE
+   2026-09-11**, `Definitions/Typing/SetsAlg.agda`. Three new files, all
+   `agda --guardedness` exit 0, no holes, no `postulate`s, no `TERMINATING`.
+
+   * `set⇒alg : Γ & Δ ⊢ PPr ∶ 𝒮 → 𝒮 G → Γ & Δ ⊢a PPr ∶ G` (soundness).
+     Every case is the same three moves: `sub`, then `wait⇒skip`, then
+     `skip/map` rewriting the rule's own leaf family into `⊢blocked` ones.
+     `skip/map` only needs the leaf translation at the tree's OWN process,
+     because a `⊢skip` tree never changes the process it is about.
+   * `alg⇒set : Γ & Δ ⊢a P ◂ Pr ∶ G → Γ & Δ ⊢ P ◂ Pr ∶ Alg Γ Δ (P ◂ Pr)`
+     (completeness), where `Alg Γ Δ PPr = { G | Γ & Δ ⊢a PPr ∶ G }`. Stating it
+     at the LARGEST set is what makes it provable — `s/send`'s `𝒯` must cover
+     the continuation states of every leaf at once, which no singleton does —
+     and `set/mono` (downward closure) recovers `⌈ G ⌉` and every smaller set.
+     The recursion is on the **process**, not the derivation, since the
+     derivation each case needs comes from `findMain` and is not a subterm;
+     `algBr` is the mutual companion that makes `lu Br j` structural.
+
+   Two things this step forced, both worth knowing:
+
+   * **`s/recv`'s `conts` had to become CONDITIONAL** on `𝒯 j U` being
+     inhabited: `∀ {j U t} → 𝒯 j U t → (U ∷ Γ) & Δ ⊢ Q ◂ lu Br j ∶ 𝒯 j U`.
+     `blocked/recv` demands a continuation only for labels the behaviour
+     actually offers, so the unconditional premise made the set rules strictly
+     stronger than `⊢a` and completeness FALSE — a branch the graph never
+     offers may be arbitrary, including carrying an ill-typed expression, which
+     has no `Γ ⊢e E ∶ S` to give `s/send`, and `⊢a` still accepts it. Soundness
+     is unaffected: `set⇒alg` reaches `conts` only from an actual edge, which
+     supplies the witness. **Do not restore the unconditional form.**
+   * **`findMain` (`Definitions/Typing/MainLeaf.agda`) closes §5.1's `¬¬∃`
+     gap.** Every `⊢skip` tree has a `skip/main` leaf, constructively. It is
+     `NoLoop.agda` generalised from the empty leaf family to an arbitrary one
+     and from `⊥` to the leaf found; following the `P ∈T` run, as `NoLoop`
+     does, is what avoids the double negation. `Norm.agda:169`'s `MainLeaf`
+     hypothesis is NOT yet discharged from it — that `MainLeaf` is an inductive
+     relation on a derivation, not a bare existential — but it is now one small
+     step away.
+
+   Also added: `Definitions/Typing/AlgProperties.agda`, bisimilarity transport
+   for `⊢a`/`⊢blocked` (`alg/bisim`, `alg/~`), mirroring `Properties.agda`'s
+   `td/bisim`. Needed at `s/rec`, whose premise sits at the `~`-closed anchor
+   `⌈ W ⌉` (§5.2). Going through `alg/typing`/`td/bisim`/`norm` instead would
+   have dragged in `Norm.agda`'s `MainLeaf` hypothesis for no gain.
+
+   **None of these five files is in `ROOTS`, so nothing re-checks them.**
+6. ~~**[Phase a] Move `Check/` onto the set form and delete `Check/Alg.agda`.**~~
+   — **DONE 2026-09-11.** `Check/Alg.agda` (917 lines) is deleted and replaced
+   by two files; `Check.agda`'s public surface is unchanged, so `Examples/`
+   needed no edit at all and `Tests/` needed one import swap.
+
+   * **`Check/Wait.agda`** — `wait?`, the graph-walking half. §3.1's `∈T?`
+     split survives 4b and is the whole design: on `¬ P ∈T` no cycle can fire
+     (forward closure of `¬ ∈T`), so `V` is irrelevant and that region is a
+     plain lfp — the table `noCycle`, computed once; on `P ∈T` a revisit
+     SUCCEEDS, so there is nothing to fail and `wt`/`Incl` is the entire
+     termination argument. **`Justified`, `FailedFrom`, `failed⇒¬tree` and the
+     four-component measure are gone, phase component included.**
+     The visited set is read up to `~` (`Vof`) — that is what makes
+     `Vof (mark V s)` and `Vof V ∪ ⌈ s ⌉` interchangeable in BOTH directions;
+     with a raw index only the `yes` direction transfers, and it is the `no`
+     direction that needs it.
+   * **`Check/Sets.agda`** — the checker, one case per set rule, **structural
+     on the process**: no `size/proc`, no `×-Lex`, no well-founded recursion in
+     the walk at all. `lookup Br j` is made structural by the same `algBr`
+     companion as `SetsAlg.agda`. Both directions of every case are
+     `SetsAlg.agda`'s lemmas, not re-derivations — `yes` builds the derivation
+     the way `set⇒alg` does, `no` returns the refuted `Wait`
+     (`sendSub`/`recvSub`/`varSub`/`recSub`) or the failed premise
+     (`inv/end`/`inv/if*`/`recGuard`/`inv/sendE`).
+
+   `Check/Core.agda` was kept: its contents are decidability of the graph's own
+   relations (expression checking, `findStep`/`findRecv`/`na?`/`bisim?~`/
+   `messageGuarded?`), not algorithm.
+
+   *Done:* `./runall.sh --tests` exit 0 — the whole corpus with decisions
+   forced, **`Ex6` included**, plus both `toWitnessFalse` controls.
+
+   **One performance trap, measured, worth not repeating.** `CLAUDE.md`'s
+   "Agda shares argument thunks, not definition applications" applies to the
+   `noCycle` table with full force: read as a module-level definition, every
+   `lookup noCycle s` in the walk rebuilds the whole fixpoint.
+   `Tests/Perf09_RevisitSpine`, deleting only that file's `.agdai`:
+
+   | | time | peak RSS |
+   |---|---|---|
+   | old `Check/Alg.agda` (worktree at `fcac9e6`) | 9.60 s | 0.65 GB |
+   | new, `noCycle` as a definition | 138.3 s | 1.5 GB |
+   | new, `noCycle` as a bound argument | 9.78 s | 0.64 GB |
+
+   So the set-based checker is at **parity** on this corpus, not faster — §1's
+   asymptotic claim is about derivation SIZE, and these graphs are small. The
+   table and its two correctness facts are passed into `wait?/acc` as
+   arguments; **do not fold them back into the module.**
 7. **[Phase b] Migrate `Safety/`** by transporting along step 5, then delete
    `⊢a`, `⊢skip`, `⊢blocked`, `Norm.agda`, and finally the equivalence itself.
 8. Update `FUTURE_WORK.md` (§B is superseded by this file; note §A's status) and
@@ -441,8 +604,14 @@ restate §A against the new judgment later.
 ## 10. Do not do these
 
 * Do not use an existential backward closure for the skip side (§3.1).
-* Do not drop the progress condition from `Reach∀⁺` — i.e. do not "simplify"
-  `Wait` back to `ν W. Reach∀ P (𝒮 ∪ Guard P W)`. Machine-refuted (§3.1).
+* **Do not re-base `Wait` on a fixpoint over states alone** — neither the ν of
+  §3.1 nor any repair of it. Machine-refuted twice over: `Tests/WaitNotSkip.agda`
+  (the ν accepts a state no `⊢skip` tree covers, which made `⊢ ⟺ ⊢set`
+  unprovable) and, for the earlier `Guard` reading, `wait/∅`. Skippability is a
+  property of the (state, ancestor-set) PAIR; the visited set in `WaitV` is not
+  decoration. `Tests/WaitNotSkip.agda` is the regression test.
+* Do not make `s/recv`'s `conts` unconditional again — completeness is false
+  with it (§7 step 5).
 * Do not index `𝒯` by `j` alone (§6).
 * Do not add global sort/arity consistency as a well-formedness condition (§2).
 * Do not re-introduce set-valued `rec` anchors without re-opening D1 (§5.3).

@@ -42,15 +42,15 @@ open import Relation.Binary.PropositionalEquality
 
 open import Utils.Vec using (sum/map-update<)
 open import Definitions.Typing
-import Definitions.Typing.Algorithmic as Alg
 
 module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private
     module M = MPST wb
   open M
-  open Alg wb using (_&_⊢a_∶_; a/skip; a/if; a/end)
+  open import Definitions.Typing.SetsAlg wb
+    using (_&_⊨_∶_; ⊨/if-inv; ⊨/rec-guarded)
   open M.Subst
-  open import Definitions.Typing.Norm wb using (norm; a/if/inv; a/rec/guarded)
+  open import Definitions.Typing.Norm wb using (norm)
   open import Safety.Preservation wb
   open import Safety.Progress wb
   open import Definitions.Typing.Properties wb
@@ -117,15 +117,15 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     rewrite τ-depth/unfold guarded =
     ≤-refl
 
-  -- WAS ~65 lines of `head/rec/guarded*` over `⊢head`.  `⊢a` needs none
-  -- of it: `blocked/rec` carries `MessageGuarded Pr` as a field, so
-  -- `a/rec/guarded` (`Definitions/Typing/Norm.agda`) reads it straight off
-  -- a main leaf, with the `P ∈T` chase only for all-cycle trees.
+  -- WAS ~65 lines of `head/rec/guarded*` over `⊢head`, then one line over
+  -- `⊢a` that still needed `a/rec/guarded`'s `P ∈T` chase for all-cycle trees.
+  -- Over the set rules it is a projection: `s/rec` carries `MessageGuarded Pr`
+  -- as a field and there is no tree to chase.
   rec/guarded :
     ∀ {G P Pr}
-    → [] & [] ⊢a P ◂ rec Pr ∶ G
+    → [] & [] ⊨ P ◂ rec Pr ∶ G
     → MessageGuarded Pr
-  rec/guarded = a/rec/guarded
+  rec/guarded = ⊨/rec-guarded
 
   τ-depth/session :
     Session
@@ -161,7 +161,7 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     sum/map-update< (τ-depth/proc {γ = 0} {δ = 0}) M P
       (τ-depth/lookup< proc≡
         (τ-depth/unfold<rec
-          (rec/guarded (alg/lookup M⊢G proc≡))))
+          (rec/guarded (⊨/lookup M⊢G proc≡))))
 
   catτ :
     ∀ {M M′ M″}
@@ -284,9 +284,8 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     M⊢G
     proc≡
     (done-if donePr donePr′)
-    with a/if/inv
-           refl
-           (alg/lookup
+    with ⊨/if-inv
+           (⊨/lookup
              {M = M}
              {P = P}
              M⊢G
