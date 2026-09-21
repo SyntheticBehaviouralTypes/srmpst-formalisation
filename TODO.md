@@ -609,6 +609,105 @@ Each step ends green. The corpus is the oracle (§8).
 8. Update `FUTURE_WORK.md` (§B is superseded by this file; §A's investment is
    now in `Stale/NetworkProject.agda.stale`) and `CLAUDE.md`'s architecture
    section.  **STILL OPEN.**
+9. ~~**Rename the "Sets" family back to "Alg"/`⊢a`.**~~ — **DONE 2026-09-21.**
+   `Definitions/Typing/Sets.agda` → `Alg.agda`, `SetsNorm.agda` →
+   `AlgNorm.agda`, `SetsDeclarative.agda` → `AlgDeclarative.agda`,
+   `SetsEquiv.agda` → `AlgEquiv.agda`, `Check/Sets.agda` → `Check/Alg.agda`
+   (reusing the name freed by the OLD, deleted 917-line `Check/Alg.agda`).
+   The set judgment itself is renamed `⊢a` (reusing the name freed by the
+   old, deleted two-tier `⊢a`/`⊢blocked` system); its constructors
+   `s/send,s/recv,s/if,s/end,s/var,s/rec` → `a/send,a/recv,a/if,a/end,
+   a/var,a/rec`; `set⇒typing`→`alg⇒typing`; `typing⇒set`→`typing⇒alg`;
+   `set/mono`→`alg/mono`; `module SetCheck`→`module AlgCheck`; `dset?`→
+   `alg?`. `./runall.sh --clean --tests --CheckClosedProof` exit 0.
+   `Definitions/Proc.agda`'s UNRELATED session-step constructors
+   (`s/comm`, `s/if/true`, `s/if/false`, `s/rec`, in `_[_]⇒_`) collide
+   textually with the old `s/`-prefix; in `Safety/*.agda` they were left
+   untouched **by hand**, not by sed — do not blind-rename `s/if`/`s/rec`
+   there again, check every hit first.
+   `tc?` (the `⊢p`-crossing boundary) was reordered to the END of `alg?`'s
+   `mutual` block, not pulled fully outside it as first attempted: Agda's
+   `mutual` requires every name in a recursive clique to be declared AND
+   DEFINED inside the same block, and at the time `tc?` was still part of
+   the clique (`alg?` → `sendLeaf?`/`algBr` → `tc?` → `alg?`) — see step 10,
+   which was going to break that clique and let `tc?` move out for real.
+10. **Make `alg?` decide `⊢a` WITHOUT ever deciding `⊢p` internally.**
+    **OPEN, attempt reverted 2026-09-21 — OWNER DISAGREES WITH THE APPROACH
+    BELOW AND WILL RECONSIDER IT FRESH IN A NEW SESSION.** Read this
+    critically before resuming; do not just continue from where it stopped.
+
+    The problem: `Check/Alg.agda`'s `alg?` currently decides its OWN leaf/
+    anchor families (`SendL`/`RecvL`/`RecA`, imported from `AlgNorm.agda`)
+    via `Typ` (= `⊢p`) and `tc?`, at three sites (`sendLeaf?`, `algBr`, and
+    `a/rec`'s anchor search). The owner's position: this is wrong on
+    principle — `⊢a`'s rules are syntax directed with decidable premises,
+    so `alg?` should recurse on `⊢a` alone and never cross to `⊢p` except
+    at the one outer `tc?` boundary that already exists for callers.
+
+    Two obstacles surfaced, in order:
+    * `_&_⊢a_∶_` is `Set₁` (its rules existentially quantify over `𝒯 :
+      Pred`, itself `Set₁`), so a raw `⊢a` term cannot sit inside `Pred`
+      (`Check/Wait.agda`'s `wait?` needs a `Set`-valued leaf family) — a
+      universe mismatch, not a style problem. Fixable on its own, by
+      reflecting through `T ⌊ alg? … ⌋` / `toWitness`, the idiom
+      `Check/Graph.agda`'s `WBGraph` already uses.
+    * The real one: `a/send`'s `𝒯` (and `a/recv`'s `𝒯 j U`) has to be ONE
+      set covering the continuation state of EVERY leaf of the `Wait`
+      search at once (see `a/recv`'s own rule comment in
+      `Definitions/Typing/Alg.agda`, and TODO.md §6). A leaf family built
+      from `alg?`'s own singleton-at-one-witness answer (via `waitFind`)
+      does not have that — different leaves of one search generally reach
+      different witness states.
+
+    The owner's counter-proposal — deliberately NOT "reprove `AlgNorm.agda`
+    natively", which is what this session first, wrongly, thought was
+    needed: **because `⊢a` has no `t/skip`/`t/unskip`, find ALL the leaf
+    states of the `Wait` search, then typecheck the continuation IN the
+    set containing exactly those leaf states** — i.e. combine per-leaf
+    singleton derivations into one derivation at their union, by pure
+    structural recursion on the process (no graph-walking), instead of via
+    `⊢p`'s "prove once, walk anywhere with `t/skip`" trick.
+
+    This session tried exactly that, as `alg/union : ⊢a PPr∶𝒮₁ → ⊢a
+    PPr∶𝒮₂ → ⊢a PPr∶(𝒮₁⊎𝒮₂)`, structural on `Pr` — reverted, NOT in the
+    tree now. Verified by the compiler to work for `a/send`, `a/if`,
+    `a/end`, `a/var`, `a/rec`: each combines cleanly (`a/send`'s `td` is a
+    plain VALUE, so `alg/union td₁ td₂` combines it directly; the other
+    three are trivial `[_,_]′` case-splits on which side a `𝒮₁⊎𝒮₂` witness
+    came from). It does NOT work for `a/recv`: `conts : ∀{j U t} → 𝒯 j U
+    t → ⊢a Q◂luBrj∶(𝒯 j U)` is a FUNCTION of a future witness, not a
+    value — given only one side's witness (`inj₁ x₁`), there is no way to
+    produce a proof at `𝒯₁jU ⊎ 𝒯₂jU`: `alg/mono` only narrows (big→small),
+    never widens, and widening `⊢a@𝒯₁jU` up to `⊢a@(𝒯₁jU⊎𝒯₂jU)` is exactly
+    what combining needs. A general, symmetric `alg/union` covering
+    `a/recv` for two ARBITRARY derivations is not provable abstractly —
+    confirmed by Agda's own type error (`_A_ ⊎ _B_ != ⊢a Q◂luBrj∶…`), not
+    just by reasoning about it.
+
+    What is plausible but UNTRIED: since the obstruction is specifically
+    "no witness for the other side," and this only needs to work for the
+    CONCRETE, FINITE graph, not for arbitrary abstract `𝒯`s, the fix likely
+    has to live in `Check/Alg.agda`, not `Definitions/Typing/Alg.agda`:
+    collect the ACTUAL `(j,U,t)` triples offered across every leaf of one
+    `RecvL` search, GROUP them by `(j,U)`, and fold `alg/union` within each
+    group, where both operands are always concrete values already on hand
+    — never an abstract function needing an unknown future witness.
+    Untried, unverified, and the owner considers the whole direction
+    possibly wrong — do not extend it on the strength of this paragraph
+    alone.
+
+    State left in the tree: `Definitions/Typing/Alg.agda` keeps
+    `waitV/leaf-mono` (leaf-family monotonicity for `WaitV`, promoted from
+    a local definition in `Check/Alg.agda`, where it was called
+    `waitLeaf/mono`) and `alg/bisim` (bisimilarity transport of `⊢a`
+    across the `Δ` vector — the `⊢a`-native counterpart of
+    `Properties.agda`'s `td/bisim`, needed for `a/rec`'s anchor closure).
+    Both are correct, compiling, judgment-only (no `⊢p`), and kept because
+    they are useful regardless of how `alg?` ends up being fixed.
+    `alg/union` itself was removed again (broken on `a/recv`, and the
+    owner considers it possibly the wrong tool entirely). `Check/Alg.agda`
+    is back to deciding `⊢a` via `Typ`/`tc?` internally (step 9's state) —
+    compiling, green, but NOT what the owner wants long-term.
 
 Optional, independent, any time: delete the dead `PathViaP` family (§4).
 
@@ -686,3 +785,10 @@ restate §A against the new judgment later.
   first, then `waitFind`.  `t/skip`'s leaf family is `⊢p` itself, so a chase
   past a `skip/cycle` does not terminate-check, whichever of the two known
   chase techniques you reach for.  See §4.
+* **Do not re-attempt a symmetric `alg/union` over two ARBITRARY `⊢a`
+  derivations as a fix for §7 step 10's `a/recv` case** without first
+  addressing the missing-witness problem described there — `alg/mono` only
+  narrows, and `a/recv`'s `conts` is a function of a future witness, not a
+  value, so the naive `[_,_]′` case-split does not type-check (confirmed by
+  Agda, not just argued). The owner disagrees with `alg/union` as a whole
+  and wants step 10 rethought from scratch, not patched.

@@ -47,7 +47,7 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private
     module M = MPST wb
   open M
-  open import Definitions.Typing.Sets wb
+  open import Definitions.Typing.Alg wb
     using (_&_⊨_∶_; ⊨/if-inv; ⊨/rec-guarded)
   open M.Subst
   open import Safety.Preservation wb
@@ -117,9 +117,10 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     ≤-refl
 
   -- WAS ~65 lines of `head/rec/guarded*` over `⊢head`, then one line over
-  -- `⊢a` that still needed `a/rec/guarded`'s `P ∈T` chase for all-cycle trees.
-  -- Over the set rules it is a projection: `s/rec` carries `MessageGuarded Pr`
-  -- as a field and there is no tree to chase.
+  -- the old, deleted two-tier `⊢a` that still needed `a/rec/guarded`'s
+  -- `P ∈T` chase for all-cycle trees.  Over this judgment it is a
+  -- projection: `a/rec` carries `MessageGuarded Pr` as a field and there is
+  -- no tree to chase.
   rec/guarded :
     ∀ {G P Pr}
     → [] & [] ⊨ P ◂ rec Pr ∶ G

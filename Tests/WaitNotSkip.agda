@@ -289,8 +289,8 @@ module Tests.WaitNotSkip where
       diam (sB _) (sB _) d = ⊥-elim (_∉c_.∉R (proj₁ d) refl)
       diam sP     sP     d = ⊥-elim (_∉c_.∉R (proj₁ d) refl)
 
-  open import Definitions.Typing.Sets wb
-  open import Definitions.Typing.SetsEquiv wb using (wait⇒skip)
+  open import Definitions.Typing.Alg wb
+  open import Definitions.Typing.AlgEquiv wb using (wait⇒skip)
   open MPST wb using (_&_⊢skip_∶_; skip/main; skip/step; skip/cycle)
 
   ---------------------------------------------------------------------------

@@ -27,9 +27,9 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
   open import Definitions.Typing.Properties wb using (td/bisim)
   -- For `a/rec/unfold` at the bottom of this file.  `Norm.agda` does not
   -- import this module, so there is no cycle.
-  open import Definitions.Typing.Sets wb using (_&_⊨_∶_)
-  open import Definitions.Typing.SetsNorm wb using (td⇒⊨)
-  open import Definitions.Typing.SetsDeclarative wb using (⊨⇒typing)
+  open import Definitions.Typing.Alg wb using (_&_⊨_∶_)
+  open import Definitions.Typing.AlgNorm wb using (td⇒⊨)
+  open import Definitions.Typing.AlgDeclarative wb using (⊨⇒typing)
 
   private
     variable
@@ -417,7 +417,7 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
       t/end done₁
 
   -- ══════════════════════════════════════════════════════════════════
-  --  `rec` unfolding, and its `⊢a` face
+  --  `rec` unfolding, and its old, deleted two-tier-`⊢a` face
   -- ══════════════════════════════════════════════════════════════════
   --
   -- Moved here from `Definitions/Typing/Normalise.agda` (2026-08-05):
@@ -454,10 +454,10 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
     skip/rec/unfold (skip/cycle eq inT) =
       skip/cycle eq inT
 
-  -- The `⊢a`-stated face of the same fact.  The round trip is CONFINED
-  -- HERE: `Safety/*` imports only this name and never sees `⊢p`, so from
-  -- Safety's side the algorithmic judgment simply has a `rec`-unfolding
-  -- lemma of its own.
+  -- The old, deleted two-tier `⊢a`-stated face of the same fact used to be
+  -- CONFINED HERE: `Safety/*` imported only that name and never saw `⊢p`,
+  -- so from Safety's side the algorithmic judgment simply had a
+  -- `rec`-unfolding lemma of its own.
   --
   -- Doing it natively instead costs about 290 lines (`alg/subst-proc` and
   -- its weakenings, an `Advanceable` substituend, `alg/advance` with a
@@ -465,11 +465,12 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
   -- deleted: it buys nothing, because `typing/subst-proc` just above has
   -- to stay for `t/rec/unfold` regardless, so the `⊢p` substitution
   -- theory was never going away.
-  -- The two facts as the SET judgment sees them.  `Safety/` imports only
+  -- The two facts as `⊢a`/`_&_⊨_∶_` sees them.  `Safety/` imports only
   -- these.  The round trip is `⊨⇒typing` out and `td⇒⊨` back — the
   -- DECLARATIVE system in the middle, where `typing/subst-proc` and
-  -- `t/rec/unfold` already live.  It used to detour through `⊢a` (`norm`
-  -- out, `alg⇒⊨` back); nothing else about these two lemmas changed.
+  -- `t/rec/unfold` already live.  It used to detour through the old,
+  -- deleted two-tier `⊢a` (`norm` out, `alg⇒⊨` back); nothing else about
+  -- these two lemmas changed.
   ⊨/rec/unfold :
     ∀ {G P Pr}
     → [] & [] ⊨ P ◂ rec Pr ∶ G

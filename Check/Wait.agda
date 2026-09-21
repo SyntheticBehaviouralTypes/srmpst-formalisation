@@ -81,7 +81,7 @@ module Check.Wait (N : ℕ) where
 
     open Typing.MPST wb
     open GraphChecker G wb using (na?; bisim?~)
-    open import Definitions.Typing.Sets wb
+    open import Definitions.Typing.Alg wb
       using (WaitV; wv/leaf; wv/cycle; wv/step; waitV/mono; Pred)
 
     Bits : Set

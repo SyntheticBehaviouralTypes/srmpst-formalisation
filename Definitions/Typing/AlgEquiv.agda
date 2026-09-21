@@ -4,7 +4,7 @@
 --
 --     Wait P 𝒮 G  ⟺  (Leaf = 𝒮) & [] ⊢skip P ◂ Pr ∶ G
 --
--- `⟸` is what makes the set rules complete for `⊢`, `⟹` is what makes them
+-- `⟸` is what makes the rules complete for `⊢a`, `⟹` is what makes them
 -- sound.  With the old ν-based `Wait` the `⟹` half was FALSE
 -- (`Tests/WaitNotSkip.agda`); with `WaitV`'s visited set both halves are plain
 -- structural recursions and hold for every theory — no finiteness assumption,
@@ -46,11 +46,11 @@ open import Relation.Nullary using (¬_)
 
 open import Definitions.Typing
 
-module Definitions.Typing.SetsEquiv {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
+module Definitions.Typing.AlgEquiv {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   open module M = MPST(wb)
   open M
 
-  open import Definitions.Typing.Sets wb
+  open import Definitions.Typing.Alg wb
   open import Definitions.Typing.NoLoop wb using (Loop-empty)
 
   module _ {γ δ : ℕ}
@@ -140,7 +140,7 @@ module Definitions.Typing.SetsEquiv {N : ℕ}{B : BTheory N}(wb : WellBehaved B)
 
   -- D4 (TODO.md §5.1) for the set formulation, now a transport rather than a
   -- second proof: `Wait P ∅` is empty because `Loop P` is (`NoLoop.agda`).
-  -- This is what licenses `s/if`/`s/end` carrying no `Wait` premise.
+  -- This is what licenses `a/if`/`a/end` carrying no `Wait` premise.
   wait/∅ :
     ∀ {γ δ}{P}{Pr : Proc γ δ}{G}
     → ¬ Wait P (λ _ → ⊥) G

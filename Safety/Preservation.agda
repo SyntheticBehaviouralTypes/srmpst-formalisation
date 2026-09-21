@@ -24,13 +24,13 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   open M
   open M.Subst
   open import Definitions.Typing.Substitution wb
-  open import Definitions.Typing.Sets wb
-    using ( _&_⊢_∶_; s/send; s/recv; s/if; s/end; s/var; s/rec
+  open import Definitions.Typing.Alg wb
+    using ( _&_⊢a_∶_; a/send; a/recv; a/if; a/end; a/var; a/rec
           ; Pred; Closed; WaitV; wv/leaf; wv/cycle; wv/step
           ; waitLeaf; waitV/unfold-top
           ; _&_⊨_∶_; ⊨/if-inv; ⊨/rec-guarded; ⊨/end-inv )
-  open import Definitions.Typing.SetsNorm wb using (td⇒⊨)
-  open import Definitions.Typing.SetsDeclarative wb using (⊨⇒typing)
+  open import Definitions.Typing.AlgNorm wb using (td⇒⊨)
+  open import Definitions.Typing.AlgDeclarative wb using (⊨⇒typing)
   open import Definitions.Typing.Properties wb
 
   td/lookup :
@@ -42,10 +42,10 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   ... | ptd rewrite []=⇒lookup luP = ptd
 
   -- THE BOUNDARY.  `⊢s` is stated over `⊢p`, so coming IN needs
-  -- `⊢p → ⊢set` — `td⇒⊨` (`SetsNorm.agda`).  Going OUT is `⊨⇒typing`
-  -- (`SetsDeclarative.agda`).  Both are direct; `⊢a` is gone from the
-  -- development and neither direction passes through anything else.
-  -- Everything downstream consumes `⊨/lookup`.
+  -- `⊢p → ⊢a` — `td⇒⊨` (`AlgNorm.agda`).  Going OUT is `⊨⇒typing`
+  -- (`AlgDeclarative.agda`).  Both are direct; the old, deleted two-tier
+  -- `⊢a` is gone from the development and neither direction passes through
+  -- anything else.  Everything downstream consumes `⊨/lookup`.
   ⊨/lookup :
     ∀ {M G P Pr}
     → ⊢s M ∶ G
@@ -111,7 +111,7 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     → G -< P ⟶ Q # i < S > >-> G′
     → [] ⊢e E ∶ S × [] & [] ⊨ P ◂ Pr ∶ G′
 
-  send/cont (_ , s/send etd td _ sub , mem) gr
+  send/cont (_ , a/send etd td _ sub , mem) gr
     with waitLeaf gr (∈S refl) (sub mem)
   ... | _ , gr₀ , 𝒯u′
     with step-sort-deterministic gr gr₀
@@ -130,7 +130,7 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     → (gr : G -< P ⟶ Q # i < T > >-> G′)
     → (T ∷ []) & [] ⊨ Q ◂ lookup Br i ∶ G′
 
-  recv/cont (_ , s/recv conts _ sub , mem) gr
+  recv/cont (_ , a/recv conts _ sub , mem) gr
     with waitLeaf gr (∈R refl) (sub mem)
   ... | _ , k =
     _ , conts (k gr) , k gr
@@ -139,14 +139,14 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   --  The two-sided readiness argument
   -- ══════════════════════════════════════════════════════════════════
   --
-  -- Under `⊢head` this was FIVE functions in two mutual blocks; under `⊢a`
-  -- three.  Over the set rules it is still three, but they are stated over
-  -- ARBITRARY leaf families rather than over the judgment, so the send/recv
-  -- specifics enter only as the two projections `fP`/`fQ` supplied by
-  -- `comm/ready` at the bottom.
+  -- Under `⊢head` this was FIVE functions in two mutual blocks; under the
+  -- old, deleted two-tier `⊢a` three.  Over these rules it is still three,
+  -- but they are stated over ARBITRARY leaf families rather than over the
+  -- judgment, so the send/recv specifics enter only as the two projections
+  -- `fP`/`fQ` supplied by `comm/ready` at the bottom.
   --
   -- The re-rooting that `bskip/unfold-top` did is `waitV/unfold-top`, and the
-  -- `Closed` it needs is the `tclosed` premise of `s/send`/`s/recv`.
+  -- `Closed` it needs is the `tclosed` premise of `a/send`/`a/recv`.
 
   -- The fast path: drive P's side structurally, carrying Q's along and
   -- advancing it by the SAME edge at every step.  `no-new-comm/step` pushes a
@@ -246,8 +246,8 @@ module Safety.Preservation {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   -- premises, lifted from the continuation sets to the leaf families.
   comm/ready
     {P = P} {Q = Q} {i = i}
-    (_ , s/send {S = S} {𝒯 = 𝒯P} _ _ tcP subP , memP)
-    (_ , s/recv {𝒯 = 𝒯Q} _ tcQ subQ , memQ) =
+    (_ , a/send {S = S} {𝒯 = 𝒯P} _ _ tcP subP , memP)
+    (_ , a/recv {𝒯 = 𝒯Q} _ tcQ subQ , memQ) =
     go (comm/ready-or-∈T fP fQ cQ (subP memP) (subQ memQ))
     where
       fP :

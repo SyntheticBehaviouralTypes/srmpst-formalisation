@@ -1,17 +1,19 @@
 {-# OPTIONS --guardedness #-}
 
--- `⊢p → ⊢set` DIRECTLY.  With `SetsDeclarative.agda`'s converse this is the
--- whole equivalence between the two rule sets, and `⊢a` is no longer needed by
--- anything — which is the point: there are TWO systems, the declarative one and
--- the set-based one, and nothing in between.
+-- `⊢p → ⊢a` DIRECTLY.  With `AlgDeclarative.agda`'s converse this is the
+-- whole equivalence between the two rule sets, and the old, deleted two-tier
+-- `⊢a`/`⊢blocked` system is no longer needed by anything — which is the
+-- point: there are TWO systems, the declarative one and this one, and
+-- nothing in between.
 --
 -- This replaced `Definitions/Typing/Norm.agda` (830 lines), which is now
--- deleted along with `⊢a` itself.  `norm`'s bulk was its `t/skip` case, which
--- had to walk an accumulated `¬P` trace INTO a skip tree (`cancel/unskip`,
--- `MainLeaf`, `LeafAlg`, `leafAlg/unfold-cycle`, …), re-rooting as it went.
--- Here that re-rooting is `waitV/unfold-top` (`Typing/Sets.agda`), so the
--- trace is handled once and generically, by `waitFollow`, and the trace
--- parameter disappears from the recursion entirely: `t/unskip` just follows.
+-- deleted along with the old `⊢a` itself.  `norm`'s bulk was its `t/skip`
+-- case, which had to walk an accumulated `¬P` trace INTO a skip tree
+-- (`cancel/unskip`, `MainLeaf`, `LeafAlg`, `leafAlg/unfold-cycle`, …),
+-- re-rooting as it went.  Here that re-rooting is `waitV/unfold-top`
+-- (`Typing/Alg.agda`), so the trace is handled once and generically, by
+-- `waitFollow`, and the trace parameter disappears from the recursion
+-- entirely: `t/unskip` just follows.
 --
 -- The other simplification is coverage.  `norm` is one function over all of
 -- `⊢p`; here the recursion is on the PROCESS, so at each leaf family only the
@@ -27,11 +29,12 @@
 -- `t/skip` is SELF-REFERENTIAL — its leaf family is `⊢p` — so digging a fact
 -- out of one directly is not structurally recursive past a `skip/cycle`, and
 -- no arrangement of a chase fixes that (it was tried twice).  Eliminating the
--- self-reference is what `⊢a`'s two-layer `a/skip`/`⊢blocked` split bought,
--- and `WaitV` buys it too, for free: its leaf family is a plain `Pred`, so
--- CONVERT FIRST (structurally, cycles going to `wv/cycle` one-for-one), then
--- read the fact off the result with `waitFind`.  Each family below carries
--- exactly the state-free facts its rule needs, for exactly that reason.
+-- self-reference is what the old `⊢a`'s two-layer `a/skip`/`⊢blocked` split
+-- bought, and `WaitV` buys it too, for free: its leaf family is a plain
+-- `Pred`, so CONVERT FIRST (structurally, cycles going to `wv/cycle`
+-- one-for-one), then read the fact off the result with `waitFind`.  Each
+-- family below carries exactly the state-free facts its rule needs, for
+-- exactly that reason.
 
 open import Data.Nat using (ℕ; suc)
 
@@ -58,17 +61,17 @@ open import Relation.Binary.PropositionalEquality using (refl)
 
 open import Definitions.Typing
 
-module Definitions.Typing.SetsNorm
+module Definitions.Typing.AlgNorm
   {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
 
   open module M = MPST(wb)
   open M
 
-  open import Definitions.Typing.Sets wb
+  open import Definitions.Typing.Alg wb
   open import Definitions.Typing.Properties wb
     using (td/bisim; skip/bisim-back; skip/unfold-cycle)
   open import Definitions.Typing.MainLeaf wb
-  open import Definitions.Typing.SetsEquiv wb using (wait⇒skip)
+  open import Definitions.Typing.AlgEquiv wb using (wait⇒skip)
 
   -- ══════════════════════════════════════════════════════════════════
   --  Every `Wait` has a reachable leaf
@@ -84,7 +87,7 @@ module Definitions.Typing.SetsNorm
   -- answer and nothing further has to be chased.  Cycles cost nothing on
   -- the way in: `wv/cycle` mirrors `skip/cycle` one-for-one.
   --
-  -- Both halves are already proved: `wait⇒skip` (`SetsEquiv.agda`) and
+  -- Both halves are already proved: `wait⇒skip` (`AlgEquiv.agda`) and
   -- `findMain` (`MainLeaf.agda`, generic in the leaf family, and the only
   -- thing that knows how to see past a cycle).
   -- The process is explicit: it does not occur in the result, so nothing
@@ -164,7 +167,7 @@ module Definitions.Typing.SetsNorm
   one gr P∉α = tr¬/step gr P∉α skip/refl
 
   -- ══════════════════════════════════════════════════════════════════
-  --  Visited vectors as sets, as in `SetsEquiv.agda`
+  --  Visited vectors as sets, as in `AlgEquiv.agda`
   -- ══════════════════════════════════════════════════════════════════
 
   Vof : ∀ {ξ} → Vec Behav ξ → Pred
@@ -193,7 +196,7 @@ module Definitions.Typing.SetsNorm
   endL/adv x gr _ inT = x (in/later gr inT)
 
   ---------------------------------------------------------------------
-  -- `∅`: `s/end`'s `done` must hold at EVERY state of the set, not just
+  -- `∅`: `a/end`'s `done` must hold at EVERY state of the set, not just
   -- at one, so `waitFind` is no use here — it lands on some other state.
   -- Instead assume `P ∈T` at the state in question and chase its run
   -- into the tree, exactly as `Norm.agda`'s `a∅/notin` does: `na` kills
@@ -291,7 +294,7 @@ module Definitions.Typing.SetsNorm
       a , a∈ , skip/cat tr (one grα P∉α)
 
     -- The `rec` anchor family: the body typed at its own anchor.  This is
-    -- exactly `s/rec`'s `𝒜`, and `Check/Sets.agda` decides membership in
+    -- exactly `a/rec`'s `𝒜`, and `Check/Alg.agda` decides membership in
     -- it directly, so it stays free of anything else.
     RecA : ∀ {P} → Proc γ (suc δ) → Pred
     RecA {P = P} Pr W = Typ Γ (W ∷ Δ) (P ◂ Pr) W
@@ -302,7 +305,7 @@ module Definitions.Typing.SetsNorm
       td/bisim (~ᵛ/∷ W~W′ ~ᵛ-refl) W~W′ td
 
     -- `rec`'s guardedness, as its own constant family — the same trick as
-    -- `IfE`.  `s/rec` needs it as a single state-free fact, and keeping it
+    -- `IfE`.  `a/rec` needs it as a single state-free fact, and keeping it
     -- OUT of `RecA` is what lets `RecA` stay the plain anchor set.
     RecG : Proc γ (suc δ) → Pred
     RecG Pr _ = MessageGuarded Pr
@@ -319,7 +322,7 @@ module Definitions.Typing.SetsNorm
     -- unwrap — which is the whole point (see `waitFind`).
     ---------------------------------------------------------------------
 
-    -- Sort-agnostic send: `s/send` needs ONE sort, fixed outside the set,
+    -- Sort-agnostic send: `a/send` needs ONE sort, fixed outside the set,
     -- but `sendWait` already needs that sort to build its family.  So the
     -- sort is existential here, extracted once, and `sendWait` is then run
     -- at the sort found.  `⊢e-unique` is what makes "the sort found" and
@@ -362,7 +365,7 @@ module Definitions.Typing.SetsNorm
   --
   -- Each pair is mutual: the derivation walker handles `t/send`-style leaves,
   -- `t/unskip` (follow the run) and `t/skip` (hand off to the tree walker); the
-  -- tree walker mirrors `⊢skip` onto `WaitV` exactly as `SetsEquiv.agda`'s
+  -- tree walker mirrors `⊢skip` onto `WaitV` exactly as `AlgEquiv.agda`'s
   -- `skip⇒waitV` does, and calls back at every `skip/main`.
 
   module _ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Behav δ} where
@@ -667,7 +670,7 @@ module Definitions.Typing.SetsNorm
     -- STATE.  Unlike everything above this needs no `Wait` and no leaf
     -- hunting at all: the result is a TREE of the same shape, so a
     -- `skip/cycle` is copied across verbatim — it carries no branch data
-    -- to split.  `s/if` takes no `Wait` premise (D4), which is exactly why
+    -- to split.  `a/if` takes no `Wait` premise (D4), which is exactly why
     -- this is the whole of it.
     ---------------------------------------------------------------------
 
@@ -723,13 +726,13 @@ module Definitions.Typing.SetsNorm
       endChase inT (wait⇒skip {γ = γ} {δ = δ} P ∅ (EndL P) (endWait td))
 
   -- ══════════════════════════════════════════════════════════════════
-  --  `⊢p` ⟶ `⊢set`, at the largest set
+  --  `⊢p` ⟶ `⊢a`, at the largest set
   -- ══════════════════════════════════════════════════════════════════
   --
-  -- Stated at `Typ` for the same reason `alg⇒set` is stated at `Alg`:
-  -- `s/send`'s continuation set has to cover the continuation state of
-  -- EVERY leaf at once, which no singleton does.  `set/mono` recovers the
-  -- smaller sets, `⌈ G ⌉` included.
+  -- Stated at `Typ` for the same reason the old, deleted `SetsAlg.agda`'s
+  -- `alg⇒set` was stated at its `Alg`: `a/send`'s continuation set has to
+  -- cover the continuation state of EVERY leaf at once, which no singleton
+  -- does.  `alg/mono` recovers the smaller sets, `⌈ G ⌉` included.
   --
   -- The recursion is on the PROCESS, not the derivation: the derivation
   -- each case needs comes out of `waitFind` and is not a subterm of the
@@ -744,35 +747,35 @@ module Definitions.Typing.SetsNorm
 
   mutual
 
-    typing⇒set :
+    typing⇒alg :
       ∀ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Behav δ}{P}(Pr : Proc γ δ){G}
       → Γ & Δ ⊢p P ◂ Pr ∶ G
-      → Γ & Δ ⊢ P ◂ Pr ∶ Typ Γ Δ (P ◂ Pr)
+      → Γ & Δ ⊢a P ◂ Pr ∶ Typ Γ Δ (P ◂ Pr)
 
-    typing⇒set {P = P} (Q ! i < E >∙ Pr) td
+    typing⇒alg {P = P} (Q ! i < E >∙ Pr) td
       with waitFind (Q ! i < E >∙ Pr) (sendEWait td)
     ... | _ , _ , _ , etd , _ , cont =
-      s/send etd (typing⇒set Pr cont) typ/closed (sendWait etd)
+      a/send etd (typing⇒alg Pr cont) typ/closed (sendWait etd)
 
-    typing⇒set (Σ Q ？· Br) td =
-      s/recv (λ {j} w → typBr Br j w) typ/closed recvWait
+    typing⇒alg (Σ Q ？· Br) td =
+      a/recv (λ {j} w → typBr Br j w) typ/closed recvWait
 
-    typing⇒set {P = P} (ifp E then A else B) td
+    typing⇒alg {P = P} (ifp E then A else B) td
       with waitFind (ifp E then A else B) (ifEWait td)
     ... | _ , etd =
-      s/if etd
-        (set/mono ifTrue  (typing⇒set A (ifTrue td)))
-        (set/mono ifFalse (typing⇒set B (ifFalse td)))
+      a/if etd
+        (alg/mono ifTrue  (typing⇒alg A (ifTrue td)))
+        (alg/mono ifFalse (typing⇒alg B (ifFalse td)))
 
-    typing⇒set ∅ td = s/end endNotin
+    typing⇒alg ∅ td = a/end endNotin
 
-    typing⇒set (v X) td = s/var varWait
+    typing⇒alg (v X) td = a/var varWait
 
-    typing⇒set {P = P} (rec Pr) td
+    typing⇒alg {P = P} (rec Pr) td
       with waitFind (rec Pr) (recGWait td)
     ... | _ , guarded =
-      s/rec guarded
-        (λ aW → set/mono (λ W~s → typ/closed W~s aW) (typing⇒set Pr aW))
+      a/rec guarded
+        (λ aW → alg/mono (λ W~s → typ/closed W~s aW) (typing⇒alg Pr aW))
         recWait
 
     -- Makes `lu Br j` structural: `Br` shrinks going in, the branch shrinks
@@ -781,22 +784,22 @@ module Definitions.Typing.SetsNorm
       ∀ {γ δ n}{Γ : Vec Sort γ}{Δ : Vec Behav δ}{Q}
         (Br : Vec (Proc (suc γ) δ) n)(j : Fin n){U t}
       → (U ∷ Γ) & Δ ⊢p Q ◂ lu Br j ∶ t
-      → (U ∷ Γ) & Δ ⊢ Q ◂ lu Br j ∶ Typ (U ∷ Γ) Δ (Q ◂ lu Br j)
+      → (U ∷ Γ) & Δ ⊢a Q ◂ lu Br j ∶ Typ (U ∷ Γ) Δ (Q ◂ lu Br j)
 
-    typBr (B ∷ Bs) zero    w = typing⇒set B w
+    typBr (B ∷ Bs) zero    w = typing⇒alg B w
     typBr (B ∷ Bs) (suc j) w = typBr Bs j w
 
   -- ══════════════════════════════════════════════════════════════════
   --  The boundary `Safety/` uses
   -- ══════════════════════════════════════════════════════════════════
   --
-  -- `⊢s` is stated over `⊢p`, so coming IN needs `⊢p → ⊢set`; this is it,
-  -- and it no longer goes anywhere near `⊢a`.  Going OUT is
-  -- `SetsDeclarative.agda`'s `⊨⇒typing`.
+  -- `⊢s` is stated over `⊢p`, so coming IN needs `⊢p → ⊢a`; this is it, and
+  -- it no longer goes anywhere near the old, deleted two-tier `⊢a`.  Going
+  -- OUT is `AlgDeclarative.agda`'s `⊨⇒typing`.
 
   td⇒⊨ :
     ∀ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Behav δ}{P}{Pr : Proc γ δ}{G}
     → Γ & Δ ⊢p P ◂ Pr ∶ G
     → Γ & Δ ⊨ P ◂ Pr ∶ G
 
-  td⇒⊨ {Pr = Pr} td = _ , typing⇒set Pr td , td
+  td⇒⊨ {Pr = Pr} td = _ , typing⇒alg Pr td , td

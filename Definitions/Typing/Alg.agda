@@ -33,7 +33,7 @@ open import Relation.Nullary using (¬_)
 
 open import Definitions.Typing
 
-module Definitions.Typing.Sets {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
+module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   open module M = MPST(wb)
   open M
 
@@ -124,6 +124,19 @@ module Definitions.Typing.Sets {N : ℕ}{B : BTheory N}(wb : WellBehaved B) wher
           (λ { (inj₁ x)   → inj₁ (f x)
              ; (inj₂ s~v) → inj₂ s~v })
           (k gr′))
+
+  -- Monotone in the LEAF predicate instead — widening a smaller leaf family
+  -- to a bigger one.  Independent of `waitV/mono` (that one weakens the
+  -- VISITED set); a decision procedure over one leaf family needs this to
+  -- refute a hypothetical derivation stated over an arbitrary, bigger one.
+  waitV/leaf-mono :
+    ∀ {P}{𝒮 𝒮′ V : Pred}
+    → (∀ {s} → 𝒮 s → 𝒮′ s)
+    → ∀ {s} → WaitV P 𝒮 V s → WaitV P 𝒮′ V s
+  waitV/leaf-mono f (wv/leaf x)       = wv/leaf (f x)
+  waitV/leaf-mono f (wv/cycle a inT)  = wv/cycle a inT
+  waitV/leaf-mono f (wv/step na gr k) =
+    wv/step na gr (λ gr′ → waitV/leaf-mono f (k gr′))
 
   -- `~`-closure.  `V` need not be closed: `wv/cycle` already asks for its
   -- ancestor only up to `~`.
@@ -234,7 +247,7 @@ module Definitions.Typing.Sets {N : ℕ}{B : BTheory N}(wb : WellBehaved B) wher
   -- becomes a subtree without it, by replacing every cycle back to `G` with a
   -- copy of `G`'s own tree, transported along `~`.  This is the `WaitV`
   -- analogue of `Properties.agda`'s `skip/unfold-cycle`, and like it needs the
-  -- leaf family to transport — which is what `s/recv`'s `tclosed` is for.
+  -- leaf family to transport — which is what `a/recv`'s `tclosed` is for.
   --
   -- The inclusion `W ⊆ V ∪ ⌈ G ⌉` is carried as a FUNCTION rather than applying
   -- `waitV/mono` to the recursive argument: repacking the argument would stop
@@ -268,7 +281,7 @@ module Definitions.Typing.Sets {N : ℕ}{B : BTheory N}(wb : WellBehaved B) wher
 
   -- Anchors (D1: `rec` anchors are singletons).  Under §5.2 option 1 the
   -- singleton is taken `~`-closed — `{s | W ~ s}` rather than `{W}` — which
-  -- is what lets `s/var` and `s/rec` both use `Reach₀` and never `Reach~`.
+  -- is what lets `a/var` and `a/rec` both use `Reach₀` and never `Reach~`.
   ⌈_⌉ : Behav → Pred
   ⌈ W ⌉ s = W ~ s
 
@@ -289,15 +302,15 @@ module Definitions.Typing.Sets {N : ℕ}{B : BTheory N}(wb : WellBehaved B) wher
   -- downward closure of `𝒮` that the whole design rests on.  `Closed` is a
   -- hypothesis of the lemmas that need it instead.
 
-  infix 4 _&_⊢_∶_
+  infix 4 _&_⊢a_∶_
 
-  data _&_⊢_∶_
+  data _&_⊢a_∶_
     (Γ : Vec Sort γ)
     (Δ : Vec Behav δ)
     : NProc γ δ → Pred → Set₁
     where
 
-    s/send :
+    a/send :
       ∀ {P Q I}
         {i  : Fin (suc I)}
         {S  : Sort}
@@ -305,35 +318,36 @@ module Definitions.Typing.Sets {N : ℕ}{B : BTheory N}(wb : WellBehaved B) wher
         {Pr : Proc γ δ}
         {𝒮 𝒯 : Pred}
       → (etd : Γ ⊢e E ∶ S)
-      → (td  : Γ & Δ ⊢ P ◂ Pr ∶ 𝒯)
-      -- As for `s/recv`'s `tclosed`: the continuation set is `~`-closed.
+      → (td  : Γ & Δ ⊢a P ◂ Pr ∶ 𝒯)
+      -- As for `a/recv`'s `tclosed`: the continuation set is `~`-closed.
       -- `Preservation`'s readiness argument re-roots BOTH sides' `Wait`s, and
       -- re-rooting needs the leaf family to transport along `~`.
       → (tclosed : Closed 𝒯)
       → (sub : ∀ {s}
              → 𝒮 s
              → Wait P (λ u → ∃[ u′ ] (u -< P ⟶ Q # i < S > >-> u′) × 𝒯 u′) s)
-      → Γ & Δ ⊢ P ◂ Q ! i < E >∙ Pr ∶ 𝒮
+      → Γ & Δ ⊢a P ◂ Q ! i < E >∙ Pr ∶ 𝒮
 
     -- Send is `∃`, receive is `∀`+`∃`: internal versus external choice.  The
     -- process picks the send label, so that exact edge must exist; the
     -- environment picks the branch, so the process must cover every offered
     -- branch and may cover more.  `𝒯` is indexed by `(j , U)`, never by `j`
     -- alone — see TODO.md §6 and `Tests/LabelSorts.agda`.
-    s/recv :
+    a/recv :
       ∀ {P Q I}
         {Br : Vec (Proc (suc γ) δ) (suc I)}
         {𝒮 : Pred}
         {𝒯 : Fin (suc I) → Sort → Pred}
-      -- Conditional on `𝒯 j U` being INHABITED.  `blocked/recv` requires a
-      -- continuation only for labels the behaviour actually offers, so
-      -- demanding `conts` unconditionally makes the set rules strictly
-      -- stronger than `⊢a` and completeness false: a branch the graph never
-      -- offers may be arbitrary — even carrying an ill-typed expression, which
-      -- has no `Γ ⊢e E ∶ S` to give `s/send` — and `⊢a` still accepts it.
-      -- Soundness is unaffected: `set⇒alg` reaches `conts` only from an actual
-      -- edge, which supplies the witness.
-      → (conts : ∀ {j U t} → 𝒯 j U t → (U ∷ Γ) & Δ ⊢ Q ◂ lu Br j ∶ 𝒯 j U)
+      -- Conditional on `𝒯 j U` being INHABITED.  The old, deleted two-tier
+      -- `⊢a`/`⊢blocked` system's `blocked/recv` required a continuation only
+      -- for labels the behaviour actually offers, so demanding `conts`
+      -- unconditionally here makes this judgment strictly stronger than that
+      -- and completeness false: a branch the graph never offers may be
+      -- arbitrary — even carrying an ill-typed expression, which has no
+      -- `Γ ⊢e E ∶ S` to give `a/send` — and the old system still accepted it.
+      -- Soundness is unaffected: `alg⇒typing` reaches `conts` only from an
+      -- actual edge, which supplies the witness.
+      → (conts : ∀ {j U t} → 𝒯 j U t → (U ∷ Γ) & Δ ⊢a Q ◂ lu Br j ∶ 𝒯 j U)
       -- The continuation sets are `~`-closed.  This is NOT the thing §5.2
       -- ruled out: that was `Closed 𝒮`, whose premise would break the
       -- downward closure of `𝒮` the design rests on.  `𝒯` is the CONTINUATION
@@ -342,9 +356,10 @@ module Definitions.Typing.Sets {N : ℕ}{B : BTheory N}(wb : WellBehaved B) wher
       -- readiness argument re-roots the receiver's `Wait` at every step
       -- (`waitV/unfold-top`), and re-rooting replaces a cycle leaf by its
       -- ancestor's tree transported along `~` — which needs the leaf family to
-      -- transport, i.e. exactly this.  The `⊢a` proof got the same fact for
-      -- free from `blocked/bisim`; here it has to be said.  `alg⇒set` supplies
-      -- it as `alg/~`, so completeness is unaffected.
+      -- transport, i.e. exactly this.  The old, deleted `⊢a` got the same
+      -- fact for free from `blocked/bisim`; here it has to be said.
+      -- `typing⇒alg` supplies it as `typ/closed`, so completeness is
+      -- unaffected.
       → (tclosed : ∀ {j U} → Closed (𝒯 j U))
       → (sub : ∀ {s}
              → 𝒮 s
@@ -353,55 +368,89 @@ module Definitions.Typing.Sets {N : ℕ}{B : BTheory N}(wb : WellBehaved B) wher
                            (u -< P ⟶ Q # j < U > >-> t))
                       × (∀ {j U t} → u -< P ⟶ Q # j < U > >-> t → 𝒯 j U t))
                  s)
-      → Γ & Δ ⊢ Q ◂ Σ P ？· Br ∶ 𝒮
+      → Γ & Δ ⊢a Q ◂ Σ P ？· Br ∶ 𝒮
 
-    s/if :
+    a/if :
       ∀ {P E}
         {A B : Proc γ δ}
         {𝒮 : Pred}
       → (etd : Γ ⊢e E ∶ s/bool)
-      → (ttd : Γ & Δ ⊢ P ◂ A ∶ 𝒮)
-      → (ftd : Γ & Δ ⊢ P ◂ B ∶ 𝒮)
-      → Γ & Δ ⊢ P ◂ ifp E then A else B ∶ 𝒮
+      → (ttd : Γ & Δ ⊢a P ◂ A ∶ 𝒮)
+      → (ftd : Γ & Δ ⊢a P ◂ B ∶ 𝒮)
+      → Γ & Δ ⊢a P ◂ ifp E then A else B ∶ 𝒮
 
-    -- No `Wait` on `s/if`/`s/end`: `a/if`/`a/end` are top level in `⊢a` and
+    -- No `Wait` on `a/if`/`a/end`: `a/if`/`a/end` are top level in `⊢a` and
     -- no `⊢blocked` constructor covers `ifp`/`∅`.  This is sound WITHOUT the
     -- `∪ Loop P` wart because `Loop P = Wait P ∅` is empty — D4, proved in
     -- `Definitions/Typing/NoLoop.agda`.
-    s/end :
+    a/end :
       ∀ {P}{𝒮 : Pred}
       → (done : ∀ {s} → 𝒮 s → ¬ P ∈T s)
-      → Γ & Δ ⊢ P ◂ ∅ ∶ 𝒮
+      → Γ & Δ ⊢a P ◂ ∅ ∶ 𝒮
 
-    s/var :
+    a/var :
       ∀ {P}{X : Fin δ}{𝒮 : Pred}
       → (sub : ∀ {s} → 𝒮 s → Wait P (Reach₀ P ⌈ lu Δ X ⌉) s)
-      → Γ & Δ ⊢ P ◂ v X ∶ 𝒮
+      → Γ & Δ ⊢a P ◂ v X ∶ 𝒮
 
-    s/rec :
+    a/rec :
       ∀ {P}
         {Pr : Proc γ (suc δ)}
         {𝒮 𝒜 : Pred}
       → (mg  : MessageGuarded Pr)
-      → (td  : ∀ {W} → 𝒜 W → Γ & (W ∷ Δ) ⊢ P ◂ Pr ∶ ⌈ W ⌉)
+      → (td  : ∀ {W} → 𝒜 W → Γ & (W ∷ Δ) ⊢a P ◂ Pr ∶ ⌈ W ⌉)
       → (sub : ∀ {s} → 𝒮 s → Wait P (Reach₀ P 𝒜) s)
-      → Γ & Δ ⊢ P ◂ rec Pr ∶ 𝒮
+      → Γ & Δ ⊢a P ◂ rec Pr ∶ 𝒮
 
   -- Downward closure of `𝒮`: it occurs only in `⊆`-premises.  This is what
   -- "each `Pr` has a largest `𝒮`" means operationally — prove the judgment
   -- once at the largest set, then narrow to any subset, `⌈ G ⌉` included.
-  set/mono :
+  alg/mono :
     ∀ {Γ : Vec Sort γ}{Δ : Vec Behav δ}{PPr}{𝒮 𝒮′ : Pred}
     → (∀ {s} → 𝒮′ s → 𝒮 s)
-    → Γ & Δ ⊢ PPr ∶ 𝒮
-    → Γ & Δ ⊢ PPr ∶ 𝒮′
+    → Γ & Δ ⊢a PPr ∶ 𝒮
+    → Γ & Δ ⊢a PPr ∶ 𝒮′
 
-  set/mono f (s/send etd td tc sub) = s/send etd td tc (λ x → sub (f x))
-  set/mono f (s/recv conts tc sub)  = s/recv conts tc (λ x → sub (f x))
-  set/mono f (s/if etd ttd ftd)     = s/if etd (set/mono f ttd) (set/mono f ftd)
-  set/mono f (s/end done)           = s/end (λ x → done (f x))
-  set/mono f (s/var sub)            = s/var (λ x → sub (f x))
-  set/mono f (s/rec g td sub)       = s/rec g td (λ x → sub (f x))
+  alg/mono f (a/send etd td tc sub) = a/send etd td tc (λ x → sub (f x))
+  alg/mono f (a/recv conts tc sub)  = a/recv conts tc (λ x → sub (f x))
+  alg/mono f (a/if etd ttd ftd)     = a/if etd (alg/mono f ttd) (alg/mono f ftd)
+  alg/mono f (a/end done)           = a/end (λ x → done (f x))
+  alg/mono f (a/var sub)            = a/var (λ x → sub (f x))
+  alg/mono f (a/rec g td sub)       = a/rec g td (λ x → sub (f x))
+
+  -- Bisimilarity transport across the ENVIRONMENT `Δ`, with `𝒮` unchanged.
+  -- The `⊢a`-native counterpart to `Properties.agda`'s `td/bisim` — needed
+  -- so `Check/Alg.agda` can decide `⊢a` without ever going through `⊢p`:
+  -- `a/rec`'s anchor set (`Γ & (W ∷ Δ) ⊢a P ◂ Pr ∶ ⌈ W ⌉`) has to be closed
+  -- under `W ~ W′`, and unlike `⊢p` there is no self-reference here to
+  -- fight — every rule is one case of `Pr`, so this is a plain structural
+  -- recursion on `Pr`, exactly mirroring `alg?`'s own recursion.  `Δ` only
+  -- ever reaches a rule through `⌈ lu Δ X ⌉` (`a/var`) or by growing at
+  -- `a/rec`, and both are handled by transporting the WITNESS along
+  -- `lookup/~ᵛ` / `~ᵛ/∷` rather than by rebuilding the derivation.
+  alg/bisim :
+    ∀ {Γ : Vec Sort γ}{Δ Δ′ : Vec Behav δ}{PPr}{𝒮 : Pred}
+    → Δ ~ᵛ Δ′
+    → Γ & Δ  ⊢a PPr ∶ 𝒮
+    → Γ & Δ′ ⊢a PPr ∶ 𝒮
+
+  alg/bisim Δ~Δ′ (a/send etd td tc sub) =
+    a/send etd (alg/bisim Δ~Δ′ td) tc sub
+
+  alg/bisim Δ~Δ′ (a/recv conts tc sub) =
+    a/recv (λ tjut → alg/bisim Δ~Δ′ (conts tjut)) tc sub
+
+  alg/bisim Δ~Δ′ (a/if etd ttd ftd) =
+    a/if etd (alg/bisim Δ~Δ′ ttd) (alg/bisim Δ~Δ′ ftd)
+
+  alg/bisim Δ~Δ′ (a/end done) =
+    a/end done
+
+  alg/bisim Δ~Δ′ (a/var sub) =
+    a/var (λ 𝒮s → waitV/leaf-mono (λ { (a , luΔX~a , tr) → a , lookup/~ᵛ Δ~Δ′ _ luΔX~a , tr }) (sub 𝒮s))
+
+  alg/bisim Δ~Δ′ (a/rec guarded td sub) =
+    a/rec guarded (λ 𝒜W → alg/bisim (~ᵛ/∷ ~refl Δ~Δ′) (td 𝒜W)) sub
 
   -- ══════════════════════════════════════════════════════════════════
   --  The pointwise form
@@ -415,7 +464,7 @@ module Definitions.Typing.Sets {N : ℕ}{B : BTheory N}(wb : WellBehaved B) wher
 
   _&_⊨_∶_ :
     ∀ {γ δ} → Vec Sort γ → Vec Behav δ → NProc γ δ → Behav → Set₁
-  Γ & Δ ⊨ PPr ∶ G = Σ[ 𝒮 ∈ Pred ] (Γ & Δ ⊢ PPr ∶ 𝒮) × 𝒮 G
+  Γ & Δ ⊨ PPr ∶ G = Σ[ 𝒮 ∈ Pred ] (Γ & Δ ⊢a PPr ∶ 𝒮) × 𝒮 G
 
   -- Inversions for `Safety/`.  Each is ONE clause, because the judgment is
   -- syntax directed: there is no skip wrapper to look past and no tree to
@@ -426,7 +475,7 @@ module Definitions.Typing.Sets {N : ℕ}{B : BTheory N}(wb : WellBehaved B) wher
     → Γ & Δ ⊨ P ◂ ifp E then A else B ∶ G
     → (Γ ⊢e E ∶ s/bool) × (Γ & Δ ⊨ P ◂ A ∶ G) × (Γ & Δ ⊨ P ◂ B ∶ G)
 
-  ⊨/if-inv (𝒮 , s/if etd ttd ftd , mem) =
+  ⊨/if-inv (𝒮 , a/if etd ttd ftd , mem) =
     etd , (𝒮 , ttd , mem) , (𝒮 , ftd , mem)
 
   ⊨/rec-guarded :
@@ -434,18 +483,18 @@ module Definitions.Typing.Sets {N : ℕ}{B : BTheory N}(wb : WellBehaved B) wher
     → Γ & Δ ⊨ P ◂ rec Pr ∶ G
     → MessageGuarded Pr
 
-  ⊨/rec-guarded (_ , s/rec guarded _ _ , _) = guarded
+  ⊨/rec-guarded (_ , a/rec guarded _ _ , _) = guarded
 
   ⊨/end-inv :
     ∀ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Behav δ}{P}{G}
     → Γ & Δ ⊨ P ◂ ∅ ∶ G
     → ¬ P ∈T G
 
-  ⊨/end-inv (_ , s/end done , mem) = done mem
+  ⊨/end-inv (_ , a/end done , mem) = done mem
 
   -- `⊢s M ∶ G` becomes "`G` is in every participant's set" (TODO.md §3.2).
   -- Primed only to coexist with `Declarative`'s `⊢s_∶_`, which is still in
   -- scope; it loses the prime when D2 deletes the old judgment.
   ⊢s′_∶_ : Session → Behav → Set₁
   ⊢s′ M ∶ G =
-    ∀ P → ∃[ 𝒮 ] (([] & [] ⊢ P ◂ (M [ P ]s) ∶ 𝒮) × 𝒮 G)
+    ∀ P → ∃[ 𝒮 ] (([] & [] ⊢a P ◂ (M [ P ]s) ∶ 𝒮) × 𝒮 G)
