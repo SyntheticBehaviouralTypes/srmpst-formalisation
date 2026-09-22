@@ -27,13 +27,10 @@ derivation size is `O(|Pr|)` **independent of the graph** — that is the source
 of the proof-simplicity win. Deciding the judgment becomes: compute the largest
 `𝒮` bottom-up over `Pr`, then test membership.
 
-*Amended 2026-09-11.* Two claims in this paragraph did not survive contact:
+*Amended 2026-09-11.* One claim in this paragraph did not survive contact:
 "the walking-the-graph part of typing becomes two closure operators" is FALSE
-as stated — `Wait` needs a visited set, see §7 step 4b — and the performance
-win is not one. Measured at step 6, the set-based checker is at **parity** with
-the checker it replaces on this corpus; the `O(|Pr|)` claim is about derivation
-size, and these graphs are small. The proof-simplicity win is real and is what
-the exercise bought.
+as stated — `Wait` needs a visited set, see §7 step 4b. The proof-simplicity
+win is real and is what the exercise bought.
 
 ## 2. Decisions taken by the owner (do NOT re-litigate)
 
@@ -61,9 +58,8 @@ Sets are predicates `Behav → Set` abstractly, `Vec Bool (size G)` concretely.
 > infinite unfoldings that a finite `⊢skip` tree does not, which made
 > `⊢ ⟺ ⊢set` unprovable. `Wait` is now a **μ indexed by a visited SET**
 > (`WaitV`, `Definitions/Typing/Sets.agda`). `Reach₀`/`Reach~` below are
-> unchanged and still accurate, and so is the `∈T`/`∉T` split in the last
-> bullet — that is exactly how `Check/Wait.agda` is organised. The rest of this
-> subsection is kept because it records WHY each premise is shaped as it is.
+> unchanged and still accurate. The rest of this subsection is kept because
+> it records WHY each premise is shaped as it is.
 
 ```
 Wait P 𝒮   =  ν W. Reach∀⁺ P 𝒮 (Guard P W)             -- was ⊢skip; ∀-backward
@@ -108,9 +104,7 @@ from which the same holds again.*
   `∉T` region is a sink where `Guard` is empty and `Wait` collapses to
   `Reach∀⁺ P 𝒮 ∅`, a plain lfp.
   Cycles exist only in the `∈T` region. **The two fixpoints are ordered, not
-  nested** — compute the `∉T` lfp first, then the `∈T` gfp over it. This is what
-  replaces `Justified`/`FailedFrom`/`failed⇒¬tree` and the four-component
-  measure in `Check/Alg.agda`, phase component included.
+  nested** — compute the `∉T` lfp first, then the `∈T` gfp over it.
 
 ### 3.2 The judgment
 
@@ -156,8 +150,6 @@ Why each rule is shaped that way, in one line each:
 * **send is `∃`, recv is `∀`+`∃`** — internal vs external choice. The process
   picks the send label, so that exact edge must exist; the sender picks the
   branch, so the process must cover every offered branch and *may cover more*.
-  Verified: `recvConts?` returns a vacuous continuation for a non-matching
-  action (`Check/Alg.agda:782`), and only `findRecv` (`:743`) demands one edge.
 * **`S` in `s/send` is lifted out of the set** and inferred once — free, by
   `⊢e-unique` (`Definitions/Expr.agda:97`). "Every state uses the same sort" is
   a consequence, not a side condition.
@@ -168,78 +160,85 @@ Why each rule is shaped that way, in one line each:
 
 ## 4. Current status
 
-**Updated 2026-09-15.  ALL of §7 is done: `⊢a` IS DELETED.**  The development
-now has exactly TWO systems — the declarative `⊢p` and the set-based `⊢`
-— and nothing in between.  `agda --guardedness` exit 0 on every root from a
-clean build, no holes, no `postulate`s, no `TERMINATING`:
+*Update, 2026-09-22 (later the same day):* `Check/Alg.agda` is no longer
+empty — see the note at the end of §7 step 6 for what is there now, what it
+is missing, and why its current shape is being reworked. The paragraph below
+is the state as of the START of that day and is kept for the record; do not
+read it as still describing the file.
 
-| file | what |
-|---|---|
-| `Definitions/Typing/SetsNorm.agda` | `typing⇒set` — `⊢p → ⊢set` DIRECTLY (735 lines) |
-| `Definitions/Typing/SetsDeclarative.agda` | `set⇒typing` — the converse |
+`Check/Alg.agda` is EMPTY. Nothing is implemented. Every previous claim in
+this file about what `Check/Alg.agda` does, how it is structured, what it
+reuses, or what has been "verified" about it is UNRELIABLE and has been
+removed — do not trust any `.agdai` file, git history, or memory of an
+earlier reading of this file for that. Start from §4a below and from reading
+`Definitions/Typing/Alg.agda` (the judgment `Check/Alg.agda` must decide)
+directly.
 
-Deleted: `Typing/Algorithmic.agda`, `Typing/Norm.agda` (830 lines),
-`Typing/AlgProperties.agda`, `Typing/SetsAlg.agda`.  `Definitions/Graph/
-NetworkProject.agda` moved to `Stale/` (§9 — write-off, not a port).
-`ROOTS` updated; `Check/Sets.agda` now decides `⊢p` outright.
+`⊢p ⟺ ⊢a` (`Definitions/Typing/Alg.agda`'s judgment) is proved end to end,
+independently of `Check/`: `Definitions/Typing/AlgNorm.agda`'s `typing⇒alg`
+(`⊢p → ⊢a`) and `Definitions/Typing/AlgDeclarative.agda`'s `alg⇒typing`
+(`⊢a → ⊢p`) are the two directions. VERIFIED just now (2026-09-22):
+`agda Definitions/Typing/AlgNorm.agda` and
+`agda Definitions/Typing/AlgDeclarative.agda` each exit 0 on their own.
 
-**THE ONE IDEA, recorded so it is not undone.**  `⊢p`'s `t/skip` is
-SELF-REFERENTIAL — its leaf family is `⊢p` again.  So a fact dug out of one
-past a `skip/cycle` may need unwrapping once more, and that unwrap is not a
-subterm anything can see: BOTH an `Anc`/`findRun` chase (`MainLeaf.agda`'s
-technique) and an unfold chase (`Norm.agda`'s) fail the termination checker
-here, and no rearrangement of either fixes it.  Killing the self-reference is
-precisely what `⊢a`'s two-layer `a/skip`/`⊢blocked` split was FOR — and
-`WaitV` does it too, for nothing: its leaf family is a plain `Pred`.  So
-**convert to `Wait` FIRST** (structural, `skip/cycle ↦ wv/cycle` one-for-one,
-no chase at all), **then read the fact off with `waitFind`** — which is just
-`findMain ∘ wait⇒skip`, both already proved.  Every leaf family in
-`SetsNorm.agda` carries exactly the state-free facts its rule needs for that
-reason: `SendE` the sort, `RecG` the guardedness, `IfE` the guard's typing.
-`∅` is the one exception — `s/end`'s `done` must hold at EVERY state, not
-just one, so `waitFind` is no use and it keeps an `a∅/notin`-style chase over
-the (non-self-referential) `¬ P ∈T` family.
+VERIFIED just now, also: `agda Safety.agda` exits 0 on its own (it does not
+depend on `Check/`). `agda Check.agda` currently FAILS — `Check/Alg.agda`
+being an empty file with no module header breaks `Check/Graph.agda`'s
+`import Check.Alg`, and even once it has a header again, `Check/Graph.agda`,
+`Check/Network.agda`, and `Tests/AlgCheck.agda` all call `AlgCheck.tc?`/
+`AlgCheck.alg`/`AlgCheck.tcSession?`, none of which exist yet. This is
+expected, not a regression to chase — `Check/Alg.agda` has not been written.
 
-*The 2026-09-11 entry, for the record:* **Steps 1–5 of §7 were done: `⊢a ⟺ ⊢set` is PROVED.**
-Six files, all `agda --guardedness` exit 0, no holes, no `postulate`s, no
-`TERMINATING`:
+### 4a. The owner's approach — read this before writing anything
 
-| file | what |
-|---|---|
-| `Definitions/Typing/NoLoop.agda` | D4, `Loop P = ∅` |
-| `Definitions/Typing/MainLeaf.agda` | `findMain` — every `⊢skip` tree has a main leaf, constructively |
-| `Definitions/Typing/Sets.agda` | `WaitV`, `Reach₀`/`Reach~`, the seven rules |
-| `Definitions/Typing/SetsEquiv.agda` | `skip⇒wait` / `wait⇒skip`, both directions |
-| `Definitions/Typing/AlgProperties.agda` | `alg/bisim` / `alg/~` |
-| `Definitions/Typing/SetsAlg.agda` | `set⇒alg` / `alg⇒set` — the equivalence |
+This is the owner's own description of how `Check/Alg.agda` should be
+built, recorded here 2026-09-22 so a fresh session has it without having to
+ask again. It is a PLAN, not a report of anything implemented, tried, or
+verified — nothing below has been built.
 
-**None is in `ROOTS`, so nothing re-checks them** — check them by hand until
-they are wired in. Next is step 6 (move `Check/` onto the set form).
+`alg?`'s shape:
 
-*The rest of this section is from 2026-08-14 and is retained for the parts that
-have not moved:*
+```
+alg? : Vec Sort γ → Vec Behav δ → (Pr : NProc γ δ)
+     → ⟨a finite set of states of the graph's finite LTS⟩
+     → Dec (Δ & Γ ⊢a P ◂ Pr ∶ ⟨that same finite set⟩)
+```
 
-* Branch **`set-typing`**, forked from `simplified-theory` @ `15bf5bf`, which
-  is the rollback point (last known-green commit).
-* Working tree, uncommitted:
-  * `Definitions/Graph/Reachability.agda` — dead code removed (`ReachableBy`,
-    `Reachable`, `reachable/map`, `reachable/cat`, `pathVia→reachable`,
-    `reachable→pathVia`, and the now-unused `⊤` import). `agda --guardedness`
-    on it and on `Definitions/Graph.agda` (which re-exports it publicly): **exit 0**.
-  * `Tests/LabelSorts.agda`, `Tests/LabelSortsForward.agda` — new, both **exit 0**,
-    all decisions forced. See §6.
-  * `FUTURE_WORK.md` — untracked, pre-existing.
-* **Step 1 of §7 is done** (the sort vector); see there. Everything since is
-  committed and `./runall.sh --tests` was green at that commit.
-* **No rule has been written in Agda yet** — §7 step 3 is the first that does.
-* `Definitions/Graph/NetworkProject.agda` typechecked clean on 2026-08-13
-  (`agda --guardedness Definitions/Graph/NetworkProject.agda`, exit 0). It is
-  not in `ROOTS`, so nothing re-checks it. See "Casualties".
-* Still dead and NOT removed, confirmed by grep: the whole `PathViaP` family
-  (`Definitions/Graph/Reachability.agda:304-345` in the pre-cleanup numbering)
-  — `PathViaP`, `pathViaP-snoc`, `pathViaP-map`, `pathViaP→pathVia`,
-  `pathVia→pathViaP`. Used nowhere, including inside its own file except by
-  each other. ~45 lines, free to delete.
+The finite set of states is represented concretely as `Vec Bool (size G)`.
+
+The algorithm is a recursive traversal of the STRUCTURE OF `Pr`: one case
+per process constructor. For example, if `Pr` is a send, apply `a/send`,
+determine whether a set of states `T` exists such that the required `⊆`
+("`sub S T`", in the owner's own shorthand) holds, and continue
+typechecking recursively in the continuation with that set of states `T`.
+
+How `T` is to be found, per case (send, recv, and so on alike): by
+traversing the graph — walk forward until `P` can perform the action in
+question, then perform it. If this is not possible, that is a refutation
+(a `no`), not something to search around.
+
+The owner's own words for the correspondence this rests on: **`Wait`
+corresponds to `t/skip`, and `Reach` corresponds to `t/unskip`.**
+
+Other constraints the owner gave explicitly:
+
+* `Definitions/Typing/AlgNorm.agda`'s `typing⇒alg` and
+  `Definitions/Typing/AlgDeclarative.agda`'s `alg⇒typing` are to be kept
+  and relied on — they are NOT to be deleted or reproved.
+* `Δ` stays `Vec Behav δ` (a vector of single states, as now) for the time
+  being. A future change to a vector of STATE-SETS (so a `rec` body can be
+  checked once against its whole reachable anchor set, rather than per
+  anchor) is a genuine goal, but it requires a change to
+  `Definitions/Typing/Alg.agda` itself and should be attempted only if it
+  can actually be made to work — do not force it in.
+* Nothing already written for the previous, deleted `Check/Alg.agda`
+  (whatever shape it had) is to be reused. Write it fresh.
+* Do not touch any file other than `Check/Alg.agda` without asking first.
+
+Nothing else about the implementation — not the shape of helper functions,
+not whether `Check/Wait.agda` is reused, not any claim about what is or
+is not possible — is settled. Do not treat anything beyond the bullets
+above as agreed.
 
 ## 5. Open questions — BOTH NOW CLOSED (2026-09-01)
 
@@ -536,54 +535,77 @@ Each step ends green. The corpus is the oracle (§8).
    have dragged in `Norm.agda`'s `MainLeaf` hypothesis for no gain.
 
    **None of these five files is in `ROOTS`, so nothing re-checks them.**
-6. ~~**[Phase a] Move `Check/` onto the set form and delete `Check/Alg.agda`.**~~
-   — **DONE 2026-09-11.** `Check/Alg.agda` (917 lines) is deleted and replaced
-   by two files; `Check.agda`'s public surface is unchanged, so `Examples/`
-   needed no edit at all and `Tests/` needed one import swap.
+6. **Write `Check/Alg.agda`.** IN PROGRESS, 2026-09-22. Scope decided:
+   `Check/Alg.agda` is EXCLUSIVELY about deciding `Definitions/Typing/
+   Alg.agda`'s `_&_⊢a_∶_` — no `⊢p`, no `⊢s`, no `ProcessTyping`/
+   `SessionTyping`, no bridging via `alg⇒typing`/`typing⇒alg` (both are kept
+   as-is). That bridging, and the public `tc?`/`tcSession?`/`alg` surface
+   `Check/Graph.agda`/`Check/Network.agda`/`Tests/AlgCheck.agda` currently
+   call, belongs to a DIFFERENT file, not yet decided. Written fresh: no
+   dependency on any other `Check/*.agda` file or its decision procedure
+   (`Check/Wait.agda` included), even where the underlying idea is forced.
 
-   * **`Check/Wait.agda`** — `wait?`, the graph-walking half. §3.1's `∈T?`
-     split survives 4b and is the whole design: on `¬ P ∈T` no cycle can fire
-     (forward closure of `¬ ∈T`), so `V` is irrelevant and that region is a
-     plain lfp — the table `noCycle`, computed once; on `P ∈T` a revisit
-     SUCCEEDS, so there is nothing to fail and `wt`/`Incl` is the entire
-     termination argument. **`Justified`, `FailedFrom`, `failed⇒¬tree` and the
-     four-component measure are gone, phase component included.**
-     The visited set is read up to `~` (`Vof`) — that is what makes
-     `Vof (mark V s)` and `Vof V ∪ ⌈ s ⌉` interchangeable in BOTH directions;
-     with a raw index only the `yes` direction transfers, and it is the `no`
-     direction that needs it.
-   * **`Check/Sets.agda`** — the checker, one case per set rule, **structural
-     on the process**: no `size/proc`, no `×-Lex`, no well-founded recursion in
-     the walk at all. `lookup Br j` is made structural by the same `algBr`
-     companion as `SetsAlg.agda`. Both directions of every case are
-     `SetsAlg.agda`'s lemmas, not re-derivations — `yes` builds the derivation
-     the way `set⇒alg` does, `no` returns the refuted `Wait`
-     (`sendSub`/`recvSub`/`varSub`/`recSub`) or the failed premise
-     (`inv/end`/`inv/if*`/`recGuard`/`inv/sendE`).
+   **Built and verified so far** (`agda --guardedness Check/Alg.agda` exits
+   0; sanity-tested in `Tests/CheckAlgSanity.agda`, which also exits 0):
+   * Generic `Vec Bool (size G)` weight/inclusion/fixed-point machinery,
+     built from scratch (not reusing `Definitions/Graph/Reachability.agda`).
+   * `∈T?` — unfiltered forward reachability to an active edge.
+   * `Reach₀?` — a SECOND, independent fixed point filtered at the ACTION
+     level, not the state level: reusing the state-level `na?` filter here
+     would be unsound, since a state can have both a `P`-edge and an
+     unrelated edge enabled at once (that's what the diamond axiom is for).
+     `Tests/CheckAlgSanity.agda`'s `Reach₀?-sanity` module is the regression
+     test for this specific point.
+   * `Wait?` — the `WaitV` visited-set search, split into the `¬P∈T` region
+     (a plain least fixed point, `noCycleTable`) and the `P∈T` region (a
+     visited-set walk whose termination argument is: whenever the anchor
+     check fails, the current state provably was not already visited, else
+     it would self-witness via `~refl`).
+   * `algSet`/`algBr` — the six-rule structural induction deciding `⊢a`
+     itself, each rule computing a `Bits` witness + derivation + a proof the
+     witness is `~`-closed (`Closed`). Closedness needed two NEW small
+     lemmas not requiring the open, unproved §5.2′ result (`sendLeaf-closed`,
+     `recvLeaf-closed`), plus reuse of already-proved `wait/~`/`reach₀/~`/
+     `⌈⌉/closed`/`∈~`/`waitV/leaf-mono`. The `rec` case's anchor set is a
+     union of closed `⌈W⌉` singletons over every `W : State G` that passes
+     (tested via a direct, structurally-smaller-in-`Pr` recursive call to
+     `algSet Γ (W∷Δ) P Pr` — no separate mutual "anchor search" helper is
+     needed; Agda's termination checker sees the smaller `Pr` regardless of
+     the `tabulate`/lambda wrapping it). `algSet`'s return type also had to
+     become `AlgOK ⊎ ¬∃[𝒮]…` rather than an unconditional witness: `s/send`/
+     `s/if`'s `etd` and `s/rec`'s `mg` are UNCONDITIONAL, 𝒮-independent
+     premises, so a bad expression or an unguarded `rec` makes the process
+     untypeable at ANY 𝒮, not even `∅` — contrary to `Definitions/Typing/
+     Alg.agda`'s own comment that "`∅` satisfies every rule" (that comment
+     is only true for the `𝒮`/`𝒯`/`𝒜`-conditional premises).
 
-   `Check/Core.agda` was kept: its contents are decidability of the graph's own
-   relations (expression checking, `findStep`/`findRecv`/`na?`/`bisim?~`/
-   `messageGuarded?`), not algorithm.
+   **Not yet built:** the top-level `alg` decision procedure and, for its
+   refutation direction, `algSet-largest` (given an arbitrary hypothetical
+   `Γ&Δ⊢aP◂Pr∶𝒮'` and `𝒮's`, show `algSet`'s own computed set contains `s`)
+   — another six-case induction mirroring `algSet`'s structure.
 
-   *Done:* `./runall.sh --tests` exit 0 — the whole corpus with decisions
-   forced, **`Ex6` included**, plus both `toWitnessFalse` controls.
-
-   **One performance trap, measured, worth not repeating.** `CLAUDE.md`'s
-   "Agda shares argument thunks, not definition applications" applies to the
-   `noCycle` table with full force: read as a module-level definition, every
-   `lookup noCycle s` in the walk rebuilds the whole fixpoint.
-   `Tests/Perf09_RevisitSpine`, deleting only that file's `.agdai`:
-
-   | | time | peak RSS |
-   |---|---|---|
-   | old `Check/Alg.agda` (worktree at `fcac9e6`) | 9.60 s | 0.65 GB |
-   | new, `noCycle` as a definition | 138.3 s | 1.5 GB |
-   | new, `noCycle` as a bound argument | 9.78 s | 0.64 GB |
-
-   So the set-based checker is at **parity** on this corpus, not faster — §1's
-   asymptotic claim is about derivation SIZE, and these graphs are small. The
-   table and its two correctness facts are passed into `wait?/acc` as
-   arguments; **do not fold them back into the module.**
+   **Owner's review, 2026-09-22: `algSet`/`algBr` as built are unnecessarily
+   convoluted (massive per-rule `where` blocks) and are to be REWORKED
+   before `algSet-largest` is attempted.** Direction: take the target set
+   `𝒮` as an explicit INPUT to the algorithm, matching §4a's original
+   sketch, rather than always computing "the largest set" and testing
+   inclusion/membership afterward —
+   `algCheck : Γ → Δ → P → (Pr : Proc γ δ) → (𝒮 : Bits) → Dec (Γ&Δ⊢aP◂Pr∶⟦𝒮⟧)`
+   in place of the current `algSet : … → AlgOK ⊎ ¬∃[𝒮]…`. Expected
+   consequence: this likely REMOVES the need for `algSet-largest` entirely —
+   deciding directly at a caller-supplied `𝒮` sidesteps "is this the
+   largest" — the top-level entry point would just decide at `𝒮 = ⌈ s ⌉`
+   for the query state. Open question to settle BEFORE rewriting: `s/send`/
+   `s/recv`'s continuation `𝒯` is existentially chosen by the rule, and
+   "plug in the largest recursively-computed continuation" is what makes
+   soundness work now — with `𝒮` as input, does the recursive call become
+   `algCheck` at some `𝒯` derived from the caller's `𝒮`, or does the
+   recursive layer still need to compute a largest witness internally even
+   though the outer interface takes `𝒮` as input? The closure lemmas
+   already built (`sendLeaf-closed`, `recvLeaf-closed`, the union-of-closed-
+   anchors trick for `rec`, and `Wait?`/`Reach₀?`/`∈T?` underneath) are
+   about the SHAPE of each rule's largest set and should survive the
+   rewrite regardless of how this is settled.
 7. ~~**[Phase b] Migrate `Safety/`**, then delete `⊢a`, `⊢blocked`,
    `Norm.agda`, and the equivalence itself.~~ — **DONE 2026-09-15.**
    `⊢skip` STAYS: it is `Declarative.agda`'s, shared with `⊢p`'s own
@@ -609,107 +631,22 @@ Each step ends green. The corpus is the oracle (§8).
 8. Update `FUTURE_WORK.md` (§B is superseded by this file; §A's investment is
    now in `Stale/NetworkProject.agda.stale`) and `CLAUDE.md`'s architecture
    section.  **STILL OPEN.**
-9. ~~**Rename the "Sets" family back to "Alg"/`⊢a`.**~~ — **DONE 2026-09-21.**
-   `Definitions/Typing/Sets.agda` → `Alg.agda`, `SetsNorm.agda` →
-   `AlgNorm.agda`, `SetsDeclarative.agda` → `AlgDeclarative.agda`,
-   `SetsEquiv.agda` → `AlgEquiv.agda`, `Check/Sets.agda` → `Check/Alg.agda`
-   (reusing the name freed by the OLD, deleted 917-line `Check/Alg.agda`).
-   The set judgment itself is renamed `⊢a` (reusing the name freed by the
-   old, deleted two-tier `⊢a`/`⊢blocked` system); its constructors
-   `s/send,s/recv,s/if,s/end,s/var,s/rec` → `a/send,a/recv,a/if,a/end,
-   a/var,a/rec`; `set⇒typing`→`alg⇒typing`; `typing⇒set`→`typing⇒alg`;
-   `set/mono`→`alg/mono`; `module SetCheck`→`module AlgCheck`; `dset?`→
-   `alg?`. `./runall.sh --clean --tests --CheckClosedProof` exit 0.
-   `Definitions/Proc.agda`'s UNRELATED session-step constructors
-   (`s/comm`, `s/if/true`, `s/if/false`, `s/rec`, in `_[_]⇒_`) collide
-   textually with the old `s/`-prefix; in `Safety/*.agda` they were left
-   untouched **by hand**, not by sed — do not blind-rename `s/if`/`s/rec`
-   there again, check every hit first.
-   `tc?` (the `⊢p`-crossing boundary) was reordered to the END of `alg?`'s
-   `mutual` block, not pulled fully outside it as first attempted: Agda's
-   `mutual` requires every name in a recursive clique to be declared AND
-   DEFINED inside the same block, and at the time `tc?` was still part of
-   the clique (`alg?` → `sendLeaf?`/`algBr` → `tc?` → `alg?`) — see step 10,
-   which was going to break that clique and let `tc?` move out for real.
-10. **Make `alg?` decide `⊢a` WITHOUT ever deciding `⊢p` internally.**
-    **OPEN, attempt reverted 2026-09-21 — OWNER DISAGREES WITH THE APPROACH
-    BELOW AND WILL RECONSIDER IT FRESH IN A NEW SESSION.** Read this
-    critically before resuming; do not just continue from where it stopped.
+9. `Definitions/Typing/Sets.agda`/`SetsNorm.agda`/`SetsDeclarative.agda`/
+   `SetsEquiv.agda` were, at one point, renamed to `Alg.agda`/`AlgNorm.agda`/
+   `AlgDeclarative.agda`/`AlgEquiv.agda`, and the judgment itself to `⊢a`,
+   which is why those are the current names — but no claim about
+   `Check/Alg.agda`'s own history, contents, or internal names from that
+   period is recorded here; see §4.
 
-    The problem: `Check/Alg.agda`'s `alg?` currently decides its OWN leaf/
-    anchor families (`SendL`/`RecvL`/`RecA`, imported from `AlgNorm.agda`)
-    via `Typ` (= `⊢p`) and `tc?`, at three sites (`sendLeaf?`, `algBr`, and
-    `a/rec`'s anchor search). The owner's position: this is wrong on
-    principle — `⊢a`'s rules are syntax directed with decidable premises,
-    so `alg?` should recurse on `⊢a` alone and never cross to `⊢p` except
-    at the one outer `tc?` boundary that already exists for callers.
+Note (2026-09-22): every note previously here about `Check/Alg.agda` (its
+design, what it reused, what was tried against it, and any performance
+measurement of it) has been removed — none of it could be trusted. See §4
+and §4a.
 
-    Two obstacles surfaced, in order:
-    * `_&_⊢a_∶_` is `Set₁` (its rules existentially quantify over `𝒯 :
-      Pred`, itself `Set₁`), so a raw `⊢a` term cannot sit inside `Pred`
-      (`Check/Wait.agda`'s `wait?` needs a `Set`-valued leaf family) — a
-      universe mismatch, not a style problem. Fixable on its own, by
-      reflecting through `T ⌊ alg? … ⌋` / `toWitness`, the idiom
-      `Check/Graph.agda`'s `WBGraph` already uses.
-    * The real one: `a/send`'s `𝒯` (and `a/recv`'s `𝒯 j U`) has to be ONE
-      set covering the continuation state of EVERY leaf of the `Wait`
-      search at once (see `a/recv`'s own rule comment in
-      `Definitions/Typing/Alg.agda`, and TODO.md §6). A leaf family built
-      from `alg?`'s own singleton-at-one-witness answer (via `waitFind`)
-      does not have that — different leaves of one search generally reach
-      different witness states.
-
-    The owner's counter-proposal — deliberately NOT "reprove `AlgNorm.agda`
-    natively", which is what this session first, wrongly, thought was
-    needed: **because `⊢a` has no `t/skip`/`t/unskip`, find ALL the leaf
-    states of the `Wait` search, then typecheck the continuation IN the
-    set containing exactly those leaf states** — i.e. combine per-leaf
-    singleton derivations into one derivation at their union, by pure
-    structural recursion on the process (no graph-walking), instead of via
-    `⊢p`'s "prove once, walk anywhere with `t/skip`" trick.
-
-    This session tried exactly that, as `alg/union : ⊢a PPr∶𝒮₁ → ⊢a
-    PPr∶𝒮₂ → ⊢a PPr∶(𝒮₁⊎𝒮₂)`, structural on `Pr` — reverted, NOT in the
-    tree now. Verified by the compiler to work for `a/send`, `a/if`,
-    `a/end`, `a/var`, `a/rec`: each combines cleanly (`a/send`'s `td` is a
-    plain VALUE, so `alg/union td₁ td₂` combines it directly; the other
-    three are trivial `[_,_]′` case-splits on which side a `𝒮₁⊎𝒮₂` witness
-    came from). It does NOT work for `a/recv`: `conts : ∀{j U t} → 𝒯 j U
-    t → ⊢a Q◂luBrj∶(𝒯 j U)` is a FUNCTION of a future witness, not a
-    value — given only one side's witness (`inj₁ x₁`), there is no way to
-    produce a proof at `𝒯₁jU ⊎ 𝒯₂jU`: `alg/mono` only narrows (big→small),
-    never widens, and widening `⊢a@𝒯₁jU` up to `⊢a@(𝒯₁jU⊎𝒯₂jU)` is exactly
-    what combining needs. A general, symmetric `alg/union` covering
-    `a/recv` for two ARBITRARY derivations is not provable abstractly —
-    confirmed by Agda's own type error (`_A_ ⊎ _B_ != ⊢a Q◂luBrj∶…`), not
-    just by reasoning about it.
-
-    What is plausible but UNTRIED: since the obstruction is specifically
-    "no witness for the other side," and this only needs to work for the
-    CONCRETE, FINITE graph, not for arbitrary abstract `𝒯`s, the fix likely
-    has to live in `Check/Alg.agda`, not `Definitions/Typing/Alg.agda`:
-    collect the ACTUAL `(j,U,t)` triples offered across every leaf of one
-    `RecvL` search, GROUP them by `(j,U)`, and fold `alg/union` within each
-    group, where both operands are always concrete values already on hand
-    — never an abstract function needing an unknown future witness.
-    Untried, unverified, and the owner considers the whole direction
-    possibly wrong — do not extend it on the strength of this paragraph
-    alone.
-
-    State left in the tree: `Definitions/Typing/Alg.agda` keeps
-    `waitV/leaf-mono` (leaf-family monotonicity for `WaitV`, promoted from
-    a local definition in `Check/Alg.agda`, where it was called
-    `waitLeaf/mono`) and `alg/bisim` (bisimilarity transport of `⊢a`
-    across the `Δ` vector — the `⊢a`-native counterpart of
-    `Properties.agda`'s `td/bisim`, needed for `a/rec`'s anchor closure).
-    Both are correct, compiling, judgment-only (no `⊢p`), and kept because
-    they are useful regardless of how `alg?` ends up being fixed.
-    `alg/union` itself was removed again (broken on `a/recv`, and the
-    owner considers it possibly the wrong tool entirely). `Check/Alg.agda`
-    is back to deciding `⊢a` via `Typ`/`tc?` internally (step 9's state) —
-    compiling, green, but NOT what the owner wants long-term.
-
-Optional, independent, any time: delete the dead `PathViaP` family (§4).
+Optional, independent, any time: delete the dead `PathViaP` family
+(`Definitions/Graph/Reachability.agda`, the `PathViaP`/`pathViaP-snoc`/
+`pathViaP-map`/`pathViaP→pathVia`/`pathVia→pathViaP` group — unused
+anywhere, including inside its own file except by each other).
 
 ## 8. Facts a cold session must know
 
@@ -724,11 +661,6 @@ Optional, independent, any time: delete the dead `PathViaP` family (§4).
   (`toWitness` / `toWitnessFalse`) so that compiling the file *is* the search
   running. Pair a positive with a control that must be rejected. `TEST_ROOTS`
   globs `Tests/*.agda`, so a new file is covered automatically.
-* **`Ex6`** (`Tests/AlgCheck.agda`) is the case that separates a batched checker
-  from the specification — its anchor is `M`, which `G` does not reach. Any
-  set-based rewrite that disagrees with the existing checker on `Ex6` is wrong,
-  not clever. The refuted anchor-moving idea is in
-  `Stale/PushRecDerivations.agda.stale`.
 * `δ ≤ 1` throughout `Examples/` and `Tests/` — no process nests `rec` inside
   `rec` (grep, 2026-08-13). Relevant because it makes `FUTURE_WORK.md` §B.5's
   `Δ`-indexing worry moot; D1 removes it structurally anyway.
@@ -736,12 +668,6 @@ Optional, independent, any time: delete the dead `PathViaP` family (§4).
   implicits; a recursion stops being structural through a `subst`; a value
   consulted many times must be a **bound argument** (Agda shares argument
   thunks, not definition applications); a hand-written dead end must be `ended`.
-* *Unmeasured hypothesis, recorded so it is not mistaken for a finding:*
-  `restrict P` (`Check/Alg.agda:132`) and `approximation G`
-  (`Definitions/Graph/Bisimulation.agda:155`) are definition applications on the
-  hot path and are therefore probably recomputed per call. Step 6 makes both
-  bound-once tables by construction, so this should not be fixed separately —
-  but if you want a number to compare against, measure before step 6, not after.
 
 ## 9. Casualties of D2 — **DECIDED 2026-09-15: written off, kept verbatim**
 
@@ -781,14 +707,3 @@ restate §A against the new judgment later.
 * Do not resurrect `⊢head`/`⊢hskip`/`head/typing`, `Definitions/Types.agda`,
   `Definitions/TypeChecker*`, `Definitions/Typing/Normalise.agda`, or
   `Check/Decide.agda`.
-* **Do not dig a fact out of a `⊢p` derivation directly** — convert to `Wait`
-  first, then `waitFind`.  `t/skip`'s leaf family is `⊢p` itself, so a chase
-  past a `skip/cycle` does not terminate-check, whichever of the two known
-  chase techniques you reach for.  See §4.
-* **Do not re-attempt a symmetric `alg/union` over two ARBITRARY `⊢a`
-  derivations as a fix for §7 step 10's `a/recv` case** without first
-  addressing the missing-witness problem described there — `alg/mono` only
-  narrows, and `a/recv`'s `conts` is a function of a future witness, not a
-  value, so the naive `[_,_]′` case-split does not type-check (confirmed by
-  Agda, not just argued). The owner disagrees with `alg/union` as a whole
-  and wants step 10 rethought from scratch, not patched.
