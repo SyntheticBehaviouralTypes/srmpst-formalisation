@@ -22,54 +22,47 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     module M = MPST wb
   open M
   open import Definitions.Typing.Alg wb
-    using (_&_⊢a_∶_; a/send; a/recv; a/if; a/end; a/var; a/rec; waitActive; waitStep; waitLeaf)
-  open import Definitions.Typing.Alg wb
-    using (_&_⊨_∶_; ⊨/if-inv; ⊨/rec-guarded; ⊨/end-inv)
+    using ( a/send; a/recv; a/if; a/end; a/var; a/rec
+          ; waitActive; waitStep; waitLeaf
+          ; _⊢at_∶_; at/send-inv; at/recv-inv )
   open M.Subst
   open import Definitions.Typing.Substitution wb
   open import Safety.Preservation wb
 
-  -- Over `⊢head` this was a six-way case; over the old, deleted two-tier
-  -- `⊢a` a three-way one plus two companions (`-skip` for the tree,
-  -- `-blocked` for the leaf family).  Over these rules it is THREE CLAUSES
-  -- AND NO COMPANIONS: the judgment is syntax directed, so `MessageGuarded`
-  -- already narrows it to send/recv/if, and the tree walk is `waitActive`
-  -- (`Definitions/Typing/Alg.agda`), stated once for any leaf family
-  -- instead of once per judgment.
+  -- The judgment is syntax directed, so `MessageGuarded` narrows it to
+  -- send/recv/if, and the tree walk is `waitActive`.
   guarded/active :
     ∀ {γ δ G P Pr}
       {Γ : Vec Sort γ}
-      {Δ : Vec Behav δ}
+      {ws : Vec Behav δ}
     → MessageGuarded Pr
-    → Γ & Δ ⊨ P ◂ Pr ∶ G
+    → Γ ⊢at P ◂ Pr ∶ (ws , G)
     → P ∈T G
 
-  guarded/active mg/send (_ , a/send _ _ _ sub , mem) =
-    waitActive (λ { (_ , gr , _) → in/send gr }) (sub mem)
+  guarded/active mg/send td
+    with at/send-inv td
+  ... | _ , _ , w , _ =
+    waitActive (λ { (_ , gr) → in/send gr }) w
 
-  guarded/active mg/recv (_ , a/recv _ _ sub , mem) =
-    waitActive (λ { ((_ , _ , _ , gr) , _) → in/recv gr }) (sub mem)
+  guarded/active mg/recv td =
+    waitActive (λ { (_ , _ , _ , gr) → in/recv gr }) (proj₁ (at/recv-inv td))
 
   guarded/active (mg/if mg₁ _) (𝒮 , a/if _ ttd _ , mem) =
     guarded/active mg₁ (𝒮 , ttd , mem)
 
-  -- Again one function where there were three.  `a/var` is impossible because
-  -- Safety is all `δ = 0`, so `X : Fin 0`; `a/rec` reproduces the old `h/rec`
-  -- argument — unfold the recursion, where the guarded body forces `P ∈T`.
-  -- `⊨/rec/unfold` (`Typing/Substitution.agda`) is the set-stated face of that
-  -- unfolding, and the `⊢p` round trip proving it stays confined to that
-  -- module, exactly as the old, deleted `⊢a` face did.
+  -- `a/var` is impossible because Safety is all `δ = 0`, so `X : Fin 0`;
+  -- `a/rec` unfolds the recursion, where the guarded body forces `P ∈T`.
   inactive/done :
     ∀ {G P Pr}
     → P ∉T G
-    → [] & [] ⊨ P ◂ Pr ∶ G
+    → [] ⊢at P ◂ Pr ∶ ([] , G)
     → done/proc Pr
 
-  inactive/done P∉G (_ , a/send _ _ _ sub , mem) =
-    ⊥-elim (P∉G (waitActive (λ { (_ , gr , _) → in/send gr }) (sub mem)))
+  inactive/done P∉G td@(_ , a/send _ _ _ , _) =
+    ⊥-elim (P∉G (guarded/active mg/send td))
 
-  inactive/done P∉G (_ , a/recv _ _ sub , mem) =
-    ⊥-elim (P∉G (waitActive (λ { ((_ , _ , _ , gr) , _) → in/recv gr }) (sub mem)))
+  inactive/done P∉G td@(_ , a/recv _ _ , _) =
+    ⊥-elim (P∉G (guarded/active mg/recv td))
 
   inactive/done P∉G (𝒮 , a/if _ ttd ftd , mem) =
     done-if
@@ -81,12 +74,12 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
 
   inactive/done _ (_ , a/var {X = ()} _ , _)
 
-  inactive/done P∉G td@(_ , a/rec _ _ _ , _) =
+  inactive/done P∉G td@(_ , a/rec guarded _ _ , _) =
     ⊥-elim
       (P∉G
         (guarded/active
-          (guarded/subst-proc (⊨/rec-guarded td))
-          (⊨/rec/unfold td)))
+          (guarded/subst-proc guarded)
+          (at/rec/unfold td)))
 
   data SessionStatus
     (M : Session)
@@ -134,30 +127,30 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       ; (fsuc i) → done i
       }
 
-  -- One function where there were three (`head/status`, `skip/status`,
-  -- `blocked/status`): the process form picks the rule, and the two
-  -- communication rules both reduce to "the root steps", which is `waitStep`.
+  -- The two communication rules both reduce to "the root steps": `waitStep`.
   head/status :
     ∀ {I M G P Pr}
       {Ps : Vec Part I}
     → SessionStatus M G Ps
     → M [ P ]= Pr
-    → [] & [] ⊨ P ◂ Pr ∶ G
+    → [] ⊢at P ◂ Pr ∶ ([] , G)
     → SessionStatus M G (P ∷ Ps)
 
-  head/status _ _ (_ , a/send _ _ _ sub , mem)
-    with waitStep (λ { (_ , gr , _) → _ , _ , gr }) (sub mem)
-  ... | _ , _ , gr = ss/step gr
+  head/status _ _ td@(_ , a/send _ _ _ , _)
+    with at/send-inv td
+  ... | _ , _ , w , _
+    with waitStep (λ { (_ , gr) → _ , _ , gr }) w
+  ...   | _ , _ , gr = ss/step gr
 
-  head/status _ _ (_ , a/recv _ _ sub , mem)
-    with waitStep (λ { ((_ , _ , _ , gr) , _) → _ , _ , gr }) (sub mem)
+  head/status _ _ td@(_ , a/recv _ _ , _)
+    with waitStep (λ { (_ , _ , _ , gr) → _ , _ , gr }) (proj₁ (at/recv-inv td))
   ... | _ , _ , gr = ss/step gr
 
   head/status _ proc≡ (_ , a/if etd _ _ , _) =
     ss/if etd proc≡
 
-  head/status tail _ (_ , a/end done , mem) =
-    status/cons (done mem) tail
+  head/status {G = G} tail _ (_ , a/end done , mem) =
+    status/cons (done {[] , G} mem) tail
 
   head/status _ _ (_ , a/var {X = ()} _ , _)
 
@@ -177,7 +170,7 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     head/status
       (session/status Ps M⊢G)
       (lookup⇒[]= P M refl)
-      (⊨/lookup M⊢G (lookup⇒[]= P M refl))
+      (at/lookup M⊢G (lookup⇒[]= P M refl))
 
   all-parts/end :
     ∀ {G}
@@ -202,9 +195,8 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   ... | inj₂ e⇓false =
     nothing , _ , s/if/false P proc≡ e⇓false
 
-  -- Three functions become one, by the same route as `head/status`: `Q` is
-  -- ACTIVE at `G` (it is `gr`'s receiver), so `waitLeaf` says the `Wait` can
-  -- only be a leaf, and the leaf is the old `⊢blocked` case analysis.
+  -- `Q` is ACTIVE at `G` (it is `gr`'s receiver), so `waitLeaf` says the
+  -- `Wait` is a leaf.
   receiver/head-progress :
     ∀ {M G G′ P Q I}
       {i : Fin (suc I)}
@@ -217,22 +209,24 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     → G -< P ⟶ Q # i < S > >-> G′
     → M [ P ]= Q ! i < E >∙ Pr
     → M [ Q ]= QPr
-    → [] & [] ⊨ Q ◂ QPr ∶ G
+    → [] ⊢at Q ◂ QPr ∶ ([] , G)
     → ∃[ α ] ∃[ M′ ] M [ α ]⇒ M′
 
   -- `Q` cannot be sending here: the two actions would share a comm, making
   -- `Q` its own sender and receiver.
-  receiver/head-progress M⊢G etd gr send≡ recv≡ (_ , a/send _ _ _ sub , mem)
-    with waitLeaf gr (∈R refl) (sub mem)
-  ... | _ , gr′ , _
+  receiver/head-progress M⊢G etd gr send≡ recv≡ td@(_ , a/send _ _ _ , _)
+    with at/send-inv td
+  ... | _ , _ , w , _
+    with waitLeaf gr (∈R refl) w
+  ...   | _ , gr′
     with recv-overlap⇒same-comm gr gr′ (∈S refl)
-  ...   | refl =
+  ...     | refl =
     ⊥-elim (sender≢receiver gr refl)
 
   receiver/head-progress {P = P} {Q = Q} {i = i}
-    M⊢G etd gr send≡ recv≡ (_ , a/recv _ _ sub , mem)
-    with waitLeaf gr (∈R refl) (sub mem)
-  ... | (_ , _ , _ , gr′) , _
+    M⊢G etd gr send≡ recv≡ td@(_ , a/recv _ _ , _)
+    with waitLeaf gr (∈R refl) (proj₁ (at/recv-inv td))
+  ... | _ , _ , _ , gr′
     with recv-overlap⇒same-comm gr gr′ (∈R refl)
   ...   | refl
     with step-arity-deterministic gr gr′
@@ -245,8 +239,8 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   receiver/head-progress M⊢G etd gr send≡ recv≡ (_ , a/if etd′ _ _ , _) =
     if/progress etd′ recv≡
 
-  receiver/head-progress M⊢G etd gr send≡ recv≡ (_ , a/end done , mem) =
-    ⊥-elim (done mem (in/recv gr))
+  receiver/head-progress {G = G} M⊢G etd gr send≡ recv≡ (_ , a/end done , mem) =
+    ⊥-elim (done {[] , G} mem (in/recv gr))
 
   receiver/head-progress M⊢G etd gr send≡ recv≡ (_ , a/var {X = ()} _ , _)
 
@@ -254,8 +248,8 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     M⊢G etd gr send≡ recv≡ (_ , a/rec _ _ _ , _) =
     nothing , _ , s/rec Q recv≡
 
-  -- Same shape once more: `P` is active at `G` (it is `gr`'s sender), so
-  -- `waitLeaf` collapses the tree walk.
+  -- `P` is active at `G` (it is `gr`'s sender), so `waitLeaf` collapses the
+  -- tree walk.
   sender/head-progress :
     ∀ {M G G′ P Q I}
       {i : Fin (suc I)}
@@ -264,27 +258,26 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     → ⊢s M ∶ G
     → G -< P ⟶ Q # i < S > >-> G′
     → M [ P ]= Pr
-    → [] & [] ⊨ P ◂ Pr ∶ G
+    → [] ⊢at P ◂ Pr ∶ ([] , G)
     → ∃[ β ] ∃[ M′ ] M [ β ]⇒ M′
 
-  -- `etd` is a premise of `a/send` itself, not of the leaf — the sort is
-  -- lifted out of the set (TODO.md §3), so it is available without unfolding
-  -- the `Wait` at all.
   sender/head-progress {M = M} M⊢G gr send≡
-    (_ , a/send {Q = Q′} etd _ _ sub , mem)
-    with waitLeaf gr (∈S refl) (sub mem)
-  ... | _ , gr′ , _ =
+    td@(_ , a/send {Q = Q′} _ _ _ , _)
+    with at/send-inv td
+  ... | _ , etd , w , _
+    with waitLeaf gr (∈S refl) w
+  ...   | _ , gr′ =
     receiver/head-progress
       M⊢G
       etd
       gr′
       send≡
       (lookup⇒[]= Q′ M refl)
-      (⊨/lookup M⊢G (lookup⇒[]= Q′ M refl))
+      (at/lookup M⊢G (lookup⇒[]= Q′ M refl))
 
-  sender/head-progress M⊢G gr send≡ (_ , a/recv _ _ sub , mem)
-    with waitLeaf gr (∈S refl) (sub mem)
-  ... | (_ , _ , _ , gr′) , _
+  sender/head-progress M⊢G gr send≡ td@(_ , a/recv _ _ , _)
+    with waitLeaf gr (∈S refl) (proj₁ (at/recv-inv td))
+  ... | _ , _ , _ , gr′
     with recv-overlap⇒same-comm gr′ gr (∈S refl)
   ...   | refl =
     ⊥-elim (sender≢receiver gr refl)
@@ -292,8 +285,8 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   sender/head-progress M⊢G gr send≡ (_ , a/if etd _ _ , _) =
     if/progress etd send≡
 
-  sender/head-progress M⊢G gr send≡ (_ , a/end done , mem) =
-    ⊥-elim (done mem (in/send gr))
+  sender/head-progress {G = G} M⊢G gr send≡ (_ , a/end done , mem) =
+    ⊥-elim (done {[] , G} mem (in/send gr))
 
   sender/head-progress M⊢G gr send≡ (_ , a/var {X = ()} _ , _)
 
@@ -310,7 +303,7 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       M⊢G
       gr
       (lookup⇒[]= P M refl)
-      (⊨/lookup M⊢G (lookup⇒[]= P M refl))
+      (at/lookup M⊢G (lookup⇒[]= P M refl))
 
   progress :
     ∀ {M G}
@@ -329,5 +322,4 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     inj₁ λ P →
       inactive/done
         (all-parts/end ended P)
-        -- `⊢s` gives `⊢p`; go straight to the set judgment and stay there.
-        (⊨/lookup M⊢G (lookup⇒[]= P M refl))
+        (at/lookup M⊢G (lookup⇒[]= P M refl))

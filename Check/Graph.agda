@@ -1,7 +1,7 @@
 {-# OPTIONS --guardedness #-}
 
--- The rooted-graph entry points of the decidable type checker, restored
--- (TODO.md Step 6) over `Check.Alg` with the same signatures the deleted
+-- The rooted-graph entry points of the decidable type checker, over
+-- `Check.TypeCheck`, with the same signatures the deleted
 -- `Definitions/TypeChecker/Completeness.agda` had, so callers under
 -- `Examples/` and `Tests/` only have to change which module they import.
 --
@@ -18,7 +18,7 @@ open import Relation.Nullary.Decidable using (⌊_⌋; toWitness)
 
 open import Definitions.Behav using (WellBehaved)
 import Check.Core as Core
-import Check.Alg
+import Check.TypeCheck
 
 module Check.Graph (N : ℕ) where
 
@@ -30,7 +30,7 @@ module Check.Graph (N : ℕ) where
     using (RootedGraph; OpenGraph; compile; underlying; initial)
   open import Definitions.Graph.Core N using (graphTheory)
   open import Definitions.Graph.Decision N using (wellBehaved?)
-  open Check.Alg N using (module AlgCheck)
+  open Check.TypeCheck N using (module TypeCheck)
 
   WBGraph : Set
   WBGraph = Σ[ R ∈ RootedGraph ] T ⌊ wellBehaved? (underlying R) ⌋
@@ -48,7 +48,7 @@ module Check.Graph (N : ℕ) where
     → Dec (ProcessTyping (underlying (proj₁ WR)) (wb-of WR) [] P Pr
              (initial (proj₁ WR)))
   typecheck WR P Pr =
-    AlgCheck.tc? (underlying (proj₁ WR)) (wb-of WR) [] [] P Pr
+    TypeCheck.tc? (underlying (proj₁ WR)) (wb-of WR) [] [] P Pr
       (initial (proj₁ WR))
 
   typecheckSession :
@@ -56,5 +56,5 @@ module Check.Graph (N : ℕ) where
     → Dec (SessionTyping (underlying (proj₁ WR)) (wb-of WR) M
              (initial (proj₁ WR)))
   typecheckSession WR M =
-    AlgCheck.tcSession? (underlying (proj₁ WR)) (wb-of WR) M
+    TypeCheck.tcSession? (underlying (proj₁ WR)) (wb-of WR) M
       (initial (proj₁ WR))

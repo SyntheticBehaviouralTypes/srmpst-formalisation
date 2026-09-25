@@ -1,31 +1,26 @@
 {-# OPTIONS --guardedness #-}
 
--- `⊢a → ⊢p` DIRECTLY — no old, deleted two-tier `⊢a` anywhere in it.
+-- `⊢a → ⊢p`, for every theory.
 --
--- The old, deleted `SetsAlg.agda`'s `set⇒alg` landed in that old `⊢a`, and
--- `Safety/` then crossed to `⊢p` with `alg/typing`, which is why the old
--- `⊢a` still appeared at the `⊢s` boundary.  This file removes that hop:
--- the two proofs have the same shape, and the only difference is which leaf
--- the `skip/map` builds — `blocked/send` there, `t/send` here.
+-- Each `Wait` premise becomes a `t/skip` tree (`wait⇒skip`), whose leaves
+-- are mapped to the declarative rule.  For `a/send`/`a/recv` the leaf must
+-- also be in `Front`, so the tree is first decorated with the idle walk from
+-- its root (`waitV/walk`).  `a/var`/`a/rec` are one `t/unskip` away: their
+-- leaves are `Unskip`, which is exactly `t/unskip`'s premise.
 --
--- The two rules whose leaf is not literally a declarative rule are `a/var`
--- and `a/rec`, and both are one `t/unskip` away: their leaf family is
--- `Reach₀`, and `t/unskip` is exactly "walk forward along a `¬P` run",
--- which is what `Reach₀` records.
+-- The anchors of a state are the declarative `Δ`.
 --
--- The other direction is `AlgNorm.agda`'s `typing⇒alg`, also direct.  With
--- the two together the old two-tier `⊢a` is gone: there are TWO systems, the
--- declarative one and this one, and nothing in between.
+-- The other direction is `AlgNorm.agda`'s `typing⇒alg`.
 
 open import Data.Nat using (ℕ; suc)
 
-open import Data.Fin using (Fin)
+open import Data.Vec using (Vec; []; _∷_)
 
-open import Data.Vec
-  using (Vec; []; _∷_)
-  renaming (lookup to lu)
+open import Data.Product using (_,_)
 
-open import Data.Product using (Σ-syntax; ∃-syntax; _,_; _×_)
+open import Relation.Binary.PropositionalEquality using (refl)
+
+open import Relation.Unary using (_∈_)
 
 open import Definitions.Typing
 
@@ -43,52 +38,52 @@ module Definitions.Typing.AlgDeclarative
     variable
       γ δ : ℕ
 
-  -- Soundness against the DECLARATIVE system, stated the same way the old,
-  -- deleted `SetsAlg.agda`'s `set⇒alg` was stated against the old `⊢a`.
   alg⇒typing :
-    ∀ {Γ : Vec Sort γ}{Δ : Vec Behav δ}{PPr}{𝒮 : Pred}{G}
-    → Γ & Δ ⊢a PPr ∶ 𝒮
-    → 𝒮 G
-    → Γ & Δ ⊢p PPr ∶ G
+    ∀ {Γ : Vec Sort γ}{PPr : NProc γ δ}{𝒮 : States δ}{ws G}
+    → Γ ⊢a PPr ∶ 𝒮
+    → (ws , G) ∈ 𝒮
+    → Γ & ws ⊢p PPr ∶ G
 
-  alg⇒typing (a/send {P = P}{Q = Q}{i = i}{E = E}{Pr = Pr} etd td _ sub) 𝒮G =
+  alg⇒typing {ws = ws}{G} (a/send {P = P}{Q}{i = i}{E = E}{Pr} etd rdy td) mem =
     t/skip
       (skip/map
-        (λ { (_ , gr , 𝒯u′) → t/send gr etd (alg⇒typing td 𝒯u′) })
-        (wait⇒skip P (Q ! i < E >∙ Pr) _ (sub 𝒮G)))
+        (λ { ((_ , gr) , run) →
+             t/send gr etd
+               (alg⇒typing td (_ , ((G , mem , run) , (_ , _ , gr , ∈S refl)) , gr)) })
+        (wait⇒skip P (Q ! i < E >∙ Pr) _ (waitV/walk (rdy {ws , G} mem))))
 
-  alg⇒typing (a/recv {P = P}{Q = Q}{Br = Br} conts _ sub) 𝒮G =
+  alg⇒typing {ws = ws}{G} (a/recv {P = P}{Q}{Br = Br} rdy conts) mem =
     t/skip
       (skip/map
-        (λ { ((_ , _ , _ , gr) , k) →
-               t/recv gr (λ gr′ → alg⇒typing (conts (k gr′)) (k gr′)) })
-        (wait⇒skip Q (Σ P ？· Br) _ (sub 𝒮G)))
+        (λ { ((_ , _ , _ , gr) , run) →
+             t/recv gr
+               (λ gr′ →
+                 let x∈ = _ , ((G , mem , run) , (_ , _ , gr , ∈R refl)) , gr′
+                 in alg⇒typing (conts (_ , x∈)) x∈) })
+        (wait⇒skip Q (Σ P ？· Br) _ (waitV/walk (rdy {ws , G} mem))))
 
-  alg⇒typing (a/if etd ttd ftd) 𝒮G =
-    t/if etd (alg⇒typing ttd 𝒮G) (alg⇒typing ftd 𝒮G)
+  alg⇒typing (a/if etd ttd ftd) mem =
+    t/if etd (alg⇒typing ttd mem) (alg⇒typing ftd mem)
 
-  alg⇒typing (a/end done) 𝒮G =
-    t/end (done 𝒮G)
+  alg⇒typing {ws = ws}{G} (a/end done) mem =
+    t/end (done {ws , G} mem)
 
-  -- `Reach₀ P ⌈ lu Δ X ⌉ H` is `lu Δ X ~ a` and `a -[¬ P ]->* H`: the first is
-  -- `t/var`'s premise verbatim, the second is `t/unskip`'s.
-  alg⇒typing (a/var {P = P}{X = X} sub) 𝒮G =
+  alg⇒typing {ws = ws}{G} (a/var {P = P}{X} rdy) mem =
     t/skip
       (skip/map
         (λ { (_ , W~a , tr) → t/unskip tr (t/var W~a) })
-        (wait⇒skip P (v X) _ (sub 𝒮G)))
+        (wait⇒skip P (v X) _ (rdy {ws , G} mem)))
 
-  alg⇒typing (a/rec {P = P}{Pr = Pr} guarded td sub) 𝒮G =
+  alg⇒typing {ws = ws}{G} (a/rec {P = P}{Pr} guarded td rdy) mem =
     t/skip
       (skip/map
-        (λ { (_ , 𝒜W , tr) →
-               t/unskip tr (t/rec guarded (alg⇒typing (td 𝒜W) ~refl)) })
-        (wait⇒skip P (rec Pr) _ (sub 𝒮G)))
+        (λ { (_ , a∈ , tr) →
+             t/unskip tr (t/rec guarded (alg⇒typing td (a∈ , ~refl))) })
+        (wait⇒skip P (rec Pr) _ (rdy {ws , G} mem)))
 
-  -- The pointwise form, for `Safety/`'s `⊢s` boundary.
-  ⊨⇒typing :
-    ∀ {Γ : Vec Sort γ}{Δ : Vec Behav δ}{PPr}{G}
-    → Γ & Δ ⊨ PPr ∶ G
-    → Γ & Δ ⊢p PPr ∶ G
+  at⇒typing :
+    ∀ {Γ : Vec Sort γ}{PPr : NProc γ δ}{ws G}
+    → Γ ⊢at PPr ∶ (ws , G)
+    → Γ & ws ⊢p PPr ∶ G
 
-  ⊨⇒typing (_ , d , mem) = alg⇒typing d mem
+  at⇒typing (_ , d , mem) = alg⇒typing d mem

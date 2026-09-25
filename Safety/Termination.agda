@@ -48,7 +48,7 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     module M = MPST wb
   open M
   open import Definitions.Typing.Alg wb
-    using (_&_⊨_∶_; ⊨/if-inv; ⊨/rec-guarded)
+    using (_⊢at_∶_; at/if-inv; at/rec-guarded)
   open M.Subst
   open import Safety.Preservation wb
   open import Safety.Progress wb
@@ -123,9 +123,9 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   -- no tree to chase.
   rec/guarded :
     ∀ {G P Pr}
-    → [] & [] ⊨ P ◂ rec Pr ∶ G
+    → [] ⊢at P ◂ rec Pr ∶ ([] , G)
     → MessageGuarded Pr
-  rec/guarded = ⊨/rec-guarded
+  rec/guarded = at/rec-guarded
 
   τ-depth/session :
     Session
@@ -161,7 +161,7 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     sum/map-update< (τ-depth/proc {γ = 0} {δ = 0}) M P
       (τ-depth/lookup< proc≡
         (τ-depth/unfold<rec
-          (rec/guarded (⊨/lookup M⊢G proc≡))))
+          (rec/guarded (at/lookup M⊢G proc≡))))
 
   catτ :
     ∀ {M M′ M″}
@@ -284,8 +284,8 @@ module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     M⊢G
     proc≡
     (done-if donePr donePr′)
-    with ⊨/if-inv
-           (⊨/lookup
+    with at/if-inv
+           (at/lookup
              {M = M}
              {P = P}
              M⊢G

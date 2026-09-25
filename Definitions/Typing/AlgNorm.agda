@@ -59,6 +59,11 @@ open import Relation.Nullary using (¬_)
 
 open import Relation.Binary.PropositionalEquality using (refl)
 
+open import Relation.Unary using (_∈_; _⊆_)
+
+open import Relation.Binary.Construct.Closure.ReflexiveTransitive
+  using (Star; ε; _◅_)
+
 open import Definitions.Typing
 
 module Definitions.Typing.AlgNorm
@@ -69,7 +74,7 @@ module Definitions.Typing.AlgNorm
 
   open import Definitions.Typing.Alg wb
   open import Definitions.Typing.Properties wb
-    using (td/bisim; skip/bisim-back; skip/unfold-cycle)
+    using (td/bisim; skip/bisim; skip/bisim-back; skip/unfold-cycle)
   open import Definitions.Typing.MainLeaf wb
   open import Definitions.Typing.AlgEquiv wb using (wait⇒skip)
 
@@ -93,8 +98,8 @@ module Definitions.Typing.AlgNorm
   -- The process is explicit: it does not occur in the result, so nothing
   -- would solve it.
   waitFind :
-    ∀ {γ δ}{P}(Pr : Proc γ δ){𝒮 : Pred}{G}
-    → Wait P 𝒮 G
+    ∀ {γ δ}{P}(Pr : Proc γ δ){𝒮 : Behavs}{G}
+    → WaitV P 𝒮 (λ _ → ⊥) G
     → ∃[ H ] 𝒮 H
 
   waitFind {P = P} Pr {𝒮 = 𝒮} w =
@@ -111,7 +116,7 @@ module Definitions.Typing.AlgNorm
   -- As in `SetsAlg.agda`, the set judgment is proved at the LARGEST set, and
   -- the rules' downward closure recovers every smaller one.
 
-  Typ : Vec Sort γ → Vec Behav δ → NProc γ δ → Pred
+  Typ : Vec Sort γ → Vec Behav δ → NProc γ δ → Behavs
   Typ Γ Δ PPr G = Γ & Δ ⊢p PPr ∶ G
 
   typ/closed :
@@ -128,11 +133,11 @@ module Definitions.Typing.AlgNorm
   -- advances by the family's own `adv`; a cycle cannot occur, because the root
   -- has an empty visited set.
 
-  Advances : Part → Pred → Set
+  Advances : Part → Behavs → Set
   Advances P 𝒮 = ∀ {u α v} → 𝒮 u → u -< α >-> v → P ∉α α → 𝒮 v
 
   waitStep1 :
-    ∀ {P}{𝒮 : Pred}
+    ∀ {P}{𝒮 : Behavs}
     → Closed 𝒮
     → Advances P 𝒮
     → ∀ {u α v}
@@ -150,7 +155,7 @@ module Definitions.Typing.AlgNorm
     waitV/unfold-top c top (λ w → w) (k gr)
 
   waitFollow :
-    ∀ {P}{𝒮 : Pred}
+    ∀ {P}{𝒮 : Behavs}
     → Closed 𝒮
     → Advances P 𝒮
     → ∀ {G s}
@@ -166,11 +171,25 @@ module Definitions.Typing.AlgNorm
   one : ∀ {P u α v} → u -< α >-> v → P ∉α α → u -[¬ P ]->* v
   one gr P∉α = tr¬/step gr P∉α skip/refl
 
+  -- An idle walk is a `¬P` run.
+  idle⇒unskip : ∀ {P s t} → Star (_⇝[ P ]_) s t → s -[¬ P ]->* t
+  idle⇒unskip ε                   = skip/refl
+  idle⇒unskip ((na , _ , gr) ◅ run) = tr¬/step gr (na gr) (idle⇒unskip run)
+
+  -- `Unskip` at fixed anchors: the leaf family of `a/var`/`a/rec`.
+  After : Part → Behavs → Behavs
+  After P 𝒜 s = ∃[ a ] 𝒜 a × a -[¬ P ]->* s
+
+  after/~ : ∀ {P}{𝒜 : Behavs} → Closed 𝒜 → Closed (After P 𝒜)
+  after/~ c G~H (a , a∈ , tr) =
+    let H₀ , a~H₀ , tr′ = skip/bisim G~H tr
+    in H₀ , c a~H₀ a∈ , tr′
+
   -- ══════════════════════════════════════════════════════════════════
   --  Visited vectors as sets, as in `AlgEquiv.agda`
   -- ══════════════════════════════════════════════════════════════════
 
-  Vof : ∀ {ξ} → Vec Behav ξ → Pred
+  Vof : ∀ {ξ} → Vec Behav ξ → Behavs
   Vof Ξ s = ∃[ X ] (lu Ξ X ~ s)
 
   vof/cons :
@@ -186,7 +205,7 @@ module Definitions.Typing.AlgNorm
   -- both are phantom parameters of every use and nothing can solve them.
   -- `P ∈T` is backward closed (`in/later`), so `¬ P ∈T` advances along any
   -- step, `¬P` or not.
-  EndL : Part → Pred
+  EndL : Part → Behavs
   EndL P u = ¬ P ∈T u
 
   endL/closed : ∀ {P} → Closed (EndL P)
@@ -242,7 +261,7 @@ module Definitions.Typing.AlgNorm
     ---------------------------------------------------------------------
 
     SendL :
-      ∀ {I} → Part → Part → Fin (suc I) → Sort → Proc γ δ → Pred
+      ∀ {I} → Part → Part → Fin (suc I) → Sort → Proc γ δ → Behavs
     SendL P Q i S Pr u =
       ∃[ u′ ] (u -< P ⟶ Q # i < S > >-> u′) × Typ Γ Δ (P ◂ Pr) u′
 
@@ -262,7 +281,7 @@ module Definitions.Typing.AlgNorm
     ---------------------------------------------------------------------
 
     RecvL :
-      ∀ {I} → Part → Part → Vec (Proc (suc γ) δ) (suc I) → Pred
+      ∀ {I} → Part → Part → Vec (Proc (suc γ) δ) (suc I) → Behavs
     RecvL {I} P Q Br u =
       (Σ[ j ∈ Fin (suc I) ] ∃[ U ] ∃[ t ] (u -< P ⟶ Q # j < U > >-> t))
       × (∀ {j U t} → u -< P ⟶ Q # j < U > >-> t
@@ -285,18 +304,18 @@ module Definitions.Typing.AlgNorm
         in t/unskip tr₀ (k gr₀)
 
     ---------------------------------------------------------------------
-    -- var and rec: both `Reach₀`, so both advance by `skip/cat`
+    -- var and rec: both `After`, so both advance by `skip/cat`
     ---------------------------------------------------------------------
 
-    reach₀/adv :
-      ∀ {P}{𝒜 : Pred} → Advances P (Reach₀ P 𝒜)
-    reach₀/adv (a , a∈ , tr) grα P∉α =
+    after/adv :
+      ∀ {P}{𝒜 : Behavs} → Advances P (After P 𝒜)
+    after/adv (a , a∈ , tr) grα P∉α =
       a , a∈ , skip/cat tr (one grα P∉α)
 
     -- The `rec` anchor family: the body typed at its own anchor.  This is
     -- exactly `a/rec`'s `𝒜`, and `Check/Alg.agda` decides membership in
     -- it directly, so it stays free of anything else.
-    RecA : ∀ {P} → Proc γ (suc δ) → Pred
+    RecA : ∀ {P} → Proc γ (suc δ) → Behavs
     RecA {P = P} Pr W = Typ Γ (W ∷ Δ) (P ◂ Pr) W
 
     recA/closed :
@@ -307,7 +326,7 @@ module Definitions.Typing.AlgNorm
     -- `rec`'s guardedness, as its own constant family — the same trick as
     -- `IfE`.  `a/rec` needs it as a single state-free fact, and keeping it
     -- OUT of `RecA` is what lets `RecA` stay the plain anchor set.
-    RecG : Proc γ (suc δ) → Pred
+    RecG : Proc γ (suc δ) → Behavs
     RecG Pr _ = MessageGuarded Pr
 
     recG/closed : ∀ {Pr : Proc γ (suc δ)} → Closed (RecG Pr)
@@ -328,7 +347,7 @@ module Definitions.Typing.AlgNorm
     -- at the sort found.  `⊢e-unique` is what makes "the sort found" and
     -- "every leaf's sort" the same thing.
     SendE :
-      ∀ {I} → Part → Part → Fin (suc I) → Exp γ → Proc γ δ → Pred
+      ∀ {I} → Part → Part → Fin (suc I) → Exp γ → Proc γ δ → Behavs
     SendE P Q i E Pr u =
       Σ[ S ∈ Sort ]
         ∃[ u′ ] (Γ ⊢e E ∶ S) × (u -< P ⟶ Q # i < S > >-> u′)
@@ -346,7 +365,7 @@ module Definitions.Typing.AlgNorm
     ... | _ , gr′ , tr = S , _ , etd , gr′ , t/unskip tr td
 
     -- `if`: the guard's typing, constant in the state.
-    IfE : Exp γ → Pred
+    IfE : Exp γ → Behavs
     IfE E _ = Γ ⊢e E ∶ s/bool
 
     ifE/closed : ∀ {E} → Closed (IfE E)
@@ -451,15 +470,15 @@ module Definitions.Typing.AlgNorm
       varWait :
         ∀ {P}{X : Fin δ}{G}
         → Γ & Δ ⊢p P ◂ v X ∶ G
-        → WaitV P (Reach₀ P ⌈ lu Δ X ⌉) (λ _ → ⊥) G
+        → WaitV P (After P (lu Δ X ~_)) (λ _ → ⊥) G
 
       varWait (t/var eq) =
         wv/leaf (_ , eq , skip/refl)
 
       varWait {P = P} {X = X} (t/unskip tr td) =
-        waitFollow {P = P} {𝒮 = Reach₀ P ⌈ lu Δ X ⌉}
-          (reach₀/~ (⌈⌉/closed {W = lu Δ X}))
-          (reach₀/adv {γ = γ} {δ = δ} {Γ = Γ} {Δ = Δ} {P = P} {𝒜 = ⌈ lu Δ X ⌉})
+        waitFollow {P = P} {𝒮 = After P (lu Δ X ~_)}
+          (after/~ (λ G~H W~G → ~trans W~G G~H))
+          (after/adv {γ = γ} {δ = δ} {Γ = Γ} {Δ = Δ} {P = P} {𝒜 = lu Δ X ~_})
           (varWait td) tr
 
       varWait (t/skip std) =
@@ -471,7 +490,7 @@ module Definitions.Typing.AlgNorm
       varTree :
         ∀ {ξ}{Ξ : Vec Behav ξ}{P}{X : Fin δ}{G}
         → (Γ & Δ ⊢p_∶_) & Ξ ⊢skip P ◂ v X ∶ G
-        → WaitV P (Reach₀ P ⌈ lu Δ X ⌉) (Vof Ξ) G
+        → WaitV P (After P (lu Δ X ~_)) (Vof Ξ) G
 
       varTree (skip/main td) =
         waitV/mono (λ ()) (varWait td)
@@ -491,15 +510,15 @@ module Definitions.Typing.AlgNorm
       recWait :
         ∀ {P}{Pr : Proc γ (suc δ)}{G}
         → Γ & Δ ⊢p P ◂ rec Pr ∶ G
-        → WaitV P (Reach₀ P (RecA {P = P} Pr)) (λ _ → ⊥) G
+        → WaitV P (After P (RecA {P = P} Pr)) (λ _ → ⊥) G
 
       recWait (t/rec guarded td) =
         wv/leaf (_ , td , skip/refl)
 
       recWait {P = P} {Pr = Pr} (t/unskip tr td) =
-        waitFollow {P = P} {𝒮 = Reach₀ P (RecA {P = P} Pr)}
-          (reach₀/~ (recA/closed {P = P} {Pr = Pr}))
-          (reach₀/adv {γ = γ} {δ = δ} {Γ = Γ} {Δ = Δ} {P = P} {𝒜 = RecA {P = P} Pr})
+        waitFollow {P = P} {𝒮 = After P (RecA {P = P} Pr)}
+          (after/~ (recA/closed {P = P} {Pr = Pr}))
+          (after/adv {γ = γ} {δ = δ} {Γ = Γ} {Δ = Δ} {P = P} {𝒜 = RecA {P = P} Pr})
           (recWait td) tr
 
       recWait (t/skip std) =
@@ -511,7 +530,7 @@ module Definitions.Typing.AlgNorm
       recTree :
         ∀ {ξ}{Ξ : Vec Behav ξ}{P}{Pr : Proc γ (suc δ)}{G}
         → (Γ & Δ ⊢p_∶_) & Ξ ⊢skip P ◂ rec Pr ∶ G
-        → WaitV P (Reach₀ P (RecA {P = P} Pr)) (Vof Ξ) G
+        → WaitV P (After P (RecA {P = P} Pr)) (Vof Ξ) G
 
       recTree (skip/main td) =
         waitV/mono (λ ()) (recWait td)
@@ -729,38 +748,69 @@ module Definitions.Typing.AlgNorm
   --  `⊢p` ⟶ `⊢a`, at the largest set
   -- ══════════════════════════════════════════════════════════════════
   --
-  -- Stated at `Typ` for the same reason the old, deleted `SetsAlg.agda`'s
-  -- `alg⇒set` was stated at its `Alg`: `a/send`'s continuation set has to
-  -- cover the continuation state of EVERY leaf at once, which no singleton
-  -- does.  `alg/mono` recovers the smaller sets, `⌈ G ⌉` included.
+  -- Stated at the LARGEST set, `Typed`: `⊢p`-typeability, with the anchors
+  -- of a state as `Δ`.  `alg/mono` recovers every smaller set.
+  --
+  -- The continuation sets of `a/send`/`a/recv` are `Post α (Front P 𝒮)`.
+  -- Each state in one is `α` out of a state `u` idle-reachable from some
+  -- `G ∈ 𝒮` where `P` acts; following the idle run with the `Wait` at `G`
+  -- (`waitFollow`) and reading the leaf at `u` (`waitLeaf`, since `P` acts
+  -- at `u`) gives the continuation's `⊢p` derivation.
   --
   -- The recursion is on the PROCESS, not the derivation: the derivation
   -- each case needs comes out of `waitFind` and is not a subterm of the
-  -- one it came from.  `typBr` is the companion that makes `lu Br j`
-  -- structural.
-  --
-  -- Only `send` and `rec` consult the given derivation at all, and only
-  -- for the one state-free fact their rule carries (the sort, the
-  -- guardedness).  Everything else — the whole graph walk — is the `sub`
-  -- field, and that is `sendWait`/`recvWait`/`varWait`/`recWait`, which
-  -- take the derivation at each state as it comes.
+  -- one it came from.  `typBr` makes `lu Br j` structural.
+
+  Typed : ∀ {γ δ} → Vec Sort γ → NProc γ δ → States δ
+  Typed Γ PPr (ws , G) = Γ & ws ⊢p PPr ∶ G
+
+  -- `a/rec`'s entry set: the body typed at its own anchor.
+  Entry : ∀ {γ δ} → Vec Sort γ → Part → Proc γ (suc δ) → States δ
+  Entry Γ P Pr (ws , W) = Γ & (W ∷ ws) ⊢p P ◂ Pr ∶ W
+
+  sendAt :
+    ∀ {γ δ}{Γ : Vec Sort γ}{I P Q}{i : Fin (suc I)}{S E}{Pr : Proc γ δ}
+    → Γ ⊢e E ∶ S
+    → Post (P ⟶ Q # i < S >) (Front P (Typed Γ (P ◂ Q ! i < E >∙ Pr)))
+      ⊆ Typed Γ (P ◂ Pr)
+
+  sendAt etd {ws , t} (_ , ((_ , td , run) , _) , gr)
+    with waitLeaf gr (∈S refl)
+           (waitFollow sendL/closed sendL/adv (sendWait etd td) (idle⇒unskip run))
+  ... | _ , gr′ , td′ rewrite step-deterministic gr gr′ = td′
+
+  recvAt :
+    ∀ {γ δ}{Γ : Vec Sort γ}{I P Q}{Br : Vec (Proc (suc γ) δ) (suc I)}{j U}
+    → Post (P ⟶ Q # j < U >) (Front Q (Typed Γ (Q ◂ Σ P ？· Br)))
+      ⊆ Typed (U ∷ Γ) (Q ◂ lu Br j)
+
+  recvAt {Br = Br}{j}{U}{ws , t} (_ , ((_ , td , run) , _) , gr)
+    with waitLeaf gr (∈R refl)
+           (waitFollow (recvL/closed {Br = Br}) (recvL/adv {Br = Br})
+              (recvWait td) (idle⇒unskip run))
+  ... | _ , k = k gr
 
   mutual
 
     typing⇒alg :
-      ∀ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Behav δ}{P}(Pr : Proc γ δ){G}
-      → Γ & Δ ⊢p P ◂ Pr ∶ G
-      → Γ & Δ ⊢a P ◂ Pr ∶ Typ Γ Δ (P ◂ Pr)
+      ∀ {γ δ}{Γ : Vec Sort γ}{P}(Pr : Proc γ δ){ws G}
+      → Γ & ws ⊢p P ◂ Pr ∶ G
+      → Γ ⊢a P ◂ Pr ∶ Typed Γ (P ◂ Pr)
 
-    typing⇒alg {P = P} (Q ! i < E >∙ Pr) td
+    typing⇒alg (Q ! i < E >∙ Pr) td
       with waitFind (Q ! i < E >∙ Pr) (sendEWait td)
     ... | _ , _ , _ , etd , _ , cont =
-      a/send etd (typing⇒alg Pr cont) typ/closed (sendWait etd)
+      a/send etd
+        (λ td′ → waitV/leaf-mono (λ { (_ , gr , _) → _ , gr }) (sendWait etd td′))
+        (alg/mono (sendAt etd) (typing⇒alg Pr cont))
 
     typing⇒alg (Σ Q ？· Br) td =
-      a/recv (λ {j} w → typBr Br j w) typ/closed recvWait
+      a/recv
+        (λ td′ → waitV/leaf-mono proj₁ (recvWait td′))
+        (λ { {j} (_ , x∈) →
+             alg/mono (recvAt {Br = Br}) (typBr Br j (recvAt {Br = Br} x∈)) })
 
-    typing⇒alg {P = P} (ifp E then A else B) td
+    typing⇒alg (ifp E then A else B) td
       with waitFind (ifp E then A else B) (ifEWait td)
     ... | _ , etd =
       a/if etd
@@ -771,20 +821,19 @@ module Definitions.Typing.AlgNorm
 
     typing⇒alg (v X) td = a/var varWait
 
-    typing⇒alg {P = P} (rec Pr) td
-      with waitFind (rec Pr) (recGWait td)
-    ... | _ , guarded =
-      a/rec guarded
-        (λ aW → alg/mono (λ W~s → typ/closed W~s aW) (typing⇒alg Pr aW))
+    typing⇒alg {Γ = Γ}{P} (rec Pr) td
+      with waitFind (rec Pr) (recGWait td) | waitFind (rec Pr) (recWait td)
+    ... | _ , guarded | _ , _ , aW , _ =
+      a/rec {𝒜 = Entry Γ P Pr} guarded
+        (alg/mono (λ { {_ ∷ _ , _} (aW′ , W~s) → typ/closed W~s aW′ })
+                  (typing⇒alg Pr aW))
         recWait
 
-    -- Makes `lu Br j` structural: `Br` shrinks going in, the branch shrinks
-    -- coming out.
     typBr :
-      ∀ {γ δ n}{Γ : Vec Sort γ}{Δ : Vec Behav δ}{Q}
-        (Br : Vec (Proc (suc γ) δ) n)(j : Fin n){U t}
-      → (U ∷ Γ) & Δ ⊢p Q ◂ lu Br j ∶ t
-      → (U ∷ Γ) & Δ ⊢a Q ◂ lu Br j ∶ Typ (U ∷ Γ) Δ (Q ◂ lu Br j)
+      ∀ {γ δ n}{Γ : Vec Sort γ}{Q}
+        (Br : Vec (Proc (suc γ) δ) n)(j : Fin n){U ws t}
+      → (U ∷ Γ) & ws ⊢p Q ◂ lu Br j ∶ t
+      → (U ∷ Γ) ⊢a Q ◂ lu Br j ∶ Typed (U ∷ Γ) (Q ◂ lu Br j)
 
     typBr (B ∷ Bs) zero    w = typing⇒alg B w
     typBr (B ∷ Bs) (suc j) w = typBr Bs j w
@@ -792,14 +841,10 @@ module Definitions.Typing.AlgNorm
   -- ══════════════════════════════════════════════════════════════════
   --  The boundary `Safety/` uses
   -- ══════════════════════════════════════════════════════════════════
-  --
-  -- `⊢s` is stated over `⊢p`, so coming IN needs `⊢p → ⊢a`; this is it, and
-  -- it no longer goes anywhere near the old, deleted two-tier `⊢a`.  Going
-  -- OUT is `AlgDeclarative.agda`'s `⊨⇒typing`.
 
-  td⇒⊨ :
-    ∀ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Behav δ}{P}{Pr : Proc γ δ}{G}
-    → Γ & Δ ⊢p P ◂ Pr ∶ G
-    → Γ & Δ ⊨ P ◂ Pr ∶ G
+  td⇒at :
+    ∀ {γ δ}{Γ : Vec Sort γ}{P}{Pr : Proc γ δ}{ws G}
+    → Γ & ws ⊢p P ◂ Pr ∶ G
+    → Γ ⊢at P ◂ Pr ∶ (ws , G)
 
-  td⇒⊨ {Pr = Pr} td = _ , typing⇒alg Pr td , td
+  td⇒at {Pr = Pr} td = _ , typing⇒alg Pr td , td

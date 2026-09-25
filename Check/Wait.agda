@@ -82,7 +82,7 @@ module Check.Wait (N : ℕ) where
     open Typing.MPST wb
     open GraphChecker G wb using (na?; bisim?~)
     open import Definitions.Typing.Alg wb
-      using (WaitV; wv/leaf; wv/cycle; wv/step; waitV/mono; Pred)
+      using (WaitV; wv/leaf; wv/cycle; wv/step; waitV/mono; Behavs)
 
     Bits : Set
     Bits = Vec Bool (size G)
@@ -158,7 +158,7 @@ module Check.Wait (N : ℕ) where
     --    visited set, because the tree it builds uses no cycle. ──
 
     table-sound :
-      ∀ k {V : Pred}{s}
+      ∀ k {V : Behavs}{s}
       → T (lookup (iter k step₁ ⊥bits) s)
       → WaitV P 𝒮 V s
 
@@ -271,7 +271,7 @@ module Check.Wait (N : ℕ) where
         ... | no _  | no ¬g  = ⊥-elim (¬g g)
 
     table-complete :
-      ∀ {V : Pred}{s}
+      ∀ {V : Behavs}{s}
       → ¬ (P ∈T s)
       → WaitV P 𝒮 V s
       → T (lookup noCycle s)
@@ -293,7 +293,7 @@ module Check.Wait (N : ℕ) where
 
     -- The visited set, read up to `~`.  This is what makes `Vof (mark V s)`
     -- and `Vof V ∪ ⌈ s ⌉` interchangeable in BOTH directions.
-    Vof : Bits → Pred
+    Vof : Bits → Behavs
     Vof V w = ∃[ a ] T (lookup V a) × (a ~ w)
 
     vof? : ∀ V w → Dec (Vof V w)
@@ -373,8 +373,8 @@ module Check.Wait (N : ℕ) where
     -- the same reason — they mention `tbl`, not `noCycle`.
     wait?/acc :
       (tbl : Bits)
-      → (∀ {V : Pred}{s} → T (lookup tbl s) → WaitV P 𝒮 V s)
-      → (∀ {V : Pred}{s} → ¬ P ∈T s → WaitV P 𝒮 V s → T (lookup tbl s))
+      → (∀ {V : Behavs}{s} → T (lookup tbl s) → WaitV P 𝒮 V s)
+      → (∀ {V : Behavs}{s} → ¬ P ∈T s → WaitV P 𝒮 V s → T (lookup tbl s))
       → ∀ V s → Acc _<_ (size G ∸ wt V) → Dec (WaitV P 𝒮 (Vof V) s)
 
     wait?/acc tbl tsound tcomplete V s (acc rs) with 𝒮? s

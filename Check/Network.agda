@@ -32,12 +32,12 @@ open import Relation.Nullary.Decidable using (⌊_⌋; toWitness)
 
 open import Definitions.Behav using (WellBehaved)
 import Check.Core as Core
-import Check.Alg
+import Check.TypeCheck
 
 module Check.Network (N : ℕ) where
 
   open Core.Processes N using (ProcessTyping; SessionTyping)
-  open Check.Alg N using (module AlgCheck)
+  open Check.TypeCheck N using (module TypeCheck)
 
   open import Definitions.Common N using (Part)
   open import Definitions.Proc N using (Proc; Session)
@@ -83,7 +83,7 @@ module Check.Network (N : ℕ) where
   wb-net : ∀ {n} → WBNet n → WellBehaved _
   wb-net {n} w = net→pres n (netWB w)
 
-  -- Restored (TODO.md Step 6) over `Check.Alg`.  Note the checker runs on
+  -- Over `Check.TypeCheck`.  Note the checker runs on
   -- the net's finite *presentation* with the transported compositional
   -- witness — `wellBehaved?` is never re-decided on a product.
   typecheckNet :
@@ -91,7 +91,7 @@ module Check.Network (N : ℕ) where
     → Dec (ProcessTyping (underlying (present n)) (wb-net w) [] P Pr
              (initial (present n)))
   typecheckNet {n} w P Pr =
-    AlgCheck.tc? (underlying (present n)) (wb-net w) [] [] P Pr
+    TypeCheck.tc? (underlying (present n)) (wb-net w) [] [] P Pr
       (initial (present n))
 
   typecheckSessionNet :
@@ -99,5 +99,5 @@ module Check.Network (N : ℕ) where
     → Dec (SessionTyping (underlying (present n)) (wb-net w) M
              (initial (present n)))
   typecheckSessionNet {n} w M =
-    AlgCheck.tcSession? (underlying (present n)) (wb-net w) M
+    TypeCheck.tcSession? (underlying (present n)) (wb-net w) M
       (initial (present n))

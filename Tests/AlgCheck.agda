@@ -28,6 +28,7 @@ open import Definitions.Expr using (s/unit; val; v/unit)
 import Definitions.Typing as Typing
 
 import Check.Alg
+import Check.TypeCheck
 
 -- ══════════════════════════════════════════════════════════════════════
 --  Ex6 — the anchor-before-the-root counterexample
@@ -70,7 +71,8 @@ module Ex6 where
   wb = toWitness {a? = wellBehaved? Gr} tt
 
   open module M₆ = Typing.MPST wb hiding (Action; _⟶_; _#_; _<_>)
-  open module K₆ = Check.Alg.AlgCheck 4 Gr wb using (alg; tc?)
+  open module K₆ = Check.Alg.AlgCheck 4 Gr wb using (alg?)
+  open module T₆ = Check.TypeCheck.TypeCheck 4 Gr wb using (tc?; at; at?)
 
   G L M H : State Gr
   G = zero
@@ -83,7 +85,7 @@ module Ex6 where
 
   -- The anchor the checker has to find is `M`, which `G` does not reach:
   -- `M -[¬A]->* L` and the tree at `G` steps `G → L`.
-  ex6-typed : T ⌊ alg v[] v[] A prog G ⌋
+  ex6-typed : T ⌊ alg? v[] A prog (at (v[] , G)) (at? (v[] , G)) ⌋
   ex6-typed = tt
 
   -- …and the same through `⊢p`, i.e. `alg/typing`/`norm` really do close
@@ -138,7 +140,7 @@ module SkipVar where
   wb = toWitness {a? = wellBehaved? Gr} tt
 
   open module M₃ = Typing.MPST wb hiding (Action; _⟶_; _#_; _<_>)
-  open module K₃ = Check.Alg.AlgCheck 3 Gr wb using (tc?)
+  open module K₃ = Check.TypeCheck.TypeCheck 3 Gr wb using (tc?)
 
   s K : State Gr
   s = zero

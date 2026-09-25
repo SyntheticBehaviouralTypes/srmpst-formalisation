@@ -13,7 +13,9 @@ open import Data.List using ([]; _∷_)
 open import Data.Product using (_,_)
 open import Data.Unit using (tt)
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
-open import Relation.Nullary.Decidable using (⌊_⌋; toWitness)
+open import Relation.Nullary.Decidable using (⌊_⌋; toWitness; T?; _×-dec_)
+open import Data.Vec using (lookup)
+import Data.Fin.Properties as FinP
 
 open import Definitions.Expr using (s/unit)
 open import Definitions.Behav using (WellBehaved)
@@ -46,7 +48,9 @@ module ∈T?-sanity where
   wb : WellBehaved (graphTheory Gr)
   wb = toWitness {a? = wellBehaved? Gr} tt
 
-  open Check.Alg.AlgCheck 3 Gr wb using (∈T?)
+  open Check.Alg.AlgCheck 3 Gr wb using (env; module Env)
+
+  ∈T? = λ P → Env.inT? (env P)
 
   s0 s1 fin : State Gr
   s0  = zero
@@ -108,7 +112,11 @@ module Reach₀?-sanity where
   wb : WellBehaved (graphTheory Gr)
   wb = toWitness {a? = wellBehaved? Gr} tt
 
-  open Check.Alg.AlgCheck 3 Gr wb using (Reach₀?)
+  open Check.Alg.AlgCheck 3 Gr wb using (env; module Env)
+
+  -- The old `Reach₀?` from a bit-vector anchor, over the new `¬P`-run table.
+  Reach₀? = λ P (anchor : Vec Bool 3) (t : State Gr) →
+    FinP.any? λ a → T? (lookup anchor a) ×-dec Env.unskip? (env P) a t
 
   s0 s1 fin : State Gr
   s0  = zero
@@ -161,7 +169,11 @@ module Wait?-sanity where
   wb : WellBehaved (graphTheory Gr)
   wb = toWitness {a? = wellBehaved? Gr} tt
 
-  open Check.Alg.AlgCheck 3 Gr wb using (Wait?)
+  open Check.Alg.AlgCheck 3 Gr wb using (env; module Probing)
+
+  -- The old `Wait?` over a bit-vector leaf set, over the new decider.
+  Wait? = λ P (leaves : Vec Bool 3) (s : State Gr) →
+    Probing.Wait? P (env P) {δ = 0} (λ { (_ , t) → T? (lookup leaves t) }) (v[] , s)
 
   s0 s1 fin : State Gr
   s0  = zero

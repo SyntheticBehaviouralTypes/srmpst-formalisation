@@ -56,7 +56,7 @@ module Definitions.Typing.AlgEquiv {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
   module _ {γ δ : ℕ}
            (P : Part)
            (Pr : Proc γ δ)
-           (𝒮 : Pred)
+           (𝒮 : Behavs)
            where
 
     -- "(Leaf = 𝒮)": the leaf family ignores the process.
@@ -64,7 +64,7 @@ module Definitions.Typing.AlgEquiv {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
     Lf _ G = 𝒮 G
 
     -- The visited vector, read as a set, up to `~`.
-    Vof : ∀ {ξ} → Vec Behav ξ → Pred
+    Vof : ∀ {ξ} → Vec Behav ξ → Behavs
     Vof Ξ s = ∃[ X ] (lu Ξ X ~ s)
 
     -- ═════════════════════════════════════════════════════════════════
@@ -95,7 +95,7 @@ module Definitions.Typing.AlgEquiv {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
     -- ═════════════════════════════════════════════════════════════════
 
     waitV⇒skip :
-      ∀ {ξ}{Ξ : Vec Behav ξ}{V : Pred}{G}
+      ∀ {ξ}{Ξ : Vec Behav ξ}{V : Behavs}{G}
       → (∀ {s} → V s → Vof Ξ s)
       → WaitV P 𝒮 V G
       → Lf & Ξ ⊢skip P ◂ Pr ∶ G
@@ -125,14 +125,14 @@ module Definitions.Typing.AlgEquiv {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
     skip⇒wait :
       ∀ {G}
       → (Lf & [] ⊢skip P ◂ Pr ∶ G)
-      → Wait P 𝒮 G
+      → WaitV P 𝒮 (λ _ → ⊥) G
 
     skip⇒wait d =
       waitV/mono (λ { (() , _) }) (skip⇒waitV d)
 
     wait⇒skip :
       ∀ {G}
-      → Wait P 𝒮 G
+      → WaitV P 𝒮 (λ _ → ⊥) G
       → (Lf & [] ⊢skip P ◂ Pr ∶ G)
 
     wait⇒skip w =
@@ -143,7 +143,7 @@ module Definitions.Typing.AlgEquiv {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
   -- This is what licenses `a/if`/`a/end` carrying no `Wait` premise.
   wait/∅ :
     ∀ {γ δ}{P}{Pr : Proc γ δ}{G}
-    → ¬ Wait P (λ _ → ⊥) G
+    → ¬ WaitV P (λ _ → ⊥) (λ _ → ⊥) G
 
   wait/∅ {P = P}{Pr = Pr} w =
     Loop-empty (wait⇒skip P Pr (λ _ → ⊥) w)

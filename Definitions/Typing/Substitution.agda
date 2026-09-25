@@ -12,6 +12,7 @@ open import Data.Vec.Properties
     ( insertAt-punchIn
     ; insertAt-lookup
     )
+open import Data.Product using (_,_)
 open import Function using (_∘_)
 open import Relation.Nullary using (yes; no)
 open import Relation.Binary.PropositionalEquality
@@ -27,9 +28,9 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
   open import Definitions.Typing.Properties wb using (td/bisim)
   -- For `a/rec/unfold` at the bottom of this file.  `Norm.agda` does not
   -- import this module, so there is no cycle.
-  open import Definitions.Typing.Alg wb using (_&_⊨_∶_)
-  open import Definitions.Typing.AlgNorm wb using (td⇒⊨)
-  open import Definitions.Typing.AlgDeclarative wb using (⊨⇒typing)
+  open import Definitions.Typing.Alg wb using (_⊢at_∶_)
+  open import Definitions.Typing.AlgNorm wb using (td⇒at)
+  open import Definitions.Typing.AlgDeclarative wb using (at⇒typing)
 
   private
     variable
@@ -465,24 +466,22 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
   -- deleted: it buys nothing, because `typing/subst-proc` just above has
   -- to stay for `t/rec/unfold` regardless, so the `⊢p` substitution
   -- theory was never going away.
-  -- The two facts as `⊢a`/`_&_⊨_∶_` sees them.  `Safety/` imports only
-  -- these.  The round trip is `⊨⇒typing` out and `td⇒⊨` back — the
-  -- DECLARATIVE system in the middle, where `typing/subst-proc` and
-  -- `t/rec/unfold` already live.  It used to detour through the old,
-  -- deleted two-tier `⊢a` (`norm` out, `alg⇒⊨` back); nothing else about
-  -- these two lemmas changed.
-  ⊨/rec/unfold :
+  -- The two facts as `⊢a` sees them.  `Safety/` imports only these.  The
+  -- round trip is `at⇒typing` out and `td⇒at` back — the DECLARATIVE system
+  -- in the middle, where `typing/subst-proc` and `t/rec/unfold` already
+  -- live.
+  at/rec/unfold :
     ∀ {G P Pr}
-    → [] & [] ⊨ P ◂ rec Pr ∶ G
-    → [] & [] ⊨ P ◂ unfold/proc Pr ∶ G
-  ⊨/rec/unfold td = td⇒⊨ (t/rec/unfold (⊨⇒typing td))
+    → [] ⊢at P ◂ rec Pr ∶ ([] , G)
+    → [] ⊢at P ◂ unfold/proc Pr ∶ ([] , G)
+  at/rec/unfold td = td⇒at (t/rec/unfold (at⇒typing td))
 
-  ⊨/subst-expr :
+  at/subst-expr :
     ∀ {γ δ G P E Pr}
       {Γ : Vec Sort (suc γ)}
-      {Δ : Vec Behav δ}
+      {ws : Vec Behav δ}
       {X : Fin (suc γ)}
-    → (Γ - X)     ⊢e E                ∶ lu Γ X
-    → Γ       & Δ ⊨ P ◂ Pr           ∶ G
-    → (Γ - X) & Δ ⊨ P ◂ [ E / X ]e Pr ∶ G
-  ⊨/subst-expr etd td = td⇒⊨ (typing/subst-expr etd (⊨⇒typing td))
+    → (Γ - X) ⊢e E ∶ lu Γ X
+    → Γ ⊢at P ◂ Pr ∶ (ws , G)
+    → (Γ - X) ⊢at P ◂ [ E / X ]e Pr ∶ (ws , G)
+  at/subst-expr etd td = td⇒at (typing/subst-expr etd (at⇒typing td))

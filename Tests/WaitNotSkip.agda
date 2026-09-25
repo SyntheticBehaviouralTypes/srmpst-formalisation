@@ -297,7 +297,7 @@ module Tests.WaitNotSkip where
   -- The leaf family: "P is immediately active".  `~`-closed.
   ---------------------------------------------------------------------------
 
-  𝒮 : Pred
+  𝒮 : Behavs
   𝒮 s = ∃[ α ] ∃[ t ] (s ⇒ α ⇒ t) × P ∈α α
 
   𝒮/closed : Closed 𝒮
@@ -377,5 +377,5 @@ module Tests.WaitNotSkip where
   -- `Wait ⟹ ⊢skip` — hence `⊢ ⟹ ⊢set` — false.  `WaitV`'s visited set fixes
   -- it: a cycle must point at a state actually on the path, and here there is
   -- never one.
-  ce/no-wait : ¬ Wait P 𝒮 (g 0)
+  ce/no-wait : ¬ WaitV P 𝒮 (λ _ → ⊥) (g 0)
   ce/no-wait w = ce/no-skip (wait⇒skip P Pr 𝒮 w)
