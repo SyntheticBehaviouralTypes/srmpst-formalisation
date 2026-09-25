@@ -12,8 +12,8 @@ decision.
       file table was updated.
 - [x] `docs/README.md` rows for `Typing/{Algorithmic,Norm}.agda` and
       `Check/Alg.agda` were updated.
-- [ ] `README.md` is still stale. It was already recorded as left alone on
-      purpose.
+- [x] `README.md` was rewritten: module tables for the current tree, the
+      actual `Proc` syntax, the `⊢p` judgment, and `runall.sh` flags.
 
 ## 1. Whole files / blocks
 
@@ -90,9 +90,10 @@ decision.
       8 GB before failing on unsolved metas.
 - [x] **`Tests/CheckAlgSanity.agda`**: the `Reach₀?` section now tests
       `Env.unskip?` directly, and the header was updated.
-- [ ] **`Tests/AnchorAttempts`, `Tests/PushRecAttempts`,
-      `Tests/RecSkipCounterexample`**: not changed. Moving them to `Stale/`
-      is your call. They are cheap (~10 s each).
+- [x] **`Tests/AnchorAttempts`, `Tests/PushRecAttempts`,
+      `Tests/RecSkipCounterexample`**: deleted (git history keeps them).
+      References to them in `runall.sh`, `CLAUDE.md` and
+      `Tests/SkipBeforeVar.agda` were repointed or dropped.
 
 ## 5. Stale comments
 

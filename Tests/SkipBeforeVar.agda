@@ -124,7 +124,7 @@ reaches-s→≡ (_ , tr , _) = go tr
 
 -- `K ≁ s`: `K` steps to `ended`, `s` steps to `K`, and `K ≁ ended`.
 --
--- Decided rather than hand-proved, as in `Tests/AnchorAttempts.agda`.
+-- Decided rather than hand-proved.
 -- The hand-written version projected out of `_~_` with
 -- `~L→ K~s {α = β} {G′ = E} tt`, which has not type-checked since
 -- `Behav.agda` gave `~L→` its current signature (all four implicits come

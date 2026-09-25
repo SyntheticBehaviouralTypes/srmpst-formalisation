@@ -14,7 +14,7 @@ Type-check the project roots.
 By default this is an INCREMENTAL build: existing *.agdai interface files are
 reused, so only what actually changed is re-checked.  Use --clean for a
 from-scratch rebuild — that is the slow, memory-hungry path (see the note on
-Tests/RecSkipCounterexample.agda below), so keep it for the end of a piece of
+Tests/SkipBeforeVar.agda below), so keep it for the end of a piece of
 work rather than for every iteration.
 
 OPTIONS:

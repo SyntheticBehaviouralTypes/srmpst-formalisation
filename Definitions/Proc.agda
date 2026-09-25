@@ -25,9 +25,9 @@ module Definitions.Proc (N : ℕ) where
   data Proc (γ δ : ℕ) : Set where
     _!_<_>∙_ :
       Part → {I : ℕ} → Fin (suc I) → Exp γ → Proc γ δ → Proc γ δ
-    -- The branch sorts are NOT recorded here: `blocked/recv` reads each
-    -- branch's sort off the graph edge it matches (`(U ∷ Γ) & Δ ⊢a …`), so a
-    -- declared vector was never consulted by any premise.  See
+    -- The branch sorts are NOT recorded here: the receive rules read each
+    -- branch's sort off the step it matches (`a/recv`'s `(U ∷ Γ) ⊢a …`,
+    -- `Typing/Alg.agda`), so a declared vector would never be consulted.  See
     -- `Tests/LabelSorts.agda`: one label can carry different sorts at
     -- different states, and a single receive must cover all of them.  The
     -- arity `I` stays pinned by the branch vector.
