@@ -1,9 +1,7 @@
 {-# OPTIONS --guardedness #-}
 
 -- The rooted-graph entry points of the decidable type checker, over
--- `Check.TypeCheck`, with the same signatures the deleted
--- `Definitions/TypeChecker/Completeness.agda` had, so callers under
--- `Examples/` and `Tests/` only have to change which module they import.
+-- `Check.TypeCheck`.
 --
 -- `WBGraph` bundles a rooted graph with the *Boolean* evidence that it is
 -- well behaved, so on a concrete graph `wellBehaved? …` normalises to `⊤`

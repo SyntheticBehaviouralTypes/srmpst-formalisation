@@ -6,7 +6,7 @@
 -- A concrete `BTheory` with all ten `WellBehaved` axioms discharged, in which
 -- no `⊢skip` derivation exists at `g 0`.  The old `Wait` (a ν over
 -- `Pred Behav`) held at `g 0` anyway, which made `Wait ⟹ ⊢skip`, hence
--- `⊢ ⟹ ⊢set`, false.  `WaitV`'s visited set fixes that, and `ce/no-wait`
+-- `⊢a ⟹ ⊢p`, false.  `WaitV`'s visited set fixes that, and `ce/no-wait`
 -- below is the check: `Wait` now fails at `g 0` too.
 --
 -- Keep this file.  It is the only thing in the tree that would catch a
@@ -374,7 +374,7 @@ module Tests.WaitNotSkip where
   -- … and `Wait` agrees.  This is the statement that the OLD, ν-based `Wait`
   -- got wrong: it held at `g 0` (by `force w = r/step⁺ P/na (sA i) …`,
   -- deferring forever on the strength of `P ∈T (g i)`), which made
-  -- `Wait ⟹ ⊢skip` — hence `⊢ ⟹ ⊢set` — false.  `WaitV`'s visited set fixes
+  -- `Wait ⟹ ⊢skip` — hence `⊢a ⟹ ⊢p` — false.  `WaitV`'s visited set fixes
   -- it: a cycle must point at a state actually on the path, and here there is
   -- never one.
   ce/no-wait : ¬ WaitV P 𝒮 (λ _ → ⊥) (g 0)

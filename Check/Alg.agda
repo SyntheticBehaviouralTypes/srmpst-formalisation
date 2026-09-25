@@ -2,7 +2,7 @@
 
 -- Deciding `⊢a` over a concrete graph.
 --
--- `alg-probe` walks the process by plain structural recursion.  Its set
+-- `Probing.probe` walks the process by plain structural recursion.  Its set
 -- argument is where typing is PROBED: the answer is the largest subset where
 -- the process is typed, or `none` when that subset is empty.  Each rule's
 -- premises are decided over finitely many states; the continuation of a
@@ -17,7 +17,7 @@
 -- The graph-level facts (idle and `¬P` reachability, bisimilarity, `∈T`,
 -- activity) are tabulated once per probe in `Env`.
 --
--- Built on `Definitions/*` only.
+-- Built on `Definitions/*`, plus `Check/Core.agda`'s `checkExpression`.
 
 open import Level using () renaming (suc to lsuc; zero to lzero)
 
@@ -68,11 +68,8 @@ open import Relation.Binary.Construct.Closure.ReflexiveTransitive
   using (Star; ε; _◅_; _◅◅_)
 
 open import Definitions.Behav using (WellBehaved)
-open import Definitions.Expr
-  using (Sort; s/bool; s/nat; s/unit; Exp; Value; v/bool; v/nat; v/unit
-        ; ⊢v_∶_; tv/bool; tv/nat; tv/unit
-        ; _⊢e_∶_; te/val; te/minus1; te/is-zero; te/var; ⊢e-unique
-        ; val; minus1; is-zero; var)
+open import Definitions.Expr using (Sort; s/bool; s/nat; s/unit; _⊢e_∶_; ⊢e-unique)
+open import Check.Core using (checkExpression)
 
 import Definitions.Typing as Typing
 
@@ -84,7 +81,10 @@ module Check.Alg (N : ℕ) where
     renaming (step? to edge?)
   open import Definitions.Graph.Bisimulation N
     using (Matrix; approximation; bisimulationCorrect; sound; complete)
-  open import Definitions.Graph.Action N using (_≟Sort_)
+  open import Definitions.Graph.Action N
+    using (eqFin; eqFin-sound; eqFin-refl
+          ; eqAction; eqAction-sound; eqAction-refl)
+    renaming (_≟Actionᵇ_ to _≟A_)
   open import Definitions.Graph.Reachability N
     using (Step; PathVia; path/nil; path/cons; reachVia; reachVia-sound
           ; reachVia-complete; T→≡true; ≡true→T; reach→∈T; ∈T→reach; active?
@@ -244,61 +244,7 @@ module Check.Alg (N : ℕ) where
     --  Steps, participation
     -- ══════════════════════════════════════════════════════════════════
 
-    -- Action equality as a BIT.  `_≟Action_` matches `yes refl`, so even its
-    -- yes/no tag forces the equality PROOFS (through `ℕ`, `Fin`, `Σ`); in
-    -- the hot loops that was most of the running time.  Here the tag is the
-    -- bit, and the proof is only built if asked for.
-    eqFin : ∀ {m} → Fin m → Fin m → Bool
-    eqFin i j = toℕ i ≡ᵇ toℕ j
-
-    eqFin-sound : ∀ {m}{i j : Fin m} → T (eqFin i j) → i ≡ j
-    eqFin-sound {i = i}{j} x = FinP.toℕ-injective (Nat.≡ᵇ⇒≡ (toℕ i) (toℕ j) x)
-
-    eqFin-refl : ∀ {m}(i : Fin m) → T (eqFin i i)
-    eqFin-refl i = Nat.≡⇒≡ᵇ (toℕ i) (toℕ i) refl
-
-    eqSort : Sort → Sort → Bool
-    eqSort s/bool s/bool = true
-    eqSort s/nat  s/nat  = true
-    eqSort s/unit s/unit = true
-    eqSort _      _      = false
-
-    eqSort-sound : ∀ {S S′} → T (eqSort S S′) → S ≡ S′
-    eqSort-sound {s/bool} {s/bool} _ = refl
-    eqSort-sound {s/nat}  {s/nat}  _ = refl
-    eqSort-sound {s/unit} {s/unit} _ = refl
-
-    eqSort-refl : ∀ S → T (eqSort S S)
-    eqSort-refl s/bool = tt
-    eqSort-refl s/nat  = tt
-    eqSort-refl s/unit = tt
-
-    eqAction : Action → Action → Bool
-    eqAction ((P ⟶ Q) # (_<_> {I} i S)) ((P′ ⟶ Q′) # (_<_> {I′} i′ S′)) =
-      eqFin P P′ ∧ eqFin Q Q′ ∧ (I ≡ᵇ I′) ∧ (toℕ i ≡ᵇ toℕ i′) ∧ eqSort S S′
-
-    eqAction-sound : ∀ α β → T (eqAction α β) → α ≡ β
-    eqAction-sound ((P ⟶ Q) # (_<_> {I} i S)) ((P′ ⟶ Q′) # (_<_> {I′} i′ S′)) x
-      with Equivalence.to T-∧ x
-    ... | p , x₁ with Equivalence.to T-∧ x₁
-    ... | q , x₂ with Equivalence.to T-∧ x₂
-    ... | m , x₃ with Equivalence.to T-∧ x₃
-    ... | l , s
-      with eqFin-sound {i = P} {P′} p | eqFin-sound {i = Q} {Q′} q | Nat.≡ᵇ⇒≡ I I′ m
-    ... | refl | refl | refl
-      with FinP.toℕ-injective {i = i} {i′} (Nat.≡ᵇ⇒≡ (toℕ i) (toℕ i′) l)
-         | eqSort-sound {S} {S′} s
-    ... | refl | refl = refl
-
-    eqAction-refl : ∀ α → T (eqAction α α)
-    eqAction-refl ((P ⟶ Q) # (_<_> {I} i S)) =
-      Equivalence.from T-∧ (eqFin-refl P ,
-      Equivalence.from T-∧ (eqFin-refl Q ,
-      Equivalence.from T-∧ (Nat.≡⇒≡ᵇ I I refl ,
-      Equivalence.from T-∧ (Nat.≡⇒≡ᵇ (toℕ i) (toℕ i) refl , eqSort-refl S))))
-
-    _≟A_ : (α β : Action) → Dec (α ≡ β)
-    α ≟A β = map′ (eqAction-sound α β) (λ { refl → eqAction-refl α }) (T? (eqAction α β))
+    -- Action equality is decided by a BIT (`eqAction`, `Graph/Action.agda`).
 
     -- Is `(α , t)` an edge out of `s`?  A scan of `s`'s edges by bits.
     step? : ∀ s α t → Dec (s -< α >-> t)
@@ -331,21 +277,26 @@ module Check.Alg (N : ℕ) where
                 case ()
         from ((β , u) ∷ _) fwd _    = yes (β , u , fwd (here refl))
 
+    -- A property of every edge in a list.  The decider may use the
+    -- membership proof, which `WaitDec`'s recursive call needs.
+    all-edges? :
+      ∀ {ℓ}{B : Edge n → Set ℓ}(es : List (Edge n))
+      → (∀ {e} → e ∈L es → Dec (B e))
+      → Dec (∀ {e} → e ∈L es → B e)
+    all-edges? [] _ = yes λ ()
+    all-edges? (e ∷ es) B? with B? (here refl) | all-edges? es (B? ∘ there)
+    ... | yes b | yes bs = yes λ { (here refl) → b ; (there m) → bs m }
+    ... | no ¬b | _      = no λ all → ¬b (all (here refl))
+    ... | _     | no ¬bs = no λ all → ¬bs (all ∘ there)
+
     -- A property of every step out of `u`, decided over `u`'s edge list only.
     all-out? :
       ∀ u {B : Action → Behav → Set} → (∀ α t → Dec (B α t))
       → Dec (∀ α t → u -< α >-> t → B α t)
-    all-out? u {B} B? =
+    all-out? u B? =
       map′ (λ all α t gr → all (step⇒listed {G = G} gr))
            (λ all {e} mem → all (proj₁ e) (proj₂ e) (listed⇒step {G = G} mem))
-           (go (edges G u))
-      where
-        go : (es : List (Edge n)) → Dec (∀ {e} → e ∈L es → B (proj₁ e) (proj₂ e))
-        go [] = yes λ ()
-        go ((α , t) ∷ es) with B? α t | go es
-        ... | yes b | yes bs = yes λ { (here refl) → b ; (there m) → bs m }
-        ... | no ¬b | _      = no λ all → ¬b (all (here refl))
-        ... | _     | no ¬bs = no λ all → ¬bs (all ∘ there)
+           (all-edges? (edges G u) λ {e} _ → B? (proj₁ e) (proj₂ e))
 
     Active : Part → Behav → Set
     Active P s = ∃[ α ] ∃[ t ] s -< α >-> t × P ∈α α
@@ -519,30 +470,9 @@ module Check.Alg (N : ℕ) where
     --  Expressions and guardedness
     -- ══════════════════════════════════════════════════════════════════
 
-    value? : ∀ V S → Dec (⊢v V ∶ S)
-    value? (v/bool _) s/bool = yes tv/bool
-    value? (v/bool _) s/nat  = no λ ()
-    value? (v/bool _) s/unit = no λ ()
-    value? (v/nat _)  s/bool = no λ ()
-    value? (v/nat _)  s/nat  = yes tv/nat
-    value? (v/nat _)  s/unit = no λ ()
-    value? v/unit     s/bool = no λ ()
-    value? v/unit     s/nat  = no λ ()
-    value? v/unit     s/unit = yes tv/unit
-
+    -- Expressions: `checkExpression` (`Check/Core.agda`).
     exp? : (Γ : Vec Sort γ) → ∀ E S → Dec (Γ ⊢e E ∶ S)
-    exp? Γ (val V) S = map′ te/val (λ { (te/val tv) → tv }) (value? V S)
-    exp? Γ (minus1 E) s/nat =
-      map′ te/minus1 (λ { (te/minus1 e) → e }) (exp? Γ E s/nat)
-    exp? Γ (minus1 E) s/bool = no λ ()
-    exp? Γ (minus1 E) s/unit = no λ ()
-    exp? Γ (is-zero E) s/bool =
-      map′ te/is-zero (λ { (te/is-zero e) → e }) (exp? Γ E s/nat)
-    exp? Γ (is-zero E) s/nat  = no λ ()
-    exp? Γ (is-zero E) s/unit = no λ ()
-    exp? Γ (var x) S with lookup Γ x ≟Sort S
-    ... | yes refl = yes te/var
-    ... | no ≢S    = no λ { te/var → ≢S refl }
+    exp? = checkExpression
 
     guarded? : (Pr : Proc γ δ) → Dec (MessageGuarded Pr)
     guarded? (_ ! _ < _ >∙ _) = yes mg/send
@@ -690,16 +620,6 @@ module Check.Alg (N : ℕ) where
         -- Every visited state has a non-empty walk to the current one.
         Inv : Vec Bool n → Behav → Set
         Inv V s = ∀ a → T (lookup V a) → ∃[ m ] a ↝ m × Star _↝_ m s
-
-        all-edges? :
-          ∀ {B : Edge n → Set₁}(es : List (Edge n))
-          → (∀ {e} → e ∈L es → Dec (B e))
-          → Dec (∀ {e} → e ∈L es → B e)
-        all-edges? [] _ = yes λ ()
-        all-edges? (e ∷ es) B? with B? (here refl) | all-edges? es (B? ∘ there)
-        ... | yes b | yes bs = yes λ { (here refl) → b ; (there m) → bs m }
-        ... | no ¬b | _      = no λ all → ¬b (all (here refl))
-        ... | _     | no ¬bs = no λ all → ¬bs (all ∘ there)
 
         vis/~ : ∀ {V a s} → Vis V a → a ~ s → Vis V s
         vis/~ (b , vb , b~a) a~s = b , vb , ~trans b~a a~s
@@ -1076,23 +996,6 @@ module Check.Alg (N : ℕ) where
           → Decidable 𝒮 → Probe Γ P (lookup Br j) 𝒮
         branch (B ∷ Bs) zero    Γ = probe Γ B
         branch (B ∷ Bs) (suc j)   = branch Bs j
-
-    alg-probe :
-      ∀ {γ δ}
-        (Γ : Vec Sort γ)
-        (P : Part)
-        (Pr : Proc γ δ)
-        (𝒮 : States δ)
-      → Decidable 𝒮
-      → Probe Γ P Pr 𝒮
-    alg-probe Γ P Pr 𝒮 𝒮? = Probing.probe P (env P) Γ Pr 𝒮 (memo 𝒮?)
-
-    -- The same, over a participant's tables built by the caller.
-    alg-probe-in :
-      ∀ {γ δ}{P : Part} → Env P
-      → (Γ : Vec Sort γ)(Pr : Proc γ δ)(𝒮 : States δ) → Decidable 𝒮
-      → Probe Γ P Pr 𝒮
-    alg-probe-in {P = P} E = Probing.probe P E
 
     -- ══════════════════════════════════════════════════════════════════
     --  The old question: typed at exactly this set?

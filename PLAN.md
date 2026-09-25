@@ -49,8 +49,7 @@ a/rec  : MessageGuarded Pr
        → Γ ⊢a P ◂ rec Pr ∶ 𝒮
 ```
 
-Pointwise form: `Γ ⊢at PPr ∶ x = Σ 𝒮. (Γ ⊢a PPr ∶ 𝒮) × x ∈ 𝒮`;
-`⊢s′ M ∶ G = ∀ P → [] ⊢at P ◂ M [ P ]s ∶ ([] , G)`.
+Pointwise form: `Γ ⊢at PPr ∶ x = Σ 𝒮. (Γ ⊢a PPr ∶ 𝒮) × x ∈ 𝒮`.
 
 ## Why
 
@@ -77,7 +76,7 @@ Pointwise form: `Γ ⊢at PPr ∶ x = Σ 𝒮. (Γ ⊢a PPr ∶ 𝒮) × x ∈ �
 
 `Check/Alg.agda`, built on `Definitions/*` only.
 
-- `alg-probe Γ P Pr 𝒮 𝒮? : Probe Γ P Pr 𝒮`. `𝒮` is where typing is PROBED: `found`
+- `Probing.probe P E Γ Pr 𝒮 𝒮? : Probe Γ P Pr 𝒮`. `𝒮` is where typing is PROBED: `found`
   returns the largest `𝒯 ⊆ 𝒮` where `Pr` is typed (`typed`, `max`, non-empty); `none`
   says no derivation touches `𝒮`. Structural recursion on `Pr`:
   - send/recv: probe the continuation (each offered `(j , U)`) at `Post α (Front P 𝒮)`;
@@ -108,7 +107,7 @@ Agda loading); `Examples/IndepW` 26 s / 2.6 GB (was 86 s / 7.5 GB).
       `typing⇒alg`/`td⇒at` (`AlgNorm.agda`, largest set `Typed`, `a/rec` at `Entry`).
 - [x] `Substitution`, `Safety/{Preservation,Progress,Termination}`, `Check/Wait`,
       `Tests/WaitNotSkip` repaired.
-- [x] `Check/Alg.agda`: `alg-probe` (structural; returns the largest typed subset of the
+- [x] `Check/Alg.agda`: `probe` (structural; returns the largest typed subset of the
       probed set) and `alg?` on top of it. Uses only `Definitions/*`.
 - [x] `Check/TypeCheck.agda`: `tc?`/`tcSession?` via `alg?` at a singleton + the
       equivalence. `Check/Graph`, `Check/Network` use it. `./runall.sh` passes.
@@ -121,4 +120,4 @@ Agda loading); `Examples/IndepW` 26 s / 2.6 GB (was 86 s / 7.5 GB).
       and an edge scan per state pair, n iterations). A worklist/BFS row with its own
       soundness/completeness would cut it to O(n + E).
 - [ ] `Wait`: one walk per root; results not shared across roots.
-- [ ] `Check/Wait.agda` is unused by the checker.
+- [x] `Check/Wait.agda` was unused by the checker: deleted 2026-09-25 (`CLEANUP.md`).

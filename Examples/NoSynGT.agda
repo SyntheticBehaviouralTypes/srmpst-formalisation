@@ -37,7 +37,7 @@ here = zero
 
 -- from s0: A picks to message B first or C first; both orders must converge
 -- on the *literally same* successor state for `wellBehaved?`'s diamond check
--- to close (see Examples/TODO.md).  Since the DSL's `end`s all collapse to
+-- to close (CLAUDE.md: a dead end must be `ended`).  Since the DSL's `end`s all collapse to
 -- the one distinguished ended state, the two branches below genuinely
 -- converge and the plain `choice` combinator suffices (an earlier version of
 -- the DSL allocated a fresh node per `end`, which made this graph

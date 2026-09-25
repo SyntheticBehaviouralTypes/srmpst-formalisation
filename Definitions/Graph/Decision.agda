@@ -33,15 +33,6 @@ module Definitions.Graph.Decision (N : ℕ) where
       → Σ[ s′ ∈ State G ]
           Bisimilar G s s′ × _-<_>->_ {G} s′ α t′
 
-  stepbackAt? :
-    (G : Graph) (s : State G)
-    (edge : Edge (size G)) (t′ : State G)
-    → Dec (StepbackAt G s edge t′)
-  stepbackAt? G s (α , t) t′ =
-    T? (bisim? G t t′) →-dec
-      Fin.any? λ s′ →
-        T? (bisim? G s s′) ×-dec step? G s′ α t′
-
   FiniteStepback : Graph → Set
   FiniteStepback G =
     ∀ s
@@ -52,9 +43,8 @@ module Definitions.Graph.Decision (N : ℕ) where
   -- `finiteStepback?` queries `bisim?` O(size² · edges) times, and every
   -- `bisim?` application re-runs the whole `approximation` fixed point (the
   -- evaluator shares argument thunks, never definition applications) — this
-  -- dominated `wellBehaved?` on medium graphs.  As with `SkipDecide.semSkip?`
-  -- (Check/Core.agda), the matrix is computed once and
-  -- passed as a *bound argument*, so every query is a lookup into the one
+  -- dominated `wellBehaved?` on medium graphs.  So the matrix is computed
+  -- once and passed as a *bound argument*, so every query is a lookup into the one
   -- shared thunk; the pointwise equation (instantiated with `refl`, since
   -- `bisim? G = related G (approximation G)` definitionally) transports each
   -- decision back to the `Bisimilar`-phrased proposition.

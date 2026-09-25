@@ -1,7 +1,7 @@
 {-# OPTIONS --guardedness #-}
 
--- Counterexample attempts for the `rec` case of `push`
--- (`Definitions/Typing/Norm.agda`).
+-- Counterexample attempts for the `rec` case of `push` (in the old, since
+-- deleted `Definitions/Typing/Norm.agda`).
 --
 -- THE QUESTION.  A derivation of shape
 --

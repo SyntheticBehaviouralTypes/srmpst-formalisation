@@ -4,25 +4,15 @@
 --
 --     findMain : Leaf & [] ⊢skip P ◂ Pr ∶ G → ∃[ H ] Leaf (P ◂ Pr) H
 --
--- This is `NoLoop.agda` generalised from the empty leaf family to an arbitrary
--- one, and from `⊥` to the leaf it finds.  `NoLoop`'s D4 is the special case:
--- with `Leaf = ⊥` the result is absurd, which is exactly `Loop-empty`.
+-- D4 (TODO.md §5.1) is the special case `Leaf = ⊥`: the result is absurd, so
+-- a leafless tree does not exist (`AlgEquiv.wait/∅`).
 --
 -- Why it is not just "descend until you stop": descending along `skip/step`'s
 -- own step witness terminates (the tree is inductive) but can land on a
--- `skip/cycle`, which is not a main leaf.  `NoLoop`'s argument is what rules
--- that out — a cycle leaf demands `P ∈T` at its own node, while every ancestor
--- on the path to it is `P`-inactive — and it is constructive, so it yields the
--- leaf rather than `¬¬∃`.  `findRun` is that argument, returning the leaf it
--- passes through instead of `⊥`; the `skip/main` case is the only one that
--- differs from `NoLoop.noLoop`.
---
--- NOTE this is the statement `Declarative.agda:173`'s `MainLeaf` is about and
--- that `Norm.agda:169` takes as a HYPOTHESIS.  TODO.md §5.1 records it as open
--- because the leafless argument was thought to give only `¬¬∃`; following the
--- `P ∈T` run, as `NoLoop` does, avoids that.  Discharging `Norm.agda`'s
--- hypothesis from this is not done here — its `MainLeaf` is an inductive
--- *relation* on a derivation, not a bare existential.
+-- `skip/cycle`, which is not a main leaf.  What rules that out is that a cycle
+-- leaf demands `P ∈T` at its own node, while every ancestor on the path to it
+-- is `P`-inactive — and following that `P ∈T` run is constructive, so it
+-- yields the leaf rather than `¬¬∃`.  `findRun` is that argument.
 
 open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin; zero; suc)
@@ -97,7 +87,6 @@ module Definitions.Typing.MainLeaf {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
       → Any (P ∈α_) αs
       → Found
 
-    -- The only case that differs from `NoLoop.noLoop`.
     findRun anc (skip/main x) _ _ =
       _ , x
 

@@ -7,7 +7,7 @@
 -- process); here `typecheck` simply returns `no`, and `toWitnessFalse`
 -- extracts the actual refutation of the declarative judgment.
 --
--- Graph-construction notes (see Examples/TODO.md):
+-- Graph-construction notes:
 --   * both A→B branches must eventually message `C` — on a graph where one
 --     branch ends without involving `C`, *no* process for `C` is typeable
 --     (`C ∈T s0` rules out `∅`, and a receive dies in the silent branch):

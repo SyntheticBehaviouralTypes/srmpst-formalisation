@@ -23,7 +23,7 @@
 --
 -- What each leaf family has to supply is the same two facts in each case:
 -- it is `~`-closed, and it ADVANCES along a `¬P` step (`skip/advance` for the
--- communication families, `skip/cat` for the two `Reach₀` ones).
+-- communication families, `skip/cat` for the two reachability ones).
 --
 -- THE ONE IDEA THAT MAKES THIS WORK, and the thing to not undo: `⊢p`'s
 -- `t/skip` is SELF-REFERENTIAL — its leaf family is `⊢p` — so digging a fact
@@ -113,8 +113,8 @@ module Definitions.Typing.AlgNorm
   --  The canonical set: `⊢p`-typeability
   -- ══════════════════════════════════════════════════════════════════
   --
-  -- As in `SetsAlg.agda`, the set judgment is proved at the LARGEST set, and
-  -- the rules' downward closure recovers every smaller one.
+  -- The set judgment is proved at the LARGEST set, and the rules' downward
+  -- closure recovers every smaller one.
 
   Typ : Vec Sort γ → Vec Behav δ → NProc γ δ → Behavs
   Typ Γ Δ PPr G = Γ & Δ ⊢p PPr ∶ G
@@ -186,11 +186,8 @@ module Definitions.Typing.AlgNorm
     in H₀ , c a~H₀ a∈ , tr′
 
   -- ══════════════════════════════════════════════════════════════════
-  --  Visited vectors as sets, as in `AlgEquiv.agda`
+  --  Visited vectors as sets (`Vof`, `Typing/Alg.agda`)
   -- ══════════════════════════════════════════════════════════════════
-
-  Vof : ∀ {ξ} → Vec Behav ξ → Behavs
-  Vof Ξ s = ∃[ X ] (lu Ξ X ~ s)
 
   vof/cons :
     ∀ {ξ}{Ξ : Vec Behav ξ}{A s} → Vof (A ∷ Ξ) s → Vof Ξ s ⊎ (A ~ s)

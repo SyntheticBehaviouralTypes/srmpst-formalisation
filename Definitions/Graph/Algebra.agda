@@ -22,7 +22,7 @@ module Definitions.Graph.Algebra (N : ℕ) where
   -- every branch of every combinator, is the *same* reference, so `compile`
   -- can emit a single ended state and no composition ever produces two
   -- merely-bisimilar ends (which would break the `Stepback`/diamond side of
-  -- well-behavedness — see Examples/TODO.md's "shared state" findings).
+  -- well-behavedness — CLAUDE.md: a dead end must be `ended`).
   data Ref (δ n : ℕ) : Set where
     loop : Fin δ → Ref δ n
     node : Fin n → Ref δ n

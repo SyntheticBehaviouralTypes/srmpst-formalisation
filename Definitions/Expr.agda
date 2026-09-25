@@ -16,6 +16,17 @@ open import Relation.Binary.PropositionalEquality using (_≡_ ; refl ; sym ; tr
 data Sort : Set where
   s/bool s/nat s/unit : Sort
 
+_≟Sort_ : (S S′ : Sort) → Dec (S ≡ S′)
+s/bool ≟Sort s/bool = yes refl
+s/bool ≟Sort s/nat = no λ ()
+s/bool ≟Sort s/unit = no λ ()
+s/nat ≟Sort s/bool = no λ ()
+s/nat ≟Sort s/nat = yes refl
+s/nat ≟Sort s/unit = no λ ()
+s/unit ≟Sort s/bool = no λ ()
+s/unit ≟Sort s/nat = no λ ()
+s/unit ≟Sort s/unit = yes refl
+
 data Value : Set where
   v/bool : Bool -> Value
   v/nat : ℕ -> Value

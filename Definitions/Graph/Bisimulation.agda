@@ -8,7 +8,12 @@ open import Data.Fin using (Fin)
 import Data.Fin as Fin
 open import Data.List using (List; []; _∷_; all; any)
 open import Data.List.Membership.Propositional using (_∈_)
+  renaming (find to find∈)
 import Data.List.Relation.Unary.Any as Any
+import Data.List.Relation.Unary.Any.Properties as AnyP
+import Data.List.Relation.Unary.All as All
+import Data.List.Relation.Unary.All.Properties as AllP
+open import Function using (Equivalence)
 open import Data.Nat
   using (ℕ; zero; suc; _+_; _*_; _≤_; _<_; z≤n; s≤s)
 import Data.Nat.Properties as Nat
@@ -26,6 +31,7 @@ open import Relation.Nullary.Decidable
 open import Relation.Nullary using (Dec; yes; no)
 
 open import Definitions.Behav using (BTheory)
+open import Utils.Bits using (wt; Incl; wt/mono; wt/strict; wt/true)
 
 module Definitions.Graph.Bisimulation (N : ℕ) where
 
@@ -158,57 +164,22 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
   Bisimilar : (G : Graph) → State G → State G → Set
   Bisimilar G s t = T (bisim? G s t)
 
+  -- Boolean connectives and list quantifiers, read through the standard
+  -- library's `T-∧`/`T-∨` and `all⁺/all⁻`/`any⁺/any⁻`.
   T∧-left : ∀ {a b} → T (a ∧ b) → T a
-  T∧-left {false} ()
-  T∧-left {true} _ = tt
+  T∧-left p = proj₁ (Equivalence.to Bool.T-∧ p)
 
   T∧-right : ∀ {a b} → T (a ∧ b) → T b
-  T∧-right {false} ()
-  T∧-right {true} proof = proof
+  T∧-right p = proj₂ (Equivalence.to Bool.T-∧ p)
 
   T∧-intro : ∀ {a b} → T a → T b → T (a ∧ b)
-  T∧-intro {false} ()
-  T∧-intro {true} left right = right
+  T∧-intro l r = Equivalence.from Bool.T-∧ (l , r)
 
   T∨-cases : ∀ {a b} → T (a ∨ b) → T a ⊎ T b
-  T∨-cases {false} {false} ()
-  T∨-cases {false} {true} _ = inj₂ tt
-  T∨-cases {true} _ = inj₁ tt
+  T∨-cases = Equivalence.to Bool.T-∨
 
   T∨-intro : ∀ {a b} → T a ⊎ T b → T (a ∨ b)
-  T∨-intro {false} (inj₁ ())
-  T∨-intro {false} (inj₂ right) = right
-  T∨-intro {true} _ = tt
-
-  all/mono :
-    ∀ {A : Set}
-      {p q : A → Bool}
-      {xs : List A}
-    → (∀ x → T (p x) → T (q x))
-    → T (all p xs)
-    → T (all q xs)
-  all/mono {xs = []} implication proof =
-    tt
-  all/mono {p = p} {q} {xs = x ∷ xs} implication proof =
-    T∧-intro
-      (implication x (T∧-left proof))
-      (all/mono {p = p} {q} {xs} implication (T∧-right proof))
-
-  any/mono :
-    ∀ {A : Set}
-      {p q : A → Bool}
-      {xs : List A}
-    → (∀ x → T (p x) → T (q x))
-    → T (any p xs)
-    → T (any q xs)
-  any/mono {xs = []} implication ()
-  any/mono {p = p} {q} {xs = x ∷ xs} implication proof
-    with T∨-cases proof
-  ... | inj₁ here =
-    T∨-intro (inj₁ (implication x here))
-  ... | inj₂ later =
-    T∨-intro
-      (inj₂ (any/mono {p = p} {q} {xs} implication later))
+  T∨-intro = Equivalence.from Bool.T-∨
 
   all/intro :
     ∀ {A : Set}
@@ -216,13 +187,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
       {xs : List A}
     → (∀ x → x ∈ xs → T (p x))
     → T (all p xs)
-  all/intro {xs = []} member =
-    tt
-  all/intro {p = p} {xs = x ∷ xs} member =
-    T∧-intro
-      (member x (Any.here refl))
-      (all/intro {p = p} {xs} λ y y∈ →
-        member y (Any.there y∈))
+  all/intro {p = p} member = AllP.all⁻ p (All.tabulate λ {x} → member x)
 
   any/intro :
     ∀ {A : Set}
@@ -232,12 +197,8 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
     → x ∈ xs
     → T (p x)
     → T (any p xs)
-  any/intro (Any.here refl) proof =
-    T∨-intro (inj₁ proof)
-  any/intro {p = p} {xs = _ ∷ xs}
-    (Any.there member) proof =
-    T∨-intro
-      (inj₂ (any/intro {p = p} {xs = xs} member proof))
+  any/intro {p = p} member proof =
+    AnyP.any⁺ p (Any.map (λ { refl → proof }) member)
 
   all/member :
     ∀ {A : Set}
@@ -247,12 +208,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
     → T (all p xs)
     → x ∈ xs
     → T (p x)
-  all/member {xs = _ ∷ _} proof (Any.here refl) =
-    T∧-left proof
-  all/member {p = p} {xs = _ ∷ xs}
-    proof (Any.there member) =
-    all/member {p = p} {xs = xs}
-      (T∧-right proof) member
+  all/member {p = p} {xs = xs} proof = All.lookup (AllP.all⁺ p xs proof)
 
   any/witness :
     ∀ {A : Set}
@@ -260,14 +216,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
       {xs : List A}
     → T (any p xs)
     → Σ[ x ∈ A ] x ∈ xs × T (p x)
-  any/witness {xs = []} ()
-  any/witness {xs = x ∷ xs} proof
-    with T∨-cases proof
-  ... | inj₁ here =
-    x , Any.here refl , here
-  ... | inj₂ later =
-    let y , member , holds = any/witness later
-    in y , Any.there member , holds
+  any/witness {p = p} {xs} proof = find∈ (AnyP.any⁻ p xs proof)
 
   related/refine :
     ∀ {G} (relation : Matrix G) (s t : State G)
@@ -311,67 +260,6 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
   refine/descending {G} {relation} s t refined =
     T∧-left
       (refine⇒at {G = G} {relation = relation} refined)
-
-  edgeMatches/mono :
-    ∀ {G}
-      {left right : Matrix G}
-    → Included G left right
-    → ∀ (edge edge′ : Edge (size G))
-    → T (edgeMatches {G} left edge edge′)
-    → T (edgeMatches {G} right edge edge′)
-  edgeMatches/mono {G} inclusion (α , t) (β , u) matches =
-    T∧-intro
-      (T∧-left matches)
-      (inclusion t u (T∧-right matches))
-
-  simulates/mono :
-    ∀ {G}
-      {left right : Matrix G}
-    → Included G left right
-    → ∀ s t
-    → T (simulates G left s t)
-    → T (simulates G right s t)
-  simulates/mono {G} {left} {right} inclusion s t =
-    all/mono
-      {p = λ edge →
-        any (edgeMatches {G} left edge) (edges G t)}
-      {q = λ edge →
-        any (edgeMatches {G} right edge) (edges G t)}
-      {xs = edges G s}
-      (λ edge →
-        any/mono
-          {p = edgeMatches {G} left edge}
-          {q = edgeMatches {G} right edge}
-          {xs = edges G t}
-          (edgeMatches/mono
-            {G} {left} {right} inclusion edge))
-
-  refine/mono :
-    ∀ {G}
-      {left right : Matrix G}
-    → Included G left right
-    → Included G (refine G left) (refine G right)
-  refine/mono {G} {left} {right} inclusion s t refined =
-    let at =
-          refine⇒at {G = G} {relation = left} refined
-        simulations =
-          T∧-right
-            {a = related G left s t}
-            {b = simulates G left s t ∧ simulates G left t s}
-            at
-        forward = T∧-left simulations
-        backward = T∧-right simulations
-    in
-    at⇒refine {G = G} {relation = right}
-      (T∧-intro
-        (inclusion s t (T∧-left at))
-        (T∧-intro
-          (simulates/mono
-            {G} {left} {right} inclusion s t
-            forward)
-          (simulates/mono
-            {G} {left} {right} inclusion t s
-            backward)))
 
   Symmetric : (G : Graph) → Matrix G → Set
   Symmetric G relation =
@@ -450,23 +338,11 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
       (iterate/symmetric {G} (size G * size G)
         (top/symmetric {G = G}))
 
-  bit : Bool → ℕ
-  bit false = zero
-  bit true = suc zero
-
-  rowWeight : ∀ {n} → Vec Bool n → ℕ
-  rowWeight V.[] = zero
-  rowWeight (b V.∷ row) = bit b + rowWeight row
-
+  -- Row weights and inclusion are `wt`/`Incl` from `Utils/Bits.agda`.
   matrixWeight : ∀ {m n} → Vec (Vec Bool n) m → ℕ
   matrixWeight V.[] = zero
   matrixWeight (row V.∷ rows) =
-    rowWeight row + matrixWeight rows
-
-  RowIncluded :
-    ∀ {n} → Vec Bool n → Vec Bool n → Set
-  RowIncluded left right =
-    ∀ i → T (lookup left i) → T (lookup right i)
+    wt row + matrixWeight rows
 
   RowsIncluded :
     ∀ {m n}
@@ -474,69 +350,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
     → Vec (Vec Bool n) m
     → Set
   RowsIncluded left right =
-    ∀ i → RowIncluded (lookup left i) (lookup right i)
-
-  bit/mono :
-    ∀ left right
-    → (T left → T right)
-    → bit left ≤ bit right
-  bit/mono false right included = z≤n
-  bit/mono true false included = ⊥-elim (included tt)
-  bit/mono true true included = s≤s z≤n
-
-  rowWeight/mono :
-    ∀ {n}
-      {left right : Vec Bool n}
-    → RowIncluded left right
-    → rowWeight left ≤ rowWeight right
-  rowWeight/mono {left = V.[]} {V.[]} included =
-    z≤n
-  rowWeight/mono
-    {left = left V.∷ lefts}
-    {right V.∷ rights}
-    included =
-    Nat.+-mono-≤
-      (bit/mono left right (included Fin.zero))
-      (rowWeight/mono {left = lefts} {right = rights} λ i →
-        included (Fin.suc i))
-
-  rowWeight/strict :
-    ∀ {n}
-      {left right : Vec Bool n}
-    → RowIncluded left right
-    → left ≢ right
-    → rowWeight left < rowWeight right
-  rowWeight/strict {left = V.[]} {V.[]} included unequal =
-    ⊥-elim (unequal refl)
-  rowWeight/strict
-    {left = false V.∷ lefts}
-    {false V.∷ rights}
-    included unequal =
-    rowWeight/strict
-      {left = lefts} {right = rights}
-      (λ i → included (Fin.suc i))
-      (λ equal → unequal (cong (false V.∷_) equal))
-  rowWeight/strict
-    {left = false V.∷ lefts}
-    {true V.∷ rights}
-    included unequal =
-    s≤s
-      (rowWeight/mono {left = lefts} {right = rights} λ i →
-        included (Fin.suc i))
-  rowWeight/strict
-    {left = true V.∷ lefts}
-    {false V.∷ rights}
-    included unequal =
-    ⊥-elim (included Fin.zero tt)
-  rowWeight/strict
-    {left = true V.∷ lefts}
-    {true V.∷ rights}
-    included unequal =
-    s≤s
-      (rowWeight/strict
-        {left = lefts} {right = rights}
-        (λ i → included (Fin.suc i))
-        (λ equal → unequal (cong (true V.∷_) equal)))
+    ∀ i → Incl (lookup left i) (lookup right i)
 
   matrixWeight/mono :
     ∀ {m n}
@@ -550,7 +364,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
     {right V.∷ rights}
     included =
     Nat.+-mono-≤
-      (rowWeight/mono {left = left} {right = right}
+      (wt/mono {left = left} {right = right}
         (included Fin.zero))
       (matrixWeight/mono {left = lefts} {right = rights} λ i →
         included (Fin.suc i))
@@ -569,26 +383,18 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
     included unequal
     with Vec.≡-dec Bool._≟_ left right
   ... | yes refl =
-    Nat.+-monoʳ-< (rowWeight right)
+    Nat.+-monoʳ-< (wt right)
       (matrixWeight/strict
         {left = lefts} {right = rights}
         (λ i → included (Fin.suc i))
         (λ equal → unequal (cong (right V.∷_) equal)))
   ... | no row≢ =
     Nat.+-mono-<-≤
-      (rowWeight/strict
+      (wt/strict
         {left = left} {right = right}
         (included Fin.zero) row≢)
       (matrixWeight/mono {left = lefts} {right = rights} λ i →
         included (Fin.suc i))
-
-  refine/weight≤ :
-    ∀ {G} {relation : Matrix G}
-    → matrixWeight (refine G relation) ≤ matrixWeight relation
-  refine/weight≤ {G} {relation} =
-    matrixWeight/mono
-      {left = refine G relation} {right = relation}
-      (refine/descending {G} {relation})
 
   refine/weight< :
     ∀ {G} {relation : Matrix G}
@@ -599,18 +405,12 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
       {left = refine G relation} {right = relation}
       (refine/descending {G} {relation}) unequal
 
-  rowWeight/true :
-    ∀ n → rowWeight (replicate n true) ≡ n
-  rowWeight/true zero = refl
-  rowWeight/true (suc n) =
-    cong suc (rowWeight/true n)
-
   matrixWeight/replicate :
     ∀ {n} m (row : Vec Bool n)
-    → matrixWeight (replicate m row) ≡ m * rowWeight row
+    → matrixWeight (replicate m row) ≡ m * wt row
   matrixWeight/replicate zero row = refl
   matrixWeight/replicate (suc m) row =
-    cong (rowWeight row +_) (matrixWeight/replicate m row)
+    cong (wt row +_) (matrixWeight/replicate m row)
 
   top/weight :
     ∀ {G} → matrixWeight (top G) ≡ size G * size G
@@ -618,7 +418,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
     trans
       (matrixWeight/replicate (size G)
         (replicate (size G) true))
-      (cong (size G *_) (rowWeight/true (size G)))
+      (cong (size G *_) (wt/true (size G)))
 
   Stable : (G : Graph) → Matrix G → Set
   Stable G relation = refine G relation ≡ relation

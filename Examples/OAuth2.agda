@@ -5,7 +5,7 @@
 -- `A`, which reports to `S`; on `cancel`, `C` tells `A` to quit.  Both
 -- branches converge on the same terminal state, which forces the raw
 -- `openGraph` construction (the DSL would allocate two bisimilar-but-distinct
--- `end`s and break `Stepback` — see Examples/TODO.md).
+-- `end`s and break `Stepback` — CLAUDE.md: a dead end must be `ended`).
 --
 -- On `main` this took a hand-written `BTheory` instance (~150 lines of
 -- `can-step?`/`o-indep?`/`~≡` case analyses) plus per-participant

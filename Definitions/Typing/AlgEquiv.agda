@@ -36,7 +36,7 @@ open import Data.Vec
   using (Vec; []; _∷_)
   renaming (lookup to lu)
 
-open import Data.Product using (∃-syntax; _,_; _×_)
+open import Data.Product using (∃-syntax; _,_; _×_; proj₂)
 
 open import Data.Sum using (_⊎_; inj₁; inj₂)
 
@@ -51,7 +51,7 @@ module Definitions.Typing.AlgEquiv {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
   open M
 
   open import Definitions.Typing.Alg wb
-  open import Definitions.Typing.NoLoop wb using (Loop-empty)
+  open import Definitions.Typing.MainLeaf wb using (findMain)
 
   module _ {γ δ : ℕ}
            (P : Part)
@@ -62,10 +62,6 @@ module Definitions.Typing.AlgEquiv {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
     -- "(Leaf = 𝒮)": the leaf family ignores the process.
     Lf : NProc γ δ → Behav → Set
     Lf _ G = 𝒮 G
-
-    -- The visited vector, read as a set, up to `~`.
-    Vof : ∀ {ξ} → Vec Behav ξ → Behavs
-    Vof Ξ s = ∃[ X ] (lu Ξ X ~ s)
 
     -- ═════════════════════════════════════════════════════════════════
     --  ⟸  a `⊢skip` tree is a `WaitV`
@@ -139,11 +135,12 @@ module Definitions.Typing.AlgEquiv {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
       waitV⇒skip (λ ()) w
 
   -- D4 (TODO.md §5.1) for the set formulation, now a transport rather than a
-  -- second proof: `Wait P ∅` is empty because `Loop P` is (`NoLoop.agda`).
+  -- second proof: `Wait P ∅` is empty because a leafless `⊢skip` tree has
+  -- no main leaf to find (`findMain` at the empty leaf family).
   -- This is what licenses `a/if`/`a/end` carrying no `Wait` premise.
   wait/∅ :
     ∀ {γ δ}{P}{Pr : Proc γ δ}{G}
     → ¬ WaitV P (λ _ → ⊥) (λ _ → ⊥) G
 
   wait/∅ {P = P}{Pr = Pr} w =
-    Loop-empty (wait⇒skip P Pr (λ _ → ⊥) w)
+    proj₂ (findMain P Pr (λ _ _ → ⊥) (wait⇒skip P Pr (λ _ → ⊥) w))

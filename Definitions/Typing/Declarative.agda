@@ -168,34 +168,5 @@ module MPST {N : ℕ} {B : BTheory N} (wb : WellBehaved B) where
   Γ & Δ & Ξ ⊢skip PPr ∶ G =
     (Γ & Δ ⊢p_∶_) & Ξ ⊢skip PPr ∶ G
 
-  data MainLeaf
-    {ξ : ℕ}
-    {Ξ : Vec Behav ξ}
-    {Leaf : NProc δ γ → Behav → Set}
-    : ∀ {PPr G PPr′ G′}
-    → Leaf PPr′ G′
-    → Leaf & Ξ ⊢skip PPr ∶ G
-    → Set
-    where
-
-    main/here :
-      ∀ {PPr G} {td : Leaf PPr G}
-      → MainLeaf td (skip/main td)
-
-    main/step :
-      ∀ {P Pr α G G′}
-        {gr : G -< α >-> G′}
-        {na : P not-active-in G}
-        {ktd :
-          ∀ {G″ β}
-          → (gr′ : G -< β >-> G″)
-          → Leaf & G ∷ Ξ ⊢skip P ◂ Pr ∶ G″}
-        {PPr′ G″}
-        {td : Leaf PPr′ G″}
-        {β H}
-      → (gr′ : G -< β >-> H)
-      → MainLeaf {Ξ = G ∷ Ξ} td (ktd gr′)
-      → MainLeaf td (skip/step gr na ktd)
-
   ⊢s_∶_ : Session → Behav → Set
   ⊢s M ∶ G = ∀ P → [] & [] ⊢p P ◂ (M [ P ]s) ∶ G

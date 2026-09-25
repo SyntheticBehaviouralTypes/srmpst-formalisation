@@ -59,6 +59,10 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   Closed : ∀ {ℓ} → Pred Behav ℓ → Set ℓ
   Closed 𝒮 = ∀ {G H} → G ~ H → 𝒮 G → 𝒮 H
 
+  -- A `⊢skip` visited vector, read as a set, up to `~`.
+  Vof : ∀ {ξ} → Vec Behav ξ → Behavs
+  Vof Ξ s = ∃[ X ] (lu Ξ X ~ s)
+
   -- `WaitV P L V s` — was `⊢skip`.  A FINITE tree indexed by a VISITED SET.
   -- `wv/step` is the only constructor that grows `V`, and `V` is empty at
   -- the root, so a cycle can never close at depth 0.
@@ -421,15 +425,3 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     → MessageGuarded Pr
 
   at/rec-guarded (_ , a/rec guarded _ _ , _) = guarded
-
-  at/end-inv :
-    ∀ {Γ : Vec Sort γ}{P}{x : State δ}
-    → Γ ⊢at P ◂ ∅ ∶ x
-    → x ∈ Ended P
-
-  at/end-inv (_ , a/end done , x∈) = done x∈
-
-  -- `G` is typed for every participant, under no anchors.  Primed only to
-  -- coexist with `Declarative`'s `⊢s_∶_`.
-  ⊢s′_∶_ : Session → Behav → Set₁
-  ⊢s′ M ∶ G = ∀ P → [] ⊢at P ◂ (M [ P ]s) ∶ ([] , G)

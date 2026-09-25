@@ -82,21 +82,6 @@ module Definitions.Typing.Properties {N : ℕ}{B : BTheory N}(wb : WellBehaved B
       (proj₂ (lookup/weaken-visited {H = H} {Ξ = Ξ} {Ξ′ = Ξ′} (_ , eq)))
       inT
 
-  ~mainLeaf/weaken-visited :
-    ∀ {G H PPr PPr′ G′}
-      {Leaf : NProc γ δ → Behav → Set}
-      {Ξ : Vec Behav ξ}
-      {Ξ′ : Vec Behav ξ′}
-      {leaf : Leaf PPr′ G′}
-    → (std : Leaf & Ξ′ ++ Ξ ⊢skip PPr ∶ G)
-    → MainLeaf leaf (skip/weaken-visited {H = H} {Ξ = Ξ} {Ξ′ = Ξ′} std)
-    → MainLeaf leaf std
-  ~mainLeaf/weaken-visited (skip/main td) main/here =
-    main/here
-  ~mainLeaf/weaken-visited (skip/step gr na ktd) (main/step gr′ leaf) =
-    main/step gr′ (~mainLeaf/weaken-visited (ktd gr′) leaf)
-  ~mainLeaf/weaken-visited (skip/cycle _ _) ()
-
   -- Backward transport: relates the trace's *target* to `H` and must
   -- produce a new source bisimilar to `G`, so this calls `stepback/~*`
   -- (generalizing `stepback/~` from a step to a run) rather than
@@ -188,9 +173,7 @@ module Definitions.Typing.Properties {N : ℕ}{B : BTheory N}(wb : WellBehaved B
       t/end (done ∘ ∈~ (~sym G~G′))
 
   -- Backward companion to `skip/bisim`: transport a trace along a `~` on
-  -- its *source*.  (Moved here from `Normalise.agda`, where it sat only
-  -- because that is where it was first needed — it mentions neither
-  -- `⊢head` nor `⊢p`.)
+  -- its *source*.
   skip/bisim-back :
     ∀ {G G′ H′ P}
     → G ~ G′
@@ -241,17 +224,6 @@ module Definitions.Typing.Properties {N : ℕ}{B : BTheory N}(wb : WellBehaved B
       {G}  : Behav
       leaf : Leaf PPr G
       G~H  : G ~ H
-
-  ~MainLeaf :
-    ∀ {γ δ ξ}
-      {Leaf : NProc γ δ → Behav → Set}
-      {Ξ : Vec Behav ξ}
-      {PPr G PPr′ G′}
-    → Leaf PPr′ G′
-    → (~Leaf Leaf) & Ξ ⊢skip PPr ∶ G
-    → Set
-  ~MainLeaf {G′ = G′} leaf std =
-    ∃[ H ] ∃[ G′~H ] MainLeaf (~leaf {H = H} leaf G′~H) std
 
   skip/remember-leaves :
     ∀ {γ δ ξ G PPr}
@@ -318,35 +290,6 @@ module Definitions.Typing.Properties {N : ℕ}{B : BTheory N}(wb : WellBehaved B
   skip/transport-leaf~ f (skip/step gr na ktd) =
     skip/step gr na (skip/transport-leaf~ f ∘ ktd)
   skip/transport-leaf~ f (skip/cycle lu P∈G) = skip/cycle lu P∈G
-
-  -- `skip/transport-leaf~` only resolves the bisim at the eventual
-  -- `skip/main` leaf (`f G~H td`); it never inspects `td` further, so any
-  -- `MainLeaf` of its output corresponds to a `~MainLeaf` of the input at
-  -- the very same underlying `td` — existential in the found leaf, since
-  -- (unlike `skip/weaken-visited`/`skip-leaf/bisim`) the leaf's own *type*
-  -- changes (`~Leaf Leaf` to plain `Leaf`), so there's nothing to keep
-  -- literally fixed across the two directions the way `leaf` is fixed in
-  -- `~mainLeaf/bisim-back`/`-intro`.
-  -- `skip/weaken-visited` (only touches `Ξ`) and `skip/transport-leaf~`
-  -- (only touches leaves) operate on disjoint aspects of a `⊢skip` tree,
-  -- so they commute up to `MainLeaf` — same style as
-  -- `mainLeaf/remember-leaves/weaken-visited` above, just for
-  -- `transport-leaf~` instead of `remember-leaves`.
-  mainLeaf/transport-leaf~/weaken-visited :
-    ∀ {γ δ ξ ξ′ G H PPr K}
-      {Leaf : NProc γ δ → Behav → Set}
-      {Ξ : Vec Behav ξ}
-      {Ξ′ : Vec Behav ξ′}
-      {td : Leaf PPr K}
-    → (f : ∀ {PPr G G′} → G ~ G′ → Leaf PPr G → Leaf PPr G′)
-    → (std : ~Leaf Leaf & Ξ′ ++ Ξ ⊢skip PPr ∶ G)
-    → MainLeaf td (skip/transport-leaf~ f (skip/weaken-visited {H = H} {Ξ = Ξ} {Ξ′ = Ξ′} std))
-    → MainLeaf td (skip/weaken-visited {H = H} {Ξ = Ξ} {Ξ′ = Ξ′} (skip/transport-leaf~ f std))
-  mainLeaf/transport-leaf~/weaken-visited f (skip/main x) main/here =
-    main/here
-  mainLeaf/transport-leaf~/weaken-visited {Ξ′ = Ξ′} f (skip/step gr na ktd) (main/step gr′ leaf) =
-    main/step gr′ (mainLeaf/transport-leaf~/weaken-visited {Ξ′ = _ ∷ Ξ′} f (ktd gr′) leaf)
-  mainLeaf/transport-leaf~/weaken-visited f (skip/cycle _ _) ()
 
   skip/unfold-cycle :
     ∀ {γ δ ξ ξ′ G H PPr}

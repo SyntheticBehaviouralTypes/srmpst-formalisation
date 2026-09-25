@@ -1,10 +1,8 @@
 {-# OPTIONS --guardedness #-}
 
--- The decidable type checker's public surface — the replacement for the
--- deleted `Definitions/TypeChecker.agda`, with the same names, so callers
--- change only which module they import.
+-- The decidable type checker's public surface.
 --
--- As before, the participant count `N` is shared, unqualified, via an
+-- The participant count `N` is shared, unqualified, via an
 -- anonymous parameterised module (`module _ {N} where`): from the outside
 -- every name below carries `N` as an ordinary implicit argument, inferred
 -- from the graph or net passed in, never as a module the caller has to

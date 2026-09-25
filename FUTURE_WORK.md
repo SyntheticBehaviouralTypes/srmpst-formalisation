@@ -6,7 +6,7 @@ recorded so it is not repeated.*
 | § | topic | independent of | state |
 |---|---|---|---|
 | [A](#a--the--projection-as-an-iff) | the `∥` projection as an iff | — | `→` **proved**, `←` false as stated |
-| [B](#b--type-checking-over-sets-of-states) | checking over **sets** of states | A, C | designed; gated on the `Δ`-indexing question in B.5 |
+| [B](#b--type-checking-over-sets-of-states) | checking over **sets** of states | A, C | **done** on `set-typing` — see `PLAN.md` |
 | [C](#c--traversal-based-checking-over-nstate) | traversal over `NState`, no flat index | A, B | idea only |
 | [D](#d--what-was-tried-and-reverted) | the `Presentation` refactor | — | **reverted, do not rebuild** |
 | [E](#e--smaller-loose-ends) | smaller loose ends | — | recorded |
@@ -179,6 +179,13 @@ Two facts that already hold and should be used:
 ---
 
 ## B — Type checking over SETS of states
+
+> **Done on branch `set-typing` (2026-09), in a different shape from the
+> design below.** `⊢a` is itself a set-indexed judgment
+> (`Definitions/Typing/Alg.agda`, equivalent to `⊢p` for every theory), and
+> `Check/Alg.agda` decides it by one structural pass that returns the
+> largest typed subset of the probed set. `PLAN.md` is the record. What
+> follows is the original design, kept for its reasoning.
 
 *Independent of §A and §C. This is the one that attacks the constant
 factor rather than the state space, and it is probably the largest single
@@ -465,8 +472,8 @@ recorded so a cold session does not "helpfully" fix them.
 | `Definitions/Graph/NetworkWB.agda` | `PFree`/`pfree?`/`pfree⇒na`; `Disjoint`; `ParWB` with `~-pair`/`~-projL`/`~-projR`/`dis-⋄`. |
 | `Definitions/Graph/Network.agda` | `nedges`, `mkPair`, `stepL`/`stepR`/`pstep-inv`, the `nix`/`nst` bijection, `present`. |
 | `Definitions/Graph/Bisimulation.agda` | `Matrix`/`refine`/`iterate`/`approximation` — the template for §B's precomputed tables. |
-| `Definitions/Graph/Reachability.agda` | `wt`/`Incl`/`wt/strict` — the termination measure for any `StateSet` fixpoint in §B. |
-| `Check/Alg.agda` | the current per-state checker; §B replaces `alg?`, `Justified`/`FailedFrom` and the four-component measure. |
+| `Utils/Bits.agda` | `wt`/`Incl`/`wt/strict` — the termination measure for bit-vector fixpoints (re-exported by `Reachability.agda`). |
+| `Check/Alg.agda` | the set-based checker (§B, done). |
 | `Check/Network.agda` | `WBNet`/`netWB`, and `typecheckNet` on the flattened path. |
 
 `NetworkProject.agda` is checked with

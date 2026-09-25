@@ -31,113 +31,10 @@ module Definitions.Graph.Reachability (N : ℕ) where
   open import Definitions.Behav using (BTheory)
   open import Definitions.Graph.Core N
 
-  -- ══════════════════════════════════════════════════════════════════
-  --  Graph-independent Bool-vector fixpoint infrastructure
-  -- ══════════════════════════════════════════════════════════════════
-
-  iter : ∀ {A : Set} → ℕ → (A → A) → A → A
-  iter zero    f x = x
-  iter (suc k) f x = iter k f (f x)
-
-  iter-shift :
-    ∀ {A} k (f : A → A) x → iter k f (f x) ≡ f (iter k f x)
-  iter-shift zero    f x = refl
-  iter-shift (suc k) f x = iter-shift k f (f x)
-
-  iter-suc :
-    ∀ {A} k (f : A → A) x → iter (suc k) f x ≡ f (iter k f x)
-  iter-suc k f x = iter-shift k f x
-
-  iter-add :
-    ∀ {A} a b (f : A → A) x
-    → iter (a + b) f x ≡ iter b f (iter a f x)
-  iter-add zero    b f x = refl
-  iter-add (suc a) b f x = iter-add a b f (f x)
-
-  ≡true→T : ∀ {b} → b ≡ true → T b
-  ≡true→T refl = tt
-
-  T→≡true : ∀ {b} → T b → b ≡ true
-  T→≡true {true}  _  = refl
-  T→≡true {false} ()
-
-  bitv : Bool → ℕ
-  bitv false = zero
-  bitv true  = suc zero
-
-  wt : ∀ {n} → Vec Bool n → ℕ
-  wt V.[]        = zero
-  wt (b V.∷ row) = bitv b + wt row
-
-  Incl : ∀ {n} → Vec Bool n → Vec Bool n → Set
-  Incl left right =
-    ∀ i → T (lookup left i) → T (lookup right i)
-
-  Incl-refl : ∀ {n} {v : Vec Bool n} → Incl v v
-  Incl-refl i x = x
-
-  Incl-trans :
-    ∀ {n} {a b c : Vec Bool n}
-    → Incl a b → Incl b c → Incl a c
-  Incl-trans ab bc i x = bc i (ab i x)
-
-  Incl-≡ :
-    ∀ {n} {a b : Vec Bool n} → a ≡ b → Incl a b
-  Incl-≡ e i x = subst (λ z → T (lookup z i)) e x
-
-  bitv/mono : ∀ l r → (T l → T r) → bitv l ≤ bitv r
-  bitv/mono false r    _    = z≤n
-  bitv/mono true  false incl = ⊥-elim (incl tt)
-  bitv/mono true  true  _    = s≤s z≤n
-
-  wt/mono :
-    ∀ {n} {left right : Vec Bool n}
-    → Incl left right
-    → wt left ≤ wt right
-  wt/mono {left = V.[]} {V.[]} _ = z≤n
-  wt/mono {left = l V.∷ ls} {r V.∷ rs} incl =
-    Nat.+-mono-≤
-      (bitv/mono l r (incl F.zero))
-      (wt/mono {left = ls} {right = rs} (λ i → incl (F.suc i)))
-
-  wt/strict :
-    ∀ {n} {left right : Vec Bool n}
-    → Incl left right
-    → left ≢ right
-    → wt left < wt right
-  wt/strict {left = V.[]} {V.[]} _ ne = ⊥-elim (ne refl)
-  wt/strict {left = false V.∷ ls} {false V.∷ rs} incl ne =
-    wt/strict {left = ls} {right = rs}
-      (λ i → incl (F.suc i))
-      (λ e → ne (cong (false V.∷_) e))
-  wt/strict {left = false V.∷ ls} {true V.∷ rs} incl ne =
-    s≤s (wt/mono {left = ls} {right = rs} (λ i → incl (F.suc i)))
-  wt/strict {left = true V.∷ ls} {false V.∷ rs} incl ne =
-    ⊥-elim (incl F.zero tt)
-  wt/strict {left = true V.∷ ls} {true V.∷ rs} incl ne =
-    s≤s (wt/strict {left = ls} {right = rs}
-      (λ i → incl (F.suc i))
-      (λ e → ne (cong (true V.∷_) e)))
-
-  wt-bound : ∀ {n} (v : Vec Bool n) → wt v ≤ n
-  wt-bound V.[]           = z≤n
-  wt-bound (false V.∷ v)  =
-    Nat.≤-trans (wt-bound v) (Nat.n≤1+n _)
-  wt-bound (true V.∷ v)   = s≤s (wt-bound v)
-
-  wt-pos :
-    ∀ {n} {v : Vec Bool n} {i} → lookup v i ≡ true → 1 ≤ wt v
-  wt-pos {v = b V.∷ v} {F.zero}  p rewrite p = s≤s z≤n
-  wt-pos {v = b V.∷ v} {F.suc i} p =
-    Nat.≤-trans (wt-pos {v = v} {i = i} p) (Nat.m≤n+m (wt v) (bitv b))
-
-  -- A vector at maximal weight has every bit set.
-  wt-full : ∀ {n} {v : Vec Bool n} → wt v ≡ n → ∀ i → lookup v i ≡ true
-  wt-full {v = true V.∷ v} eq F.zero    = refl
-  wt-full {v = true V.∷ v} eq (F.suc i) =
-    wt-full {v = v} (Nat.suc-injective eq) i
-  wt-full {n = suc n} {v = false V.∷ v} eq i =
-    ⊥-elim (Nat.<-irrefl refl (subst (_≤ n) eq (wt-bound v)))
+  -- The graph-independent Bool-vector infrastructure (`iter`, `wt`, `Incl`,
+  -- …) lives in `Utils/Bits.agda`; re-exported so callers keep importing it
+  -- from here.
+  open import Utils.Bits public
 
   -- ══════════════════════════════════════════════════════════════════
   --  Reachability over a concrete finite graph
@@ -452,12 +349,6 @@ module Definitions.Graph.Reachability (N : ℕ) where
       T→≡true
         (converge ok s n t
           (≡true→T (complete-aux ok (startMark s) n (startMark-marks s) path Nat.≤-refl)))
-
-    reachVia? : ∀ ok s t → Dec (∃[ n ] PathVia ok s t n)
-    reachVia? ok s t with T? (lookup (reachVia ok s) t)
-    ... | yes p = yes (reachVia-sound ok s (T→≡true p))
-    ... | no ¬p =
-      no λ { (n , path) → ¬p (≡true→T (reachVia-complete ok s path)) }
 
     -- ══════════════════════════════════════════════════════════════
     --  Exact participation:  P ∈T s  ⇔  reach a P-active edge

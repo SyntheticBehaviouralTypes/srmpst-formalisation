@@ -505,26 +505,3 @@ module Definitions.Behav where
     ... | _ , grⱼ″ , trⱼ
       rewrite step-deterministic grⱼ″ grⱼ′ =
       Gⱼ , grⱼ , trⱼ
-
-    step-is-prop/eq :
-      ∀ {G G′ G″ α}
-      → (gr : G -< α >-> G′)
-      → (gr′ : G -< α >-> G″)
-      → (eq : G″ ≡ G′)
-      → gr ≡ subst (G -< α >->_) eq gr′
-    step-is-prop/eq gr gr′ refl = step-is-prop gr gr′
-
-    ~R-L/id′ :
-      ∀ {G G′ G″ α}
-      → (G~G′ : G ~ G′)
-      → (gr : G -< α >-> G″)
-      → gr
-        ≡ subst
-            (G -< α >->_)
-            (step-deterministic (~R→ G~G′ (~L→ G~G′ gr)) gr)
-            (~R→ G~G′ (~L→ G~G′ gr))
-    ~R-L/id′ G~G′ gr =
-      step-is-prop/eq
-        gr
-        (~R→ G~G′ (~L→ G~G′ gr))
-        (step-deterministic (~R→ G~G′ (~L→ G~G′ gr)) gr)

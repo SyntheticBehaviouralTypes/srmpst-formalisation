@@ -8,7 +8,7 @@
 -- Unlike the flattening-algebra version, this is built as a syntactic
 -- `Net` (`Definitions/Graph/Network.agda`): three small base graphs combined with `∥`/`⨾`
 -- — no product graph is ever materialized. Well-behavedness is a
--- compositional `WBNet` certificate (`Definitions/TypeChecker/Network.agda`):
+-- compositional `WBNet` certificate (`Check/Network.agda`):
 -- each `base` leaf is `wellBehaved?` on its own tiny presentation, `∥`
 -- needs only decided participant-disjointness (`ParWB`'s diamond is free),
 -- and `⨾` needs the decided seam-causality checks plus one decided

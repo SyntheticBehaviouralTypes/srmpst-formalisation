@@ -420,10 +420,6 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
   -- ══════════════════════════════════════════════════════════════════
   --  `rec` unfolding, and its old, deleted two-tier-`⊢a` face
   -- ══════════════════════════════════════════════════════════════════
-  --
-  -- Moved here from `Definitions/Typing/Normalise.agda` (2026-08-05):
-  -- neither of these ever mentioned `⊢head`, only `typing/subst-proc`
-  -- just above.
 
   mutual
 

@@ -15,7 +15,7 @@ open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; sym; cong; ≢-sym)
 open import Relation.Nullary using (Dec; yes; no; ¬_)
 open import Relation.Nullary.Decidable
-  using (T?)
+  using (T?; map′)
 
 open import Definitions.Behav using (BTheory; WellBehaved)
 open import Definitions.Expr
@@ -58,29 +58,35 @@ module Check.Core where
   inferExpression Γ (var x) =
     yes (lookup Γ x , te/var)
 
-  -- Checking mode: decide `Γ ⊢e E ∶ S` for a *given* `S` directly, instead
-  -- of inferring `E`'s sort and having the caller cross-check it against
-  -- `S` itself (which is all `inferExpression` alone would let a caller
-  -- do). Built on `inferExpression` — no new traversal of `E`, just one
-  -- extra sort comparison at the end via the existing disequality lemmas.
+  -- Checking mode: decide `Γ ⊢e E ∶ S` for a *given* `S` directly, by
+  -- recursion on `E`.
+  checkValue : ∀ V S → Dec (⊢v V ∶ S)
+  checkValue (v/bool _) s/bool = yes tv/bool
+  checkValue (v/bool _) s/nat  = no λ ()
+  checkValue (v/bool _) s/unit = no λ ()
+  checkValue (v/nat _)  s/bool = no λ ()
+  checkValue (v/nat _)  s/nat  = yes tv/nat
+  checkValue (v/nat _)  s/unit = no λ ()
+  checkValue v/unit     s/bool = no λ ()
+  checkValue v/unit     s/nat  = no λ ()
+  checkValue v/unit     s/unit = yes tv/unit
+
   checkExpression :
     ∀ {γ} (Γ : Vec Sort γ) (E : Exp γ) (S : Sort)
     → Dec (Γ ⊢e E ∶ S)
-  checkExpression Γ E S with inferExpression Γ E
-  ... | no ¬wt =
-    no λ etd → ¬wt (S , etd)
-  ... | yes (s/bool , etd) with S
-  ...   | s/bool = yes etd
-  ...   | s/nat  = no λ etd′ → s/nat≢s/bool  (⊢e-unique etd′ etd)
-  ...   | s/unit = no λ etd′ → s/unit≢s/bool (⊢e-unique etd′ etd)
-  checkExpression Γ E S | yes (s/nat , etd) with S
-  ...   | s/bool = no λ etd′ → ≢-sym s/nat≢s/bool (⊢e-unique etd′ etd)
-  ...   | s/nat  = yes etd
-  ...   | s/unit = no λ etd′ → ≢-sym s/nat≢s/unit (⊢e-unique etd′ etd)
-  checkExpression Γ E S | yes (s/unit , etd) with S
-  ...   | s/bool = no λ etd′ → ≢-sym s/unit≢s/bool (⊢e-unique etd′ etd)
-  ...   | s/nat  = no λ etd′ → s/nat≢s/unit (⊢e-unique etd′ etd)
-  ...   | s/unit = yes etd
+  checkExpression Γ (val V) S =
+    map′ te/val (λ { (te/val tv) → tv }) (checkValue V S)
+  checkExpression Γ (minus1 E) s/nat =
+    map′ te/minus1 (λ { (te/minus1 e) → e }) (checkExpression Γ E s/nat)
+  checkExpression Γ (minus1 E) s/bool = no λ ()
+  checkExpression Γ (minus1 E) s/unit = no λ ()
+  checkExpression Γ (is-zero E) s/bool =
+    map′ te/is-zero (λ { (te/is-zero e) → e }) (checkExpression Γ E s/nat)
+  checkExpression Γ (is-zero E) s/nat  = no λ ()
+  checkExpression Γ (is-zero E) s/unit = no λ ()
+  checkExpression Γ (var x) S with lookup Γ x ≟Sort S
+  ... | yes refl = yes te/var
+  ... | no ≢S    = no λ { te/var → ≢S refl }
 
   module Processes (N : ℕ) where
 
@@ -103,95 +109,6 @@ module Check.Core where
         module T = Typing.MPST wb
 
       open T
-
-      messageGuarded? :
-        ∀ {γ δ} (Pr : Proc γ δ)
-        → Dec (MessageGuarded Pr)
-      messageGuarded? (_ ! _ < _ >∙ _) = yes mg/send
-      messageGuarded? (Σ _ ？· _) = yes mg/recv
-      messageGuarded? (ifp _ then Pr else Pr′)
-        with messageGuarded? Pr | messageGuarded? Pr′
-      ... | yes guarded | yes guarded′ =
-        yes (mg/if guarded guarded′)
-      ... | no ¬guarded | _ =
-        no λ { (mg/if guarded _) → ¬guarded guarded }
-      ... | yes _ | no ¬guarded′ =
-        no λ { (mg/if _ guarded′) → ¬guarded′ guarded′ }
-      messageGuarded? (rec _) = no λ ()
-      messageGuarded? (v _) = no λ ()
-      messageGuarded? ∅ = no λ ()
-
-      MatchRecv : Part → Part → ℕ → Action → Set
-      MatchRecv P Q I α =
-        Σ[ j ∈ Fin (suc I) ]
-        Σ[ U ∈ Sort ]
-          α ≡ (P ⟶ Q # j < U >)
-
-      matchRecv? :
-        ∀ P Q I α → Dec (MatchRecv P Q I α)
-      matchRecv? P Q I
-        ((R ⟶ S) # (_<_> {nchoices = J} j U))
-        with R ≟Fin P | S ≟Fin Q | J Nat.≟ I
-      ... | yes refl | yes refl | yes refl =
-        yes (j , U , refl)
-      ... | no R≢P | _ | _ =
-        no λ { (_ , _ , refl) → R≢P refl }
-      ... | _ | no S≢Q | _ =
-        no λ { (_ , _ , refl) → S≢Q refl }
-      ... | _ | _ | no J≢I =
-        no λ { (_ , _ , refl) → J≢I refl }
-
-      ActionAt : Action → List (Edge (size G)) → Set
-      ActionAt α xs =
-        Σ[ t ∈ State G ] (α , t) ∈ xs
-
-      findAction :
-        (α : Action) (xs : List (Edge (size G)))
-        → Dec (ActionAt α xs)
-      findAction α [] = no λ { (_ , ()) }
-      findAction α ((β , t) ∷ xs) with β ≟Action α
-      ... | yes refl = yes (t , Any.here refl)
-      ... | no β≢α with findAction α xs
-      ...   | yes (u , member) = yes (u , Any.there member)
-      ...   | no ¬rest =
-        no λ { (_ , Any.here px) → β≢α (sym (cong proj₁ px))
-             ; (u , Any.there m) → ¬rest (u , m) }
-
-      findStep :
-        ∀ s α
-        → Dec
-            (Σ[ t ∈ State G ]
-              BTheory._-<_>->_ (graphTheory G) s α t)
-      findStep s α with findAction α (edges G s)
-      ... | yes (t , member) =
-        yes (t , listed⇒step {G = G} member)
-      ... | no ¬found =
-        no λ { (t , gr) → ¬found (t , step⇒listed {G = G} gr) }
-
-      RecvWitness :
-        Part → Part → ℕ → List (Edge (size G)) → Set
-      RecvWitness P Q I xs =
-        Σ[ j ∈ Fin (suc I) ]
-        Σ[ U ∈ Sort ]
-        Σ[ t ∈ State G ]
-          ((P ⟶ Q # j < U >) , t) ∈ xs
-
-      findRecv :
-        (P Q : Part) (I : ℕ) (xs : List (Edge (size G)))
-        → Dec (RecvWitness P Q I xs)
-      findRecv P Q I [] = no λ { (_ , _ , _ , ()) }
-      findRecv P Q I ((α , t) ∷ xs)
-        with matchRecv? P Q I α
-      ... | yes (j , U , refl) =
-        yes (j , U , t , Any.here refl)
-      ... | no ¬match with findRecv P Q I xs
-      ...   | yes (j , U , u , member) =
-        yes (j , U , u , Any.there member)
-      ...   | no ¬rest =
-        no λ { (j , U , _ , Any.here px) →
-                 ¬match (j , U , sym (cong proj₁ px))
-             ; (j , U , u , Any.there m) →
-                 ¬rest (j , U , u , m) }
 
       InactiveAt : Part → State G → Set
       InactiveAt P s =

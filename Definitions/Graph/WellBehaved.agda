@@ -22,6 +22,7 @@ open import Relation.Nullary using (Dec; yes; no; ¬?)
 open import Relation.Nullary.Decidable using (_×-dec_; _→-dec_)
 
 open import Definitions.Behav using (BTheory; WellBehaved)
+open import Definitions.Expr using (_≟Sort_)
 
 module Definitions.Graph.WellBehaved (N : ℕ) where
 
@@ -35,9 +36,6 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
 
   EdgeAction : Edge n → Action
   EdgeAction = proj₁
-
-  EdgeTarget : Edge n → Fin n
-  EdgeTarget = proj₂
 
   Proper : Edge n → Set
   Proper (α , _) = sender α ≢ receiver α
