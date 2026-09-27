@@ -97,8 +97,14 @@ graph (`Shared`: bisimilarity matrix, plain reachability rows). `∈T` is read o
 the reachability rows (was: one full `reachVia` per target state). Action equality
 is a bit (`eqAction`), because `_≟Action_` matches `yes refl` and so forces proofs
 even for its tag. In each search the cheaper test goes first: reachability rows are
-the expensive tables. Measured 2026-09-25: every test/example ≈ 10–12 s (≈ 9.7 s is
-Agda loading); `Examples/IndepW` 26 s / 2.6 GB (was 86 s / 7.5 GB).
+the expensive tables. Rows are COMPUTED by `reachFix` (`iterateFix`: each round
+is forced by the equality test and iteration stops at the fixpoint) and SPECIFIED
+by `reachVia` (plain `iter`), bridged by `reachFix≡`; a plain `iter` chain of lazy
+`tabulate`s re-derives earlier rounds on every lookup. Measured 2026-09-26 on
+`Examples/IndepW` (13 states, 7 participants): its session decision 8.9 s → 2.2 s;
+forcing every row of every participant's idle / `¬P` / `∈T` table 26.7 / 27.4 /
+25.7 s → 4.3 / 5.3 / 6.5 s. Most test files are now ≈ 5 s, nearly all of it Agda
+loading.
 
 ## TODO
 - [x] `Definitions/Typing/Alg.agda` rewritten; inversions `at/send-inv`, `at/recv-inv`.
@@ -116,8 +122,18 @@ Agda loading); `Examples/IndepW` 26 s / 2.6 GB (was 86 s / 7.5 GB).
 - [x] Tables: `memo`, `Env`, `Shared`, `After?` tabulates `Front`, leaf sets
       (`Dom`, `Offers`) tabulated, send/recv result sets scan edges, bit equality
       for actions, `∈T` from reachability rows, tabulated idle filter.
-- [ ] Remaining cost (IndepW): `reachVia` rows, O(n³·deg) each (linear `Vec` lookups
-      and an edge scan per state pair, n iterations). A worklist/BFS row with its own
-      soundness/completeness would cut it to O(n + E).
-- [ ] `Wait`: one walk per root; results not shared across roots.
+- [x] Reachability rows: `reachFix` (forced, early-stopping rounds) instead of a lazy
+      `iter` chain — ~5× per row, 4× on IndepW's session (2026-09-26). A round is
+      still pull-based, O(n²·deg); a worklist/BFS row, with its own soundness and
+      completeness against `PathVia` (`reachFix≡` keeps everything downstream
+      unchanged), would make a row O(n·(n + E)). Not needed at current sizes (13
+      states); revisit for nets of hundreds of states.
+- [x] `Wait` per root: measured, not a bottleneck (2026-09-26). Walking EVERY root of
+      IndepW for every participant costs 5.4 s including the `∈T`/`act?`/`~` tables
+      it reads — less than the `∈T` table alone. If it ever matters, decide it once
+      per (participant, leaf set): on a finite graph `Wait P L ∅ s` should fail iff
+      `s` idle-reaches, through non-leaf states, a stuck state (`¬ L`, and
+      `P`-active or without moves) or an idle cycle of `P ∉T` states (`P ∈T` is
+      backward closed, so a cycle is all one or the other; exact revisits make `~`
+      irrelevant to existence). Needs proofs both ways against `WaitV`.
 - [x] `Check/Wait.agda` was unused by the checker: deleted 2026-09-25 (`CLEANUP.md`).

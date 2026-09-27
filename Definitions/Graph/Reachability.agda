@@ -350,6 +350,19 @@ module Definitions.Graph.Reachability (N : ℕ) where
         (converge ok s n t
           (≡true→T (complete-aux ok (startMark s) n (startMark-marks s) path Nat.≤-refl)))
 
+    -- ── The row to COMPUTE ──
+    --
+    -- `reachVia` is the specification; `reachFix` is the same rounds run by
+    -- `iterateFix`, which forces each round and stops at the fixpoint.
+    -- Tables should be built from `reachFix` and carry `reachFix≡`.
+    reachFix : (State G → Bool) → State G → Vec Bool (size G)
+    reachFix ok s =
+      iterateFix (VecP.≡-dec Bool._≟_) (size G) (expand ok) (startMark s)
+
+    reachFix≡ : ∀ ok s → reachFix ok s ≡ reachVia ok s
+    reachFix≡ ok s =
+      iterateFix/iterate (VecP.≡-dec Bool._≟_) (size G) (expand ok) (startMark s)
+
     -- ══════════════════════════════════════════════════════════════
     --  Exact participation:  P ∈T s  ⇔  reach a P-active edge
     -- ══════════════════════════════════════════════════════════════

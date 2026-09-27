@@ -86,7 +86,7 @@ module Check.Alg (N : ℕ) where
           ; eqAction; eqAction-sound; eqAction-refl)
     renaming (_≟Actionᵇ_ to _≟A_)
   open import Definitions.Graph.Reachability N
-    using (Step; PathVia; path/nil; path/cons; reachVia; reachVia-sound
+    using (Step; PathVia; path/nil; path/cons; reachVia; reachFix; reachFix≡; reachVia-sound
           ; reachVia-complete; T→≡true; ≡true→T; reach→∈T; ∈T→reach; active?
           ; anyActive→∈; ∈α-lift; wt; wt/strict; wt-bound)
 
@@ -444,11 +444,17 @@ module Check.Alg (N : ℕ) where
         reach   : Vec (Vec Bool n) n
         reach≡  : ∀ s → lookup reach s ≡ reachVia G (λ _ → true) s
 
+    -- A table of rows, COMPUTED by `reachFix` and specified by `reachVia`.
+    rows : (H : Graph)(ok′ : Fin (size H) → Bool) → Vec (Vec Bool (size H)) (size H)
+    rows H ok′ = V.tabulate (reachFix H ok′)
+
+    rows≡ : ∀ (H : Graph) ok′ s → lookup (rows H ok′) s ≡ reachVia H ok′ s
+    rows≡ H ok′ s = trans (VecP.lookup∘tabulate _ s) (reachFix≡ H ok′ s)
+
     -- Built once, as arguments.
     shared-tables : Shared
     shared-tables =
-      shared (approximation G) refl
-             (V.tabulate (reachVia G (λ _ → true))) (λ s → VecP.lookup∘tabulate _ s)
+      shared (approximation G) refl (rows G (λ _ → true)) (rows≡ G (λ _ → true))
 
     -- Every participant's `Env` is built from the SAME shared tables.
     env-with : Shared → ∀ P → Env P
@@ -459,8 +465,8 @@ module Check.Alg (N : ℕ) where
         with-oks : (oks : Vec Bool n) → (∀ s → lookup oks s ≡ ok P s) → Env P
         with-oks oks oks≡ =
           mkEnv P oks oks≡
-            (V.tabulate (reachVia G (lookup oks)))       (λ s → VecP.lookup∘tabulate _ s)
-            (V.tabulate (reachVia (G¬ P) (λ _ → true))) (λ s → VecP.lookup∘tabulate _ s)
+            (rows G (lookup oks))       (rows≡ G (lookup oks))
+            (rows (G¬ P) (λ _ → true)) (rows≡ (G¬ P) (λ _ → true))
             m m≡ alls alls≡
 
     env : ∀ P → Env P

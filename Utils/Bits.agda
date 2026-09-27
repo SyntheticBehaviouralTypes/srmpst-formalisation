@@ -14,7 +14,8 @@ import Data.Fin as F
 open import Data.Vec using (Vec; lookup)
 import Data.Vec as V
 open import Relation.Binary.PropositionalEquality
-  using (_≡_; refl; cong; subst; _≢_)
+  using (_≡_; refl; cong; subst; _≢_; sym; trans)
+open import Relation.Nullary using (Dec; yes; no)
 
 module Utils.Bits where
 
@@ -36,6 +37,44 @@ iter-add :
   → iter (a + b) f x ≡ iter b f (iter a f x)
 iter-add zero    b f x = refl
 iter-add (suc a) b f x = iter-add a b f (f x)
+
+-- `iter`, stopping as soon as a round is stable.  Computationally this is
+-- the one to run: the equality test FORCES each round before the next is
+-- built (a plain `iter` chain of lazy `tabulate`s re-derives earlier rounds
+-- on every lookup — ~0.3 s per 13-state reachability row, measured
+-- 2026-09-25), and the nested `with` binds `f x` once, so the test and the
+-- recursive call share it.  `iterateFix/iterate` bridges back to `iter`,
+-- which the correctness lemmas are stated against.
+iterateFix :
+  ∀ {A : Set}
+  → ((x y : A) → Dec (x ≡ y))
+  → ℕ → (A → A) → A → A
+iterateFix eq? zero f x = x
+iterateFix eq? (suc fuel) f x with f x
+... | fx with eq? fx x
+...   | yes _ = x
+...   | no  _ = iterateFix eq? fuel f fx
+
+iter/stable :
+  ∀ {A : Set} fuel (f : A → A) x
+  → f x ≡ x
+  → iter fuel f x ≡ x
+iter/stable zero f x eq = refl
+iter/stable (suc fuel) f x eq =
+  trans (cong (iter fuel f) eq) (iter/stable fuel f x eq)
+
+iterateFix/iterate :
+  ∀ {A : Set}
+    (eq? : (x y : A) → Dec (x ≡ y))
+    fuel (f : A → A) x
+  → iterateFix eq? fuel f x ≡ iter fuel f x
+iterateFix/iterate eq? zero f x = refl
+iterateFix/iterate eq? (suc fuel) f x with f x in fxeq
+... | fx with eq? fx x
+...   | yes eq =
+  sym (trans (cong (iter fuel f) eq)
+             (iter/stable fuel f x (trans fxeq eq)))
+...   | no _ = iterateFix/iterate eq? fuel f fx
 
 ≡true→T : ∀ {b} → b ≡ true → T b
 ≡true→T refl = tt

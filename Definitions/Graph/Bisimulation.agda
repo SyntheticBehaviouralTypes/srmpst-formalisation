@@ -31,7 +31,9 @@ open import Relation.Nullary.Decidable
 open import Relation.Nullary using (Dec; yes; no)
 
 open import Definitions.Behav using (BTheory)
-open import Utils.Bits using (wt; Incl; wt/mono; wt/strict; wt/true)
+open import Utils.Bits
+  using (wt; Incl; wt/mono; wt/strict; wt/true; iterateFix; iterateFix/iterate)
+  renaming (iter to iterate; iter/stable to iterate/stable)
 
 module Definitions.Graph.Bisimulation (N : ℕ) where
 
@@ -102,47 +104,12 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
   refine G relation =
     tabulate λ s → tabulate λ t → refineAt G relation s t
 
-  iterate : ∀ {A : Set} → ℕ → (A → A) → A → A
-  iterate zero f x = x
-  iterate (suc fuel) f x = iterate fuel f (f x)
-
   -- `approximation` used to run the full `size²` pigeonhole bound of
   -- refinement rounds unconditionally; the fixed point is virtually always
   -- reached after a handful, so the *computational* iteration stops as soon
-  -- as a round is stable (`iterateFix`), with `iterateFix/iterate` bridging
-  -- back to the fuel-only `iterate` the correctness lemmas are stated
-  -- against.  (The nested `with` binds `f x` once, so the equality test and
-  -- the recursive call share the one computed round.)
-  iterateFix :
-    ∀ {A : Set}
-    → ((x y : A) → Dec (x ≡ y))
-    → ℕ → (A → A) → A → A
-  iterateFix eq? zero f x = x
-  iterateFix eq? (suc fuel) f x with f x
-  ... | fx with eq? fx x
-  ...   | yes _ = x
-  ...   | no  _ = iterateFix eq? fuel f fx
-
-  iterate/stable :
-    ∀ {A : Set} fuel (f : A → A) x
-    → f x ≡ x
-    → iterate fuel f x ≡ x
-  iterate/stable zero f x eq = refl
-  iterate/stable (suc fuel) f x eq =
-    trans (cong (iterate fuel f) eq) (iterate/stable fuel f x eq)
-
-  iterateFix/iterate :
-    ∀ {A : Set}
-      (eq? : (x y : A) → Dec (x ≡ y))
-      fuel (f : A → A) x
-    → iterateFix eq? fuel f x ≡ iterate fuel f x
-  iterateFix/iterate eq? zero f x = refl
-  iterateFix/iterate eq? (suc fuel) f x with f x in fxeq
-  ... | fx with eq? fx x
-  ...   | yes eq =
-    sym (trans (cong (iterate fuel f) eq)
-               (iterate/stable fuel f x (trans fxeq eq)))
-  ...   | no _ = iterateFix/iterate eq? fuel f fx
+  -- as a round is stable (`iterateFix`, `Utils/Bits.agda`), with
+  -- `iterateFix/iterate` bridging back to the fuel-only `iterate` the
+  -- correctness lemmas are stated against.
 
   matrix≟ :
     (G : Graph) → (left right : Matrix G) → Dec (left ≡ right)
