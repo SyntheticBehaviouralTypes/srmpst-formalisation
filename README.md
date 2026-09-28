@@ -5,6 +5,15 @@
 
 The metatheory is parameterised over an abstract **behavioural theory** (`BTheory`: a carrier with a labelled transition relation) satisfying a bundle of axioms (`WellBehaved`). Safety is proved once, for every well-behaved theory. A concrete instance, finite graphs, is shown separately to satisfy the axioms, and for it typing is **decidable**: the examples are type-checked by running the decision procedure, not by hand-written derivations.
 
+## Status
+
+- **Metatheory: complete.** Preservation, progress and termination are proved for every well-behaved theory.
+- **Equivalence: complete.** The algorithmic judgment `⊢a` is proved equivalent to the declarative `⊢p` for every well-behaved theory. There are no finiteness assumptions.
+- **Graph model and decision procedure: complete.** Well-behavedness and typing are decidable for finite graphs. Every example is type-checked by running the procedure.
+- **Nets (`∥`, `⨾`): supported by flattening.** Their well-behavedness is certified compositionally, but typing runs the graph checker on the flattened product. Checking a participant against only the sub-net it acts in is the main open line of work (`FUTURE_WORK.md` §A).
+
+No file contains holes or postulates, and every `.agda` file outside `Stale/` type-checks.
+
 ## Repository Structure
 
 ### Core Modules
@@ -56,7 +65,12 @@ The metatheory is parameterised over an abstract **behavioural theory** (`BTheor
 - `Examples/RecMW.agda` - Recursive map/reduce (Figure 12, c)
 - `Examples/IndepW.agda` - Recursive multiparty worker, built as a net (Figure 12, d)
 
-`Tests/` holds regression tests for the checker and specific counterexamples. `Stale/` holds retired counterexample material that is not type-checked.
+`Tests/` holds regression tests for the checker and specific counterexamples. `Stale/` holds retired material that is not type-checked, including the `∥` projection proof over the previous judgment (`FUTURE_WORK.md` §A).
+
+### Design Records
+
+- `FUTURE_WORK.md` - Open work: checking nets without flattening, plus one approach that was tried and reverted
+- `docs/` - Dated, archived design notes (`docs/README.md` indexes them)
 
 ## Process Language
 
@@ -95,5 +109,3 @@ With the appropriate version of Agda and its standard library installed, you can
 - `./runall.sh --CheckClosedProof` to check with `--no-allow-unsolved-metas`
 - `./runall.sh --help` for usage information
 - `./clean.sh` to remove the compiled files
-
-No file contains holes or postulates.
