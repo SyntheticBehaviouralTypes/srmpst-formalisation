@@ -23,6 +23,7 @@ open import Data.Product using (_,_)
 open import Data.Unit using (tt)
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Relation.Nullary.Decidable using (⌊_⌋; toWitness)
+open import Data.Fin.Subset using (⁅_⁆)
 
 open import Definitions.Expr using (s/unit; val; v/unit)
 import Definitions.Typing as Typing
@@ -38,9 +39,9 @@ module Ex6 where
 
   open import Definitions.Graph.Algebra 4
   open import Definitions.Graph.Core 4 using (State; graphTheory)
-  open import Definitions.Graph.Decision 4 using (wellBehaved?)
+  open import Definitions.Graph.Decision 4 using (wellBehaved?; synchronous?)
   open import Definitions.Actions 4
-    using (Action; _⟶_; _#_) renaming (_<_> to mkChoice)
+    using (Action; _⟶_#_) renaming (_<_> to mkChoice)
 
   A B C D : Fin 4
   A = zero
@@ -54,13 +55,13 @@ module Ex6 where
   --                            --B⟶C⟨1⟩--> H --A⟶B--> H
   g : OpenGraph 0
   g = openGraph 4 (node zero)
-    ( ( ((B ⟶ D # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
-    v∷ ( ((A ⟶ B # mkChoice {nchoices = 0} zero s/unit)
+    ( ( ((B ⟶ ⁅ D ⁆ # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
+    v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} zero s/unit)
          , node (suc (suc zero))) ∷ [] )
-    v∷ ( ((B ⟶ C # mkChoice {nchoices = 1} zero s/unit) , node (suc zero))
-       ∷ ((B ⟶ C # mkChoice {nchoices = 1} (suc zero) s/unit)
+    v∷ ( ((B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 1} zero s/unit) , node (suc zero))
+       ∷ ((B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 1} (suc zero) s/unit)
          , node (suc (suc (suc zero)))) ∷ [] )
-    v∷ ( ((A ⟶ B # mkChoice {nchoices = 0} zero s/unit)
+    v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} zero s/unit)
          , node (suc (suc (suc zero)))) ∷ [] )
     v∷ v[]
     )
@@ -70,9 +71,13 @@ module Ex6 where
   wb : Typing.WellBehaved (graphTheory Gr)
   wb = toWitness {a? = wellBehaved? Gr} tt
 
-  open module M₆ = Typing.MPST wb hiding (Action; _⟶_; _#_; _<_>)
+  sync : Typing.Synchronous (graphTheory Gr)
+  sync = toWitness {a? = synchronous? Gr} tt
+
+  open module M₆ = Typing.MPST wb hiding (Action; _⟶_#_; _<_>)
   open module K₆ = Check.Alg.AlgCheck 4 Gr wb using (alg?)
-  open module T₆ = Check.TypeCheck.TypeCheck 4 Gr wb using (tc?; at; at?)
+  open module T₆ = Check.TypeCheck.TypeCheck 4 Gr wb sync
+    using (tc?; at; at?)
 
   G L M H : State Gr
   G = zero
@@ -81,7 +86,7 @@ module Ex6 where
   H = suc (suc (suc zero))
 
   prog : Proc 0 0
-  prog = rec (B ! (zero {0}) < val v/unit >∙ v zero)
+  prog = rec (⁅ B ⁆ ! (zero {0}) < val v/unit >∙ v zero)
 
   -- The anchor the checker has to find is `M`, which `G` does not reach:
   -- `M -[¬A]->* L` and the tree at `G` steps `G → L`.
@@ -114,9 +119,9 @@ module SkipVar where
 
   open import Definitions.Graph.Algebra 3
   open import Definitions.Graph.Core 3 using (State; graphTheory)
-  open import Definitions.Graph.Decision 3 using (wellBehaved?)
+  open import Definitions.Graph.Decision 3 using (wellBehaved?; synchronous?)
   open import Definitions.Actions 3
-    using (Action; _⟶_; _#_) renaming (_<_> to mkChoice)
+    using (Action; _⟶_#_) renaming (_<_> to mkChoice)
 
   A B C : Fin 3
   A = zero
@@ -124,7 +129,7 @@ module SkipVar where
   C = suc (suc zero)
 
   β : Action
-  β = B ⟶ C # mkChoice {nchoices = 0} zero s/unit
+  β = B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 0} zero s/unit
 
   -- s --β--> K --β--> ended;  `A` is active nowhere.
   g : OpenGraph 0
@@ -139,8 +144,11 @@ module SkipVar where
   wb : Typing.WellBehaved (graphTheory Gr)
   wb = toWitness {a? = wellBehaved? Gr} tt
 
-  open module M₃ = Typing.MPST wb hiding (Action; _⟶_; _#_; _<_>)
-  open module K₃ = Check.TypeCheck.TypeCheck 3 Gr wb using (tc?)
+  sync : Typing.Synchronous (graphTheory Gr)
+  sync = toWitness {a? = synchronous? Gr} tt
+
+  open module M₃ = Typing.MPST wb hiding (Action; _⟶_#_; _<_>)
+  open module K₃ = Check.TypeCheck.TypeCheck 3 Gr wb sync using (tc?)
 
   s K : State Gr
   s = zero

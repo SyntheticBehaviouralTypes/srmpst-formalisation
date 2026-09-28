@@ -17,7 +17,7 @@ open import Relation.Nullary using (Dec; yes; no)
 open import Relation.Nullary.Decidable using (map′)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl)
 
-open import Definitions.Behav using (WellBehaved)
+open import Definitions.Behav using (WellBehaved; Synchronous)
 open import Definitions.Expr using (Sort)
 
 import Definitions.Typing as Typing
@@ -27,9 +27,12 @@ module Check.TypeCheck (N : ℕ) where
 
   open import Definitions.Graph.Core N using (Graph; graphTheory)
 
+  -- `sync`: `⊢p → ⊢a` (`typing⇒alg`) needs the synchronous instance
+  -- (PLAN.md D7).
   module TypeCheck
     (G : Graph)
     (wb : WellBehaved (graphTheory G))
+    (sync : Synchronous (graphTheory G))
     where
 
     open Typing.MPST wb
@@ -53,7 +56,7 @@ module Check.TypeCheck (N : ℕ) where
       → Dec (Γ & Δ ⊢p P ◂ Pr ∶ s)
     tc?-in E Γ Δ Pr s =
       map′ (λ d → alg⇒typing d refl)
-           (λ td → alg/mono (λ { refl → td }) (typing⇒alg Pr td))
+           (λ td → alg/mono (λ { refl → td }) (typing⇒alg sync Pr td))
            (alg?-in E Γ Pr (at (Δ , s)) (at? (Δ , s)))
 
     tc? :

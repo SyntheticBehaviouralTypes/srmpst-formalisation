@@ -29,7 +29,7 @@ open import Data.Product using (_×_; _,_; proj₁; proj₂; ∃-syntax; Σ-synt
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; sym; trans; cong; subst)
 
-open import Definitions.Behav using (BTheory; WellBehaved)
+open import Definitions.Behav using (BTheory; WellBehaved; Synchronous)
 
 module Definitions.Graph.NetworkPresent (N : ℕ) where
 
@@ -130,61 +130,55 @@ module Definitions.Graph.NetworkPresent (N : ℕ) where
       WellBehaved (graphTheory PG)
       → WellBehaved (netTheory n)
     pres→net W = record
-      { recv-overlap⇒same-comm =
-          λ {G} {α} {α′} {G′} {G″} st₁ st₂ r∈ →
-            WG.recv-overlap⇒same-comm
+      { recv-overlap =
+          λ {G} {α} {α′} {G′} {G″} {Q} st₁ st₂ rQ Q∈ →
+            WG.recv-overlap
               {G = nix n G} {α = α} {α′ = α′}
-              {G′ = nix n G′} {G″ = nix n G″}
+              {G′ = nix n G′} {G″ = nix n G″} {Q = Q}
               (step⇒pres n {s = G} {α = α} {t = G′} st₁)
               (step⇒pres n {s = G} {α = α′} {t = G″} st₂)
-              r∈
-      ; sender≢receiver = λ {G} {G′} {α} st →
-          WG.sender≢receiver
-            {G = nix n G} {G′ = nix n G′} {α = α}
-            (step⇒pres n {s = G} {α = α} {t = G′} st)
+              rQ Q∈
       ; step-deterministic = λ {G} {α} {G′} {G″} st₁ st₂ →
           nix-inj
             (WG.step-deterministic
               {G = nix n G} {α = α} {G′ = nix n G′} {G″ = nix n G″}
               (step⇒pres n {s = G} {α = α} {t = G′} st₁)
               (step⇒pres n {s = G} {α = α} {t = G″} st₂))
-      ; step-sort-deterministic =
-          λ {G} {G′} {G″} {α} {I} {S} {T = T₀} {i} st₁ st₂ →
-            WG.step-sort-deterministic
+      ; step-sort-det =
+          λ {G} {G′} {G″} {α} {α′} {P} {Q} {I} {S} {T = T₀} {i}
+            st₁ st₂ eq eq′ →
+            WG.step-sort-det
               {G = nix n G} {G′ = nix n G′} {G″ = nix n G″}
-              {α = α} {S = S} {T = T₀} {i = i}
-              (step⇒pres n {s = G} {t = G′} st₁)
-              (step⇒pres n {s = G} {t = G″} st₂)
-      ; step-arity-deterministic =
-          λ {G} {G′} {G″} {α} {I} {J} {S} {T = T₀} {i} {j} st₁ st₂ →
-            WG.step-arity-deterministic
+              {α = α} {α′ = α′} {P = P} {Q = Q}
+              {S = S} {T = T₀} {i = i}
+              (step⇒pres n {s = G} {α = α} {t = G′} st₁)
+              (step⇒pres n {s = G} {α = α′} {t = G″} st₂)
+              eq eq′
+      ; step-arity-det =
+          λ {G} {G′} {G″} {α} {α′} {P} {Q} {I} {J} {S} {T = T₀} {i} {j}
+            st₁ st₂ eq eq′ →
+            WG.step-arity-det
               {G = nix n G} {G′ = nix n G′} {G″ = nix n G″}
-              {α = α} {S = S} {T = T₀} {i = i} {j = j}
-              (step⇒pres n {s = G} {t = G′} st₁)
-              (step⇒pres n {s = G} {t = G″} st₂)
+              {α = α} {α′ = α′} {P = P} {Q = Q}
+              {S = S} {T = T₀} {i = i} {j = j}
+              (step⇒pres n {s = G} {α = α} {t = G′} st₁)
+              (step⇒pres n {s = G} {α = α′} {t = G″} st₂)
+              eq eq′
       ; step-is-prop = λ st₁ st₂ →
           cong nstep (T-irrelevant (un st₁) (un st₂))
       ; no-new-branch/step =
-          λ {G} {G′} {Gᵢ} {Gⱼ′} {β} {γ} {cᵢ} {cⱼ} st r∉ stᵢ stⱼ′ →
+          λ {G} {G′} {Gᵢ} {Gⱼ′} {β} {γ} {γ′} st idle stᵢ stⱼ′ ceq →
             let Gⱼ , grⱼ =
                   WG.no-new-branch/step
                     {G = nix n G} {G′ = nix n G′}
                     {Gᵢ = nix n Gᵢ} {Gⱼ′ = nix n Gⱼ′}
-                    {β = β} {γ = γ} {cᵢ = cᵢ} {cⱼ = cⱼ}
+                    {β = β} {γ = γ} {γ′ = γ′}
                     (step⇒pres n {s = G} {α = β} {t = G′} st)
-                    r∉
-                    (step⇒pres n {s = G} {t = Gᵢ} stᵢ)
-                    (step⇒pres n {s = G′} {t = Gⱼ′} stⱼ′)
-            in nst n Gⱼ , stepGN' {s = G} {j = Gⱼ} grⱼ
-      ; no-new-comm/step = λ {G} {G′} {Gγ} {β} {γ} st s∉ r∉ stγ →
-          let Gγ′ , grγ =
-                WG.no-new-comm/step
-                  {G = nix n G} {G′ = nix n G′} {Gγ = nix n Gγ}
-                  {β = β} {γ = γ}
-                  (step⇒pres n {s = G} {α = β} {t = G′} st)
-                  s∉ r∉
-                  (step⇒pres n {s = G′} {α = γ} {t = Gγ} stγ)
-          in nst n Gγ′ , stepGN' {s = G} {α = γ} {j = Gγ′} grγ
+                    idle
+                    (step⇒pres n {s = G} {α = γ} {t = Gᵢ} stᵢ)
+                    (step⇒pres n {s = G′} {α = γ′} {t = Gⱼ′} stⱼ′)
+                    ceq
+            in nst n Gⱼ , stepGN' {s = G} {α = γ′} {j = Gⱼ} grⱼ
       ; stepback/~ = λ {α} {G₀} {G₁} {G₁′} rel st →
           let i₀′ , relG , gr′ =
                 WG.stepback/~
@@ -236,47 +230,43 @@ module Definitions.Graph.NetworkPresent (N : ℕ) where
       WellBehaved (netTheory n)
       → WellBehaved (graphTheory PG)
     net→pres W = record
-      { recv-overlap⇒same-comm =
-          λ {i} {α} {α′} {i′} {i″} st₁ st₂ r∈ →
-            WN.recv-overlap⇒same-comm
+      { recv-overlap =
+          λ {i} {α} {α′} {i′} {i″} {Q} st₁ st₂ rQ Q∈ →
+            WN.recv-overlap {Q = Q}
               (pres⇒step n {i = i} {α = α} {j = i′} st₁)
               (pres⇒step n {i = i} {α = α′} {j = i″} st₂)
-              r∈
-      ; sender≢receiver = λ {i} {i′} {α} st →
-          WN.sender≢receiver (pres⇒step n {i = i} {α = α} {j = i′} st)
+              rQ Q∈
       ; step-deterministic = λ {i} {α} {i′} {i″} st₁ st₂ →
           nst-inj
             (WN.step-deterministic
               (pres⇒step n {i = i} {α = α} {j = i′} st₁)
               (pres⇒step n {i = i} {α = α} {j = i″} st₂))
-      ; step-sort-deterministic =
-          λ {i} {i′} {i″} {α} {I} {S} {T = T₀} {i = c} st₁ st₂ →
-            WN.step-sort-deterministic
-              (pres⇒step n {i = i} {j = i′} st₁)
-              (pres⇒step n {i = i} {j = i″} st₂)
-      ; step-arity-deterministic =
-          λ {i} {i′} {i″} {α} {I} {J} {S} {T = T₀} {i = c} {j = c′} st₁ st₂ →
-            WN.step-arity-deterministic
-              (pres⇒step n {i = i} {j = i′} st₁)
-              (pres⇒step n {i = i} {j = i″} st₂)
+      ; step-sort-det =
+          λ {i} {i′} {i″} {α} {α′} {P} {Q} {I} {S} {T = T₀} {i = c}
+            st₁ st₂ eq eq′ →
+            WN.step-sort-det
+              (pres⇒step n {i = i} {α = α} {j = i′} st₁)
+              (pres⇒step n {i = i} {α = α′} {j = i″} st₂)
+              eq eq′
+      ; step-arity-det =
+          λ {i} {i′} {i″} {α} {α′} {P} {Q} {I} {J} {S} {T = T₀}
+            {i = c} {j = c′} st₁ st₂ eq eq′ →
+            WN.step-arity-det
+              (pres⇒step n {i = i} {α = α} {j = i′} st₁)
+              (pres⇒step n {i = i} {α = α′} {j = i″} st₂)
+              eq eq′
       ; step-is-prop = λ {i} {β} {i′} st₁ st₂ →
           step-is-prop {G = PG} {s = i} {α = β} {t = i′} st₁ st₂
       ; no-new-branch/step =
-          λ {i} {i′} {iᵢ} {iⱼ′} {β} {γ} {cᵢ} {cⱼ} st r∉ stᵢ stⱼ′ →
+          λ {i} {i′} {iᵢ} {iⱼ′} {β} {γ} {γ′} st idle stᵢ stⱼ′ ceq →
             let tⱼ , stⱼ =
                   WN.no-new-branch/step
                     (pres⇒step n {i = i} {α = β} {j = i′} st)
-                    r∉
-                    (pres⇒step n {i = i} {j = iᵢ} stᵢ)
-                    (pres⇒step n {i = i′} {j = iⱼ′} stⱼ′)
-            in nix n tⱼ , stepNG' {i = i} {t = tⱼ} stⱼ
-      ; no-new-comm/step = λ {i} {i′} {iγ} {β} {γ} st s∉ r∉ stγ →
-          let tγ , stγ′ =
-                WN.no-new-comm/step
-                  (pres⇒step n {i = i} {α = β} {j = i′} st)
-                  s∉ r∉
-                  (pres⇒step n {i = i′} {α = γ} {j = iγ} stγ)
-          in nix n tγ , stepNG' {i = i} {α = γ} {t = tγ} stγ′
+                    idle
+                    (pres⇒step n {i = i} {α = γ} {j = iᵢ} stᵢ)
+                    (pres⇒step n {i = i′} {α = γ′} {j = iⱼ′} stⱼ′)
+                    ceq
+            in nix n tⱼ , stepNG' {i = i} {α = γ′} {t = tⱼ} stⱼ
       ; stepback/~ = λ {α} {i₀} {i₁} {i₁′} rel st →
           let s₀′ , relN , stN′ =
                 WN.stepback/~
@@ -297,3 +287,40 @@ module Definitions.Graph.NetworkPresent (N : ℕ) where
            , stepNG' {i = i₂} {α = α} {t = v} stB
       }
       where module WN = WellBehaved W
+
+    -- `Synchronous`, both ways.  `balanced` returns the action unchanged,
+    -- so only the step is transported.
+    pres→netSync :
+      Synchronous (graphTheory PG)
+      → Synchronous (netTheory n)
+    pres→netSync S = record
+      { balanced = λ {G} {G′} {α} st →
+          SG.balanced {G = nix n G} {G′ = nix n G′} {α = α}
+            (step⇒pres n {s = G} {α = α} {t = G′} st)
+      ; no-new-comm/step = λ {G} {G′} {Gγ} {β} {γ} st idle stγ →
+          let Gγ′ , grγ =
+                SG.no-new-comm/step
+                  {G = nix n G} {G′ = nix n G′} {Gγ = nix n Gγ}
+                  {β = β} {γ = γ}
+                  (step⇒pres n {s = G} {α = β} {t = G′} st)
+                  idle
+                  (step⇒pres n {s = G′} {α = γ} {t = Gγ} stγ)
+          in nst n Gγ′ , stepGN' {s = G} {α = γ} {j = Gγ′} grγ
+      }
+      where module SG = Synchronous S
+
+    net→presSync :
+      Synchronous (netTheory n)
+      → Synchronous (graphTheory PG)
+    net→presSync S = record
+      { balanced = λ {i} {i′} {α} st →
+          SN.balanced (pres⇒step n {i = i} {α = α} {j = i′} st)
+      ; no-new-comm/step = λ {i} {i′} {iγ} {β} {γ} st idle stγ →
+          let tγ , stγ′ =
+                SN.no-new-comm/step
+                  (pres⇒step n {i = i} {α = β} {j = i′} st)
+                  idle
+                  (pres⇒step n {i = i′} {α = γ} {j = iγ} stγ)
+          in nix n tγ , stepNG' {i = i} {α = γ} {t = tγ} stγ′
+      }
+      where module SN = Synchronous S

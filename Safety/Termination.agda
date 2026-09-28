@@ -43,15 +43,16 @@ open import Relation.Binary.PropositionalEquality
 open import Utils.Vec using (sum/map-update<)
 open import Definitions.Typing
 
-module Safety.Termination {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
+module Safety.Termination
+  {N : ℕ}{B : BTheory N}(wb : WellBehaved B)(sync : Synchronous B) where
   private
     module M = MPST wb
   open M
   open import Definitions.Typing.Alg wb
     using (_⊢at_∶_; at/if-inv; at/rec-guarded)
   open M.Subst
-  open import Safety.Preservation wb
-  open import Safety.Progress wb
+  open import Safety.Preservation wb sync
+  open import Safety.Progress wb sync
   open import Definitions.Typing.Properties wb
 
   τ-depth/proc :

@@ -34,7 +34,8 @@ open import Definitions.Graph.Decision 3 using (wellBehaved?)
 open import Definitions.Graph.Bisimulation 3
   using (Bisimilar; bisimulationCorrect; complete)
 open import Definitions.Actions 3
-  using (Action; _⟶_; _#_) renaming (_<_> to mkChoice)
+  using (Action; _⟶_#_) renaming (_<_> to mkChoice)
+open import Data.Fin.Subset using (⁅_⁆)
 
 A B C : Fin 3
 A = zero
@@ -45,7 +46,7 @@ C = suc (suc zero)
 -- an unsolved metavariable inside the action blocks every decision that
 -- has to compare it (`_≟Action_`, hence `bisim?`, hence `wellBehaved?`).
 β : Action
-β = B ⟶ C # mkChoice {nchoices = 0} zero s/unit
+β = B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 0} zero s/unit
 
 g : OpenGraph 0
 g = openGraph 2 (node zero)
@@ -70,7 +71,7 @@ opaque
   wb : Typing.WellBehaved (graphTheory G)
   wb = toWitness {a? = wellBehaved? G} tt
 
-open Typing.MPST wb hiding (_<_>; _#_; _⟶_)
+open Typing.MPST wb hiding (_<_>; _⟶_#_)
 
 s K E : State G
 s = zero
@@ -78,7 +79,7 @@ K = suc zero
 E = suc (suc zero)
 
 A∉β : A ∉α β
-A∉β = ¬∈c→∉c (λ { (∈S ()) ; (∈R ()) })
+A∉β = refl
 
 na : A not-active-in s
 na {α} {G′} gr with step⇒listed {G = G} {s = s} {α = α} {t = G′} gr

@@ -5,11 +5,16 @@ open import Data.Nat using (ℕ; suc)
 open import Data.Fin
   using (Fin; zero; suc; punchIn; punchOut)
   renaming (_≟_ to _≟f_)
+open import Data.Fin.Subset using (Subset; _∈_; _∉_)
+open import Data.Fin.Subset.Properties using (_∈?_)
+open import Data.Empty using (⊥-elim)
 open import Data.Vec
-  using (Vec; []; _∷_; _[_]=_; _[_]≔_)
+  using (Vec; []; _∷_; _[_]=_; _[_]≔_; tabulate; here; there)
   renaming (lookup to lu)
+open import Data.Vec.Properties using (lookup∘tabulate)
 open import Relation.Nullary using (yes; no; ¬_)
-open import Relation.Binary.PropositionalEquality using (_≡_; refl)
+open import Relation.Binary.PropositionalEquality
+  using (_≡_; _≢_; refl; trans; cong)
 
 open import Definitions.Expr
 
@@ -17,14 +22,13 @@ module Definitions.Proc (N : ℕ) where
 
   open import Definitions.Actions(N)
   open import Definitions.Common(N)
-  open Comm
   open Choice
-  open Action
 
   -- γ and δ count expression and recursion binders, respectively.
   data Proc (γ δ : ℕ) : Set where
+    -- Multicast: send to every participant in the set.
     _!_<_>∙_ :
-      Part → {I : ℕ} → Fin (suc I) → Exp γ → Proc γ δ → Proc γ δ
+      PartSet → {I : ℕ} → Fin (suc I) → Exp γ → Proc γ δ → Proc γ δ
     -- The branch sorts are NOT recorded here: the receive rules read each
     -- branch's sort off the step it matches (`a/recv`'s `(U ∷ Γ) ⊢a …`,
     -- `Typing/Alg.agda`), so a declared vector would never be consulted.  See
@@ -60,7 +64,7 @@ module Definitions.Proc (N : ℕ) where
     mutual
       weaken/proc :
         ∀ {γ δ} → Proc γ δ → Fin (suc δ) → Proc γ (suc δ)
-      weaken/proc (P ! L < E >∙ Pr) X = P ! L < E >∙ (weaken/proc Pr X)
+      weaken/proc (Qs ! L < E >∙ Pr) X = Qs ! L < E >∙ (weaken/proc Pr X)
       weaken/proc (Σ P ？· Br) X = Σ P ？· (weaken/proc/branch Br X)
       weaken/proc (ifp E then Pr else Pr′) X =
         ifp E then weaken/proc Pr X else weaken/proc Pr′ X
@@ -80,8 +84,8 @@ module Definitions.Proc (N : ℕ) where
     mutual
       weaken/proc/exp :
         ∀ {γ δ} → Proc γ δ → Fin (suc γ) → Proc (suc γ) δ
-      weaken/proc/exp (P ! L < E >∙ Pr) x =
-        P ! L < weaken/exp E x >∙ (weaken/proc/exp Pr x)
+      weaken/proc/exp (Qs ! L < E >∙ Pr) x =
+        Qs ! L < weaken/exp E x >∙ (weaken/proc/exp Pr x)
       weaken/proc/exp (Σ P ？· Br) x =
         Σ P ？· weaken/exp/branch Br (suc x)
       weaken/proc/exp (ifp E then Pr else Pr′) x =
@@ -104,7 +108,7 @@ module Definitions.Proc (N : ℕ) where
     mutual
       [_/_]pr_ :
         ∀ {γ δ} → Proc γ δ → Fin (suc δ) → Proc γ (suc δ) → Proc γ δ
-      [ Pr / y ]pr (P ! L < E >∙ Pr') = P ! L < E >∙ ([ Pr / y ]pr Pr')
+      [ Pr / y ]pr (Qs ! L < E >∙ Pr') = Qs ! L < E >∙ ([ Pr / y ]pr Pr')
       [ Pr / y ]pr (Σ P ？· Br) = Σ P ？· ([ Pr / y ]prch Br)
       [ Pr / y ]pr (ifp E then Prₜ else Prₑ) =
         ifp E then [ Pr / y ]pr Prₜ else [ Pr / y ]pr Prₑ
@@ -126,8 +130,8 @@ module Definitions.Proc (N : ℕ) where
 
     mutual
       [_/_]e_ : ∀{γ δ} -> Exp γ -> Fin (suc γ) -> Proc (suc γ) δ -> Proc γ δ
-      [ E / y ]e (P ! L < E′ >∙ Pr′) =
-        P ! L < [ E / y ]exp E′ >∙ [ E / y ]e Pr′
+      [ E / y ]e (Qs ! L < E′ >∙ Pr′) =
+        Qs ! L < [ E / y ]exp E′ >∙ [ E / y ]e Pr′
       -- y will be weakned per branch
       [ E / y ]e (Σ P ？· Br) =
         Σ P ？· [ weaken/exp E zero / y ]ech Br
@@ -158,17 +162,68 @@ module Definitions.Proc (N : ℕ) where
   _[_]s : Session → Part → Proc 0 0
   M [ P ]s = lu M P
 
+  -- Proofs of R ∈ Qs are unique. Proved by hand: stdlib's
+  -- `[]=-irrelevant` lives in `Data.Vec.Properties.WithK` (uses K).
+  ∈-irrelevant : ∀ {n} {R : Fin n} {Qs : Subset n} (m m′ : R ∈ Qs) → m ≡ m′
+  ∈-irrelevant here      here       = refl
+  ∈-irrelevant (there m) (there m′) = cong there (∈-irrelevant m m′)
+
+  -- Multicast update: P becomes Pr, each receiver R ∈ Qs becomes F R m,
+  -- everyone else is unchanged.
+  upd-at : Session → (P : Part) → Proc 0 0 → (Qs : PartSet)
+         → (∀ R → R ∈ Qs → Proc 0 0) → Part → Proc 0 0
+  upd-at M P Pr Qs F R with R ≟f P
+  ... | yes _ = Pr
+  ... | no _ with R ∈? Qs
+  ...   | yes m = F R m
+  ...   | no _  = lu M R
+
+  _[_↦_∣_↦_] : Session → (P : Part) → Proc 0 0 → (Qs : PartSet)
+             → (∀ R → R ∈ Qs → Proc 0 0) → Session
+  M [ P ↦ Pr ∣ Qs ↦ F ] = tabulate (upd-at M P Pr Qs F)
+
+  upd-sender : ∀ {M P Pr Qs F} → lu (M [ P ↦ Pr ∣ Qs ↦ F ]) P ≡ Pr
+  upd-sender {M} {P} {Pr} {Qs} {F} =
+    trans (lookup∘tabulate (upd-at M P Pr Qs F) P) at
+    where at : upd-at M P Pr Qs F P ≡ Pr
+          at with P ≟f P
+          ... | yes _  = refl
+          ... | no P≢P = ⊥-elim (P≢P refl)
+
+  upd-recv : ∀ {M P Pr Qs F R} → R ≢ P → (m : R ∈ Qs)
+           → lu (M [ P ↦ Pr ∣ Qs ↦ F ]) R ≡ F R m
+  upd-recv {M} {P} {Pr} {Qs} {F} {R} R≢P m =
+    trans (lookup∘tabulate (upd-at M P Pr Qs F) R) at
+    where at : upd-at M P Pr Qs F R ≡ F R m
+          at with R ≟f P
+          ... | yes R≡P = ⊥-elim (R≢P R≡P)
+          ... | no _ with R ∈? Qs
+          ...   | yes m′ = cong (F R) (∈-irrelevant m′ m)
+          ...   | no R∉  = ⊥-elim (R∉ m)
+
+  upd-other : ∀ {M P Pr Qs F R} → R ≢ P → R ∉ Qs
+            → lu (M [ P ↦ Pr ∣ Qs ↦ F ]) R ≡ lu M R
+  upd-other {M} {P} {Pr} {Qs} {F} {R} R≢P R∉ =
+    trans (lookup∘tabulate (upd-at M P Pr Qs F) R) at
+    where at : upd-at M P Pr Qs F R ≡ lu M R
+          at with R ≟f P
+          ... | yes R≡P = ⊥-elim (R≢P R≡P)
+          ... | no _ with R ∈? Qs
+          ...   | yes m = ⊥-elim (R∉ m)
+          ...   | no _  = refl
+
   -- Operational semantics of sessions
 
   data _[_]⇒_ (M : Session) : Maybe Action → Session → Set where
     s/comm :
-      ∀ {I} {i : Fin (suc I)} {E V Pr Br}
-      → (P Q : Part)
-      → M [ P ]= Q ! i < E >∙ Pr
+      ∀ {Qs I} {i : Fin (suc I)} {E V Pr}
+        {Br : ∀ R → R ∈ Qs → Vec (Proc 1 0) (suc I)}
+      → (P : Part)
+      → M [ P ]= Qs ! i < E >∙ Pr
       → E ⇓ V
-      → M [ Q ]= Σ P ？· Br
-      → M [ just (P ⟶ Q # i < sort/value V >) ]⇒
-          (M [ P ]≔ Pr [ Q ]≔ Subst.[ val V / zero ]e (lu Br i))
+      → (recvs : ∀ R (m : R ∈ Qs) → M [ R ]= Σ P ？· Br R m)
+      → M [ just (P ⟶ Qs # i < sort/value V >) ]⇒
+          (M [ P ↦ Pr ∣ Qs ↦ (λ R m → Subst.[ val V / zero ]e lu (Br R m) i) ])
 
     s/if/true :
       ∀ {E Pr Pr'}

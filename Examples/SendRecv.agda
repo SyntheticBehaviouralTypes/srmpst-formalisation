@@ -9,6 +9,7 @@
 module Examples.SendRecv where
 
 open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin.Subset using (⁅_⁆)
 open import Data.Vec using ([]; _∷_)
 open import Data.Bool using (true)
 open import Data.Product using (proj₁)
@@ -35,7 +36,7 @@ here = zero
 module NonRecursive where
   -- A --bool--> B, end
   sendrecv : OpenGraph 0
-  sendrecv = (A ⟶ B # mkChoice here s/bool) ∙ end
+  sendrecv = (A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ end
 
   wbg : WBGraph {N = 2}
   wbg = buildG sendrecv
@@ -43,7 +44,7 @@ module NonRecursive where
   open Typing.MPST (wb-of wbg) using (⊢s_∶_)
 
   p/A : Proc 0 0
-  p/A = B ! here < val (v/bool true) >∙ ∅
+  p/A = ⁅ B ⁆ ! here < val (v/bool true) >∙ ∅
 
   p/B : Proc 0 0
   p/B = Σ A ？· (∅ ∷ [])
@@ -61,7 +62,7 @@ module NonRecursive where
 module Recursive where
   -- μ (A --bool--> loop)
   sendrecv : OpenGraph 0
-  sendrecv = μ ((A ⟶ B # mkChoice here s/bool) ∙ var zero)
+  sendrecv = μ ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ var zero)
 
   wbg : WBGraph {N = 2}
   wbg = buildG sendrecv
@@ -69,7 +70,7 @@ module Recursive where
   open Typing.MPST (wb-of wbg) using (⊢s_∶_)
 
   p/A : Proc 0 0
-  p/A = rec (B ! here < val (v/bool true) >∙ v zero)
+  p/A = rec (⁅ B ⁆ ! here < val (v/bool true) >∙ v zero)
 
   p/B : Proc 0 0
   p/B = rec (Σ A ？· (v zero ∷ []))
@@ -92,7 +93,7 @@ module RecursiveUnfoldOnce where
   open Typing.MPST (wb-of wbg) using (⊢s_∶_)
 
   p/A : Proc 0 0
-  p/A = B ! here < val (v/bool true) >∙ (rec (B ! here < val (v/bool true) >∙ v zero))
+  p/A = ⁅ B ⁆ ! here < val (v/bool true) >∙ (rec (⁅ B ⁆ ! here < val (v/bool true) >∙ v zero))
 
   p/B : Proc 0 0
   p/B = rec (Σ A ？· (v zero ∷ []))

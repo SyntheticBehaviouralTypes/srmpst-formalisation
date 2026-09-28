@@ -466,18 +466,21 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
   -- round trip is `at⇒typing` out and `td⇒at` back — the DECLARATIVE system
   -- in the middle, where `typing/subst-proc` and `t/rec/unfold` already
   -- live.
-  at/rec/unfold :
-    ∀ {G P Pr}
-    → [] ⊢at P ◂ rec Pr ∶ ([] , G)
-    → [] ⊢at P ◂ unfold/proc Pr ∶ ([] , G)
-  at/rec/unfold td = td⇒at (t/rec/unfold (at⇒typing td))
+  -- `td⇒at` needs the synchronous instance (`AlgNorm.sendAt`).
+  module _ (sync : Synchronous B) where
 
-  at/subst-expr :
-    ∀ {γ δ G P E Pr}
-      {Γ : Vec Sort (suc γ)}
-      {ws : Vec Behav δ}
-      {X : Fin (suc γ)}
-    → (Γ - X) ⊢e E ∶ lu Γ X
-    → Γ ⊢at P ◂ Pr ∶ (ws , G)
-    → (Γ - X) ⊢at P ◂ [ E / X ]e Pr ∶ (ws , G)
-  at/subst-expr etd td = td⇒at (typing/subst-expr etd (at⇒typing td))
+    at/rec/unfold :
+      ∀ {G P Pr}
+      → [] ⊢at P ◂ rec Pr ∶ ([] , G)
+      → [] ⊢at P ◂ unfold/proc Pr ∶ ([] , G)
+    at/rec/unfold td = td⇒at sync (t/rec/unfold (at⇒typing td))
+
+    at/subst-expr :
+      ∀ {γ δ G P E Pr}
+        {Γ : Vec Sort (suc γ)}
+        {ws : Vec Behav δ}
+        {X : Fin (suc γ)}
+      → (Γ - X) ⊢e E ∶ lu Γ X
+      → Γ ⊢at P ◂ Pr ∶ (ws , G)
+      → (Γ - X) ⊢at P ◂ [ E / X ]e Pr ∶ (ws , G)
+    at/subst-expr etd td = td⇒at sync (typing/subst-expr etd (at⇒typing td))

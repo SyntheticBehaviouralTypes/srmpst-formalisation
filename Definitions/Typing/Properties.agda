@@ -135,20 +135,20 @@ module Definitions.Typing.Properties {N : ℕ}{B : BTheory N}(wb : WellBehaved B
       → Γ & Δ  ⊢p P ◂ Pr ∶ G
       → Γ & Δ′ ⊢p P ◂ Pr ∶ G′
 
-    td/bisim Δ~Δ′ G~G′ (t/send gr etd ptd) =
+    td/bisim Δ~Δ′ G~G′ (t/send (α , eq , gr) etd ptd) =
       t/send
-        (~L→ G~G′ gr)
+        (α , eq , ~L→ G~G′ gr)
         etd
         (td/bisim Δ~Δ′ (~L→~ G~G′ gr) ptd)
 
-    td/bisim Δ~Δ′ G~G′ (t/recv gr conts) =
+    td/bisim Δ~Δ′ G~G′ (t/recv (α , eq , gr) conts) =
       t/recv
-        (~L→ G~G′ gr)
-        (λ gr′ →
+        (α , eq , ~L→ G~G′ gr)
+        (λ { (α′ , eq′ , gr′) →
           td/bisim
             Δ~Δ′
             (~R→~ G~G′ gr′)
-            (conts (~R→ G~G′ gr′)))
+            (conts (α′ , eq′ , ~R→ G~G′ gr′)) })
 
     td/bisim Δ~Δ′ G~G′ (t/skip std) =
       t/skip (skip-td/bisim Δ~Δ′ ~ᵛ/[] G~G′ std)

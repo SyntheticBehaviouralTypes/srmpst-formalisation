@@ -3,8 +3,8 @@
 -- TODO.md §7 step 4/4b.  This file was the COUNTEREXAMPLE that killed the
 -- ν-based `Wait`; it is now the REGRESSION TEST that the μ-based one is right.
 --
--- A concrete `BTheory` with all ten `WellBehaved` axioms discharged, in which
--- no `⊢skip` derivation exists at `g 0`.  The old `Wait` (a ν over
+-- A concrete `BTheory` with all eight `WellBehaved` axioms discharged, in
+-- which no `⊢skip` derivation exists at `g 0`.  The old `Wait` (a ν over
 -- `Pred Behav`) held at `g 0` anyway, which made `Wait ⟹ ⊢skip`, hence
 -- `⊢a ⟹ ⊢p`, false.  `WaitV`'s visited set fixes that, and `ce/no-wait`
 -- below is the check: `Wait` now fails at `g 0` too.
@@ -33,8 +33,8 @@
 --
 -- What makes them non-bisimilar is the ARITY: at `g i` the branching is over
 -- `Fin (suc (suc i))`, so `a i` and `a j` are different actions for `i ≢ j`.
--- Both steps out of `g i` share that arity, which is what `step-arity-deterministic`
--- demands, and both share the comm `Q⟶R`, which is what `recv-overlap⇒same-comm`
+-- Both steps out of `g i` share that arity, which is what `step-arity-det`
+-- demands, and both share the comm `Q⟶R`, which is what `recv-overlap`
 -- demands and what makes `step-diamond` vacuous.
 
 open import Data.Nat using (ℕ; zero; suc; _<_)
@@ -57,7 +57,7 @@ open import Data.List.Relation.Unary.Any using (Any; here; there)
 open import Relation.Nullary using (¬_)
 
 open import Relation.Binary.PropositionalEquality
-  using (_≡_; refl; sym; cong; subst)
+  using (_≡_; _≢_; refl; sym; trans; cong; subst)
 
 open import Definitions.Typing
 
@@ -70,17 +70,13 @@ module Tests.WaitNotSkip where
   open import Definitions.Actions N
   open import Definitions.Proc N using (Proc; ∅; NProc; _◂_)
   open import Definitions.Expr using (Sort; s/unit)
+  open import Data.Fin.Subset using (⁅_⁆)
+  open import Data.Maybe using (maybe; just)
 
   P Q R : Part
   P = zero
   Q = suc zero
   R = suc (suc zero)
-
-  qr : Comm
-  qr = Q ⟶ R
-
-  pq : Comm
-  pq = P ⟶ Q
 
   ---------------------------------------------------------------------------
   -- States and actions
@@ -92,14 +88,15 @@ module Tests.WaitNotSkip where
     z : St
 
   -- Arity `suc i` at `g i`; label 0 continues the chain, label 1 exits to `e`.
+  -- `N` is concrete, so `ev` of these actions computes.
   aA : ℕ → Action
-  aA i = qr # (zero {suc i} < s/unit >)
+  aA i = Q ⟶ ⁅ R ⁆ # (zero {suc i} < s/unit >)
 
   bA : ℕ → Action
-  bA i = qr # (suc (zero {i}) < s/unit >)
+  bA i = Q ⟶ ⁅ R ⁆ # (suc (zero {i}) < s/unit >)
 
   pA : Action
-  pA = pq # (zero {0} < s/unit >)
+  pA = P ⟶ ⁅ Q ⁆ # (zero {0} < s/unit >)
 
   data _⇒_⇒_ : St → Action → St → Set where
     sA : ∀ i → g i ⇒ aA i ⇒ g (suc i)
@@ -119,21 +116,21 @@ module Tests.WaitNotSkip where
   stepInv sP     = inj₂ (inj₂ (refl , refl , refl))
 
   -- Action separation, via first-order projections only (no heterogeneous
-  -- equality): the arity, the label-as-ℕ, and the sender.
+  -- equality): `Q`'s arity, `Q`'s label-as-ℕ, and whether `P` acts.
 
   aA-inj : ∀ {i j} → aA i ≡ aA j → i ≡ j
-  aA-inj eq = suc-injective (cong nchoices eq)
+  aA-inj eq = suc-injective (cong (λ α → maybe nchoices 0 (ev α Q)) eq)
 
   aA≢bA : ∀ {i j} → aA i ≡ bA j → ⊥
-  aA≢bA eq with cong (λ α → toℕ (label α)) eq
+  aA≢bA eq with cong (λ α → maybe (λ e → toℕ (label e)) 0 (ev α Q)) eq
   ... | ()
 
   aA≢pA : ∀ {i} → aA i ≡ pA → ⊥
-  aA≢pA eq with cong sender eq
+  aA≢pA eq with cong (λ α → ev α P) eq
   ... | ()
 
   bA≢pA : ∀ {i} → bA i ≡ pA → ⊥
-  bA≢pA eq with cong sender eq
+  bA≢pA eq with cong (λ α → ev α P) eq
   ... | ()
 
   ---------------------------------------------------------------------------
@@ -176,96 +173,112 @@ module Tests.WaitNotSkip where
   ~⇒≡ {z} {z} _ = refl
 
   ---------------------------------------------------------------------------
-  -- Well-behavedness: all ten axioms
+  -- Well-behavedness: all eight axioms
   ---------------------------------------------------------------------------
 
   wb : WellBehaved theory
   wb = record
-    { recv-overlap⇒same-comm = rovl
-    ; sender≢receiver        = s≢r
+    { recv-overlap           = rovl
     ; step-deterministic     = det
-    ; step-sort-deterministic = sortDet
-    ; step-arity-deterministic = arityDet
+    ; step-sort-det          = sortDet
+    ; step-arity-det         = arityDet
     ; step-is-prop           = isProp
     ; no-new-branch/step     = nnb
-    ; no-new-comm/step       = nnc
     ; stepback/~             = sback
     ; step-diamond           = diam
     }
     where
       -- Every pair of steps out of a state shares the comm `Q⟶R` (at `g i`) or
-      -- is a single step (at `e`), so this is `refl` throughout.
+      -- is a single step (at `e`), so this is `refl` throughout: `comm`
+      -- computes, and forgets the label.
       rovl :
-        ∀ {G α α′ G′ G″}
+        ∀ {G α α′ G′ G″ X}
         → G ⇒ α  ⇒ G′
         → G ⇒ α′ ⇒ G″
-        → receiver α ∈α α′
-        → Action.comm α ≡ Action.comm α′
-      rovl (sA _) (sA _) _ = refl
-      rovl (sA _) (sB _) _ = refl
-      rovl (sB _) (sA _) _ = refl
-      rovl (sB _) (sB _) _ = refl
-      rovl sP     sP     _ = refl
-
-      s≢r : ∀ {G G′ α} → G ⇒ α ⇒ G′ → sender α ≡ receiver α → ⊥
-      s≢r (sA _) ()
-      s≢r (sB _) ()
-      s≢r sP     ()
+        → Recv α X
+        → X ∈α α′
+        → comm α ≡ comm α′
+      rovl (sA _) (sA _) _ _ = refl
+      rovl (sA _) (sB _) _ _ = refl
+      rovl (sB _) (sA _) _ _ = refl
+      rovl (sB _) (sB _) _ _ = refl
+      rovl sP     sP     _ _ = refl
 
       det : ∀ {G α G′ G″} → G ⇒ α ⇒ G′ → G ⇒ α ⇒ G″ → G′ ≡ G″
       det (sA _) (sA _) = refl
       det (sB _) (sB _) = refl
       det sP     sP     = refl
 
+      -- Two receive events of the SAME action are the same event.
+      same : ∀ {Y c c′} → just ((？ Y) # c) ≡ just ((？ Y) # c′) → c ≡ c′
+      same refl = refl
+
+      -- Across `aA`/`bA`, only `R` receives; there the labels differ (sort)
+      -- and the arities agree (arity).
       sortDet :
-        ∀ {G G′ G″ α I S T}{i : Fin (suc I)}
-        → G ⇒ α # i < S > ⇒ G′
-        → G ⇒ α # i < T > ⇒ G″
+        ∀ {G G′ G″ α α′ Y X I S T}{i : Fin (suc I)}
+        → G ⇒ α ⇒ G′
+        → G ⇒ α′ ⇒ G″
+        → ev α X ≡ just ((？ Y) # i < S >)
+        → ev α′ X ≡ just ((？ Y) # i < T >)
         → S ≡ T
-      sortDet (sA _) (sA _) = refl
-      sortDet (sB _) (sB _) = refl
-      sortDet sP     sP     = refl
+      sortDet (sA _) (sA _) eq eq′ =
+        cong Choice.sort (same (trans (sym eq) eq′))
+      sortDet (sB _) (sB _) eq eq′ =
+        cong Choice.sort (same (trans (sym eq) eq′))
+      sortDet sP     sP     eq eq′ =
+        cong Choice.sort (same (trans (sym eq) eq′))
+      sortDet {X = zero}              (sA _) (sB _) () _
+      sortDet {X = suc zero}          (sA _) (sB _) () _
+      sortDet {X = suc (suc zero)}    (sA _) (sB _) refl ()
+      sortDet {X = zero}              (sB _) (sA _) () _
+      sortDet {X = suc zero}          (sB _) (sA _) () _
+      sortDet {X = suc (suc zero)}    (sB _) (sA _) refl ()
 
       arityDet :
-        ∀ {G G′ G″ α I J S T}{i : Fin (suc I)}{j : Fin (suc J)}
-        → G ⇒ α # i < S > ⇒ G′
-        → G ⇒ α # j < T > ⇒ G″
+        ∀ {G G′ G″ α α′ Y X I J S T}{i : Fin (suc I)}{j : Fin (suc J)}
+        → G ⇒ α ⇒ G′
+        → G ⇒ α′ ⇒ G″
+        → ev α X ≡ just ((？ Y) # i < S >)
+        → ev α′ X ≡ just ((？ Y) # j < T >)
         → I ≡ J
-      arityDet (sA _) (sA _) = refl
-      arityDet (sA _) (sB _) = refl
-      arityDet (sB _) (sA _) = refl
-      arityDet (sB _) (sB _) = refl
-      arityDet sP     sP     = refl
+      arityDet (sA _) (sA _) eq eq′ =
+        cong Choice.nchoices (same (trans (sym eq) eq′))
+      arityDet (sB _) (sB _) eq eq′ =
+        cong Choice.nchoices (same (trans (sym eq) eq′))
+      arityDet sP     sP     eq eq′ =
+        cong Choice.nchoices (same (trans (sym eq) eq′))
+      arityDet {X = zero}             (sA _) (sB _) () _
+      arityDet {X = suc zero}         (sA _) (sB _) () _
+      arityDet {X = suc (suc zero)}   (sA _) (sB _) refl refl = refl
+      arityDet {X = zero}             (sB _) (sA _) () _
+      arityDet {X = suc zero}         (sB _) (sA _) () _
+      arityDet {X = suc (suc zero)}   (sB _) (sA _) refl refl = refl
 
       isProp : ∀ {G β G′} → (gr₁ gr₂ : G ⇒ β ⇒ G′) → gr₁ ≡ gr₂
       isProp (sA _) (sA _) = refl
       isProp (sB _) (sB _) = refl
       isProp sP     sP     = refl
 
-      -- Vacuous: whenever `G′` offers `γ`, the premise `… ∉α β` fails, because
-      -- every action in the theory involves `Q`.
+      -- Vacuous: `R` receives in every step out of `g i`, so the premise
+      -- "`γ`'s receivers are idle in `β`" fails; and `z` has no steps.
       nnb :
-        ∀ {G G′ Gᵢ Gⱼ′ β γ cᵢ cⱼ}
+        ∀ {G G′ Gᵢ Gⱼ′ β γ γ′}
         → G ⇒ β ⇒ G′
-        → Comm.receiver γ ∉α β
-        → G  ⇒ γ # cᵢ ⇒ Gᵢ
-        → G′ ⇒ γ # cⱼ ⇒ Gⱼ′
-        → ∃[ Gⱼ ] G ⇒ γ # cⱼ ⇒ Gⱼ
-      nnb (sA _) r∉ (sA _) (sA _) = ⊥-elim (_∉c_.∉R r∉ refl)
-      nnb (sA _) r∉ (sA _) (sB _) = ⊥-elim (_∉c_.∉R r∉ refl)
-      nnb (sA _) r∉ (sB _) (sA _) = ⊥-elim (_∉c_.∉R r∉ refl)
-      nnb (sA _) r∉ (sB _) (sB _) = ⊥-elim (_∉c_.∉R r∉ refl)
-
-      nnc :
-        ∀ {G G′ Gγ β γ}
-        → G ⇒ β ⇒ G′
-        → sender γ ∉α β
-        → receiver γ ∉α β
-        → G′ ⇒ γ ⇒ Gγ
-        → ∃[ Gγ′ ] G ⇒ γ ⇒ Gγ′
-      nnc (sA _) s∉ _  (sA _) = ⊥-elim (_∉c_.∉S s∉ refl)
-      nnc (sA _) s∉ _  (sB _) = ⊥-elim (_∉c_.∉S s∉ refl)
-      nnc (sB _) _  r∉ sP     = ⊥-elim (_∉c_.∉S r∉ refl)
+        → (∀ X → Recv γ X → X ∉α β)
+        → G  ⇒ γ  ⇒ Gᵢ
+        → G′ ⇒ γ′ ⇒ Gⱼ′
+        → comm γ′ ≡ comm γ
+        → ∃[ Gⱼ ] G ⇒ γ′ ⇒ Gⱼ
+      nnb (sA _) idle (sA _) _ _ with idle R (Q , _ , refl)
+      ... | ()
+      nnb (sA _) idle (sB _) _ _ with idle R (Q , _ , refl)
+      ... | ()
+      nnb (sB _) idle (sA _) _ _ with idle R (Q , _ , refl)
+      ... | ()
+      nnb (sB _) idle (sB _) _ _ with idle R (Q , _ , refl)
+      ... | ()
+      nnb sP     idle sP     () _
 
       sback :
         ∀ {α G₀ G₁ G₁′}
@@ -283,11 +296,15 @@ module Tests.WaitNotSkip where
         → G ⇒ α′ ⇒ G₂
         → α ⋄ α′
         → ∃[ G′ ] (G₁ ⇒ α′ ⇒ G′) × (G₂ ⇒ α ⇒ G′)
-      diam (sA _) (sA _) d = ⊥-elim (_∉c_.∉R (proj₁ d) refl)
-      diam (sA _) (sB _) d = ⊥-elim (_∉c_.∉R (proj₁ d) refl)
-      diam (sB _) (sA _) d = ⊥-elim (_∉c_.∉R (proj₁ d) refl)
-      diam (sB _) (sB _) d = ⊥-elim (_∉c_.∉R (proj₁ d) refl)
-      diam sP     sP     d = ⊥-elim (_∉c_.∉R (proj₁ d) refl)
+      diam (sA _) (sA _) (_ , d , _) with d R (Q , _ , refl)
+      ... | ()
+      diam (sA _) (sB _) (_ , d , _) with d R (Q , _ , refl)
+      ... | ()
+      diam (sB _) (sA _) (_ , d , _) with d R (Q , _ , refl)
+      ... | ()
+      diam (sB _) (sB _) (_ , d , _) with d R (Q , _ , refl)
+      ... | ()
+      diam sP     sP     (α≢α , _) = ⊥-elim (α≢α refl)
 
   open import Definitions.Typing.Alg wb
   open import Definitions.Typing.AlgEquiv wb using (wait⇒skip)
@@ -305,21 +322,20 @@ module Tests.WaitNotSkip where
     α , _ , ~L→ G~H gr , px
 
   e∈𝒮 : 𝒮 e
-  e∈𝒮 = pA , z , sP , ∈S refl
+  e∈𝒮 = pA , z , sP , (_ , refl)
 
   g∉𝒮 : ∀ {i} → ¬ 𝒮 (g i)
-  g∉𝒮 (_ , _ , sA _ , ∈S ())
-  g∉𝒮 (_ , _ , sA _ , ∈R ())
-  g∉𝒮 (_ , _ , sB _ , ∈S ())
-  g∉𝒮 (_ , _ , sB _ , ∈R ())
+  g∉𝒮 (_ , _ , sA _ , (_ , ()))
+  g∉𝒮 (_ , _ , sB _ , (_ , ()))
 
   P/na : ∀ {i} → P not-active-in (g i)
-  P/na (sA _) = (λ ()) , (λ ())
-  P/na (sB _) = (λ ()) , (λ ())
+  P/na (sA _) = refl
+  P/na (sB _) = refl
 
   P∈T/g : ∀ i → P ∈T (g i)
   P∈T/g i =
-    bA i ∷ pA ∷ [] , z , tr/step (sB i) (tr/step sP tr/refl) , there (here (∈S refl))
+    bA i ∷ pA ∷ [] , z , tr/step (sB i) (tr/step sP tr/refl)
+    , there (here (_ , refl))
 
   ---------------------------------------------------------------------------
   -- No `⊢skip` derivation at `g 0`

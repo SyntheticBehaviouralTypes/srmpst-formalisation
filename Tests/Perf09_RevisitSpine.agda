@@ -30,7 +30,8 @@ open import Check
 import Definitions.Typing as Typing
 
 open import Definitions.Graph.Algebra 3
-open import Definitions.Actions 3 renaming (_<_> to mkChoice) hiding (_,_)
+open import Data.Fin.Subset using (⁅_⁆)
+open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
 A B C : Fin 3
@@ -48,11 +49,11 @@ lbl1 = suc zero
 -- states: 0 = u, 1 = t, 2 = ℓ, plus the DSL's distinguished end
 g : OpenGraph 0
 g = openGraph 3 (node zero)
-  ( ( ((A ⟶ B # mkChoice lbl0 s/bool) , node (suc zero))
-    ∷ ((A ⟶ B # mkChoice lbl1 s/bool) , node (suc (suc zero)))
+  ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , node (suc zero))
+    ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , node (suc (suc zero)))
     ∷ [] )                                                            -- u
-  v∷ ( ((B ⟶ A # mkChoice here s/bool) , node zero) ∷ [] )            -- t → u
-  v∷ ( ((A ⟶ C # mkChoice here s/bool) , ended) ∷ [] )                 -- ℓ
+  v∷ ( ((B ⟶ ⁅ A ⁆ # mkChoice here s/bool) , node zero) ∷ [] )        -- t → u
+  v∷ ( ((A ⟶ ⁅ C ⁆ # mkChoice here s/bool) , ended) ∷ [] )                 -- ℓ
   v∷ v[]
   )
 

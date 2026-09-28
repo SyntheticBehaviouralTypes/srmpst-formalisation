@@ -8,26 +8,46 @@ open import Data.Fin
 open import Data.Vec
   using (Vec; []; _∷_; _[_]=_; lookup; tabulate)
 open import Data.Vec.Properties using (lookup⇒[]=; lookup∘tabulate)
-open import Data.Product using (∃-syntax; _,_; _×_; proj₁; proj₂)
+open import Data.Product using (Σ-syntax; ∃-syntax; _,_; _×_; proj₁; proj₂)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Function using (_∘_)
 open import Data.Maybe.Base using (just; nothing)
+open import Data.Fin.Subset using (_∈_; _∉_)
+open import Data.Fin.Subset.Properties using (_∈?_)
 open import Relation.Nullary using (yes; no)
 open import Relation.Binary.PropositionalEquality
-  using (_≡_; refl; subst; sym)
+  using (_≡_; _≢_; refl; subst; sym; trans)
 open import Definitions.Typing
 
-module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
+module Safety.Progress
+  {N : ℕ}{B : BTheory N}(wb : WellBehaved B)(sync : Synchronous B) where
   private
     module M = MPST wb
   open M
+  open Synchronous sync
   open import Definitions.Typing.Alg wb
     using ( a/send; a/recv; a/if; a/end; a/var; a/rec
           ; waitActive; waitStep; waitLeaf
           ; _⊢at_∶_; at/send-inv; at/recv-inv )
   open M.Subst
   open import Definitions.Typing.Substitution wb
-  open import Safety.Preservation wb
+  open import Safety.Preservation wb sync
+
+  private
+    recv≢send : ∀ {P Qs c c′} → just ((？ P) # c) ≢ just ((! Qs) # c′)
+    recv≢send ()
+
+    -- Over a finite index: either every `x` has `A x`, or some `x` gives
+    -- a way out `B`.
+    fin-collect :
+      ∀ {n}{A : Fin n → Set}{B : Set}
+      → (∀ x → A x ⊎ B) → (∀ x → A x) ⊎ B
+    fin-collect {0} f = inj₁ λ ()
+    fin-collect {suc n} {A} f
+      with f zero | fin-collect {n} {A ∘ fsuc} (f ∘ fsuc)
+    ... | inj₂ b | _       = inj₂ b
+    ... | inj₁ _ | inj₂ b  = inj₂ b
+    ... | inj₁ a | inj₁ as = inj₁ λ { zero → a ; (fsuc x) → as x }
 
   -- The judgment is syntax directed, so `MessageGuarded` narrows it to
   -- send/recv/if, and the tree walk is `waitActive`.
@@ -39,13 +59,14 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     → Γ ⊢at P ◂ Pr ∶ (ws , G)
     → P ∈T G
 
-  guarded/active mg/send td
+  guarded/active {P = P} mg/send td
     with at/send-inv td
   ... | _ , _ , w , _ =
-    waitActive (λ { (_ , gr) → in/send gr }) w
+    waitActive (λ { (_ , (_ , eq , g)) → in/ev {P} g eq }) w
 
-  guarded/active mg/recv td =
-    waitActive (λ { (_ , _ , _ , gr) → in/recv gr }) (proj₁ (at/recv-inv td))
+  guarded/active {P = P} mg/recv td =
+    waitActive (λ { (_ , _ , _ , (_ , eq , g)) → in/ev {P} g eq })
+      (proj₁ (at/recv-inv td))
 
   guarded/active (mg/if mg₁ _) (𝒮 , a/if _ ttd _ , mem) =
     guarded/active mg₁ (𝒮 , ttd , mem)
@@ -79,7 +100,7 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       (P∉G
         (guarded/active
           (guarded/subst-proc guarded)
-          (at/rec/unfold td)))
+          (at/rec/unfold sync td)))
 
   data SessionStatus
     (M : Session)
@@ -139,11 +160,12 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   head/status _ _ td@(_ , a/send _ _ _ , _)
     with at/send-inv td
   ... | _ , _ , w , _
-    with waitStep (λ { (_ , gr) → _ , _ , gr }) w
+    with waitStep (λ { (_ , (_ , _ , g)) → _ , _ , g }) w
   ...   | _ , _ , gr = ss/step gr
 
   head/status _ _ td@(_ , a/recv _ _ , _)
-    with waitStep (λ { (_ , _ , _ , gr) → _ , _ , gr }) (proj₁ (at/recv-inv td))
+    with waitStep (λ { (_ , _ , _ , (_ , _ , g)) → _ , _ , g })
+           (proj₁ (at/recv-inv td))
   ... | _ , _ , gr = ss/step gr
 
   head/status _ proc≡ (_ , a/if etd _ _ , _) =
@@ -195,113 +217,151 @@ module Safety.Progress {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   ... | inj₂ e⇓false =
     nothing , _ , s/if/false P proc≡ e⇓false
 
-  -- `Q` is ACTIVE at `G` (it is `gr`'s receiver), so `waitLeaf` says the
-  -- `Wait` is a leaf.
-  receiver/head-progress :
-    ∀ {M G G′ P Q I}
+  -- A receiver `R` of the step `gr` is ACTIVE at `G`, so `waitLeaf` says its
+  -- `Wait` is a leaf.  Either it is at the matching receive, with the
+  -- step's arity, or it can take a τ step itself.
+  recv-head :
+    ∀ {M G G′ α P R I QPr}
+      {i : Fin (suc I)}
+      {S : Sort}
+    → G -< α >-> G′
+    → ev α R ≡ just ((？ P) # i < S >)
+    → M [ R ]= QPr
+    → [] ⊢at R ◂ QPr ∶ ([] , G)
+    → (Σ[ Br ∈ Vec (Proc 1 0) (suc I) ] M [ R ]= Σ P ？· Br)
+      ⊎ (∃[ β ] ∃[ M′ ] M [ β ]⇒ M′)
+
+  -- `R` cannot be sending here: its event in `gr` is a receive, and the
+  -- two steps would be the same communication.
+  recv-head {R = R} gr eqR recv≡ td@(_ , a/send _ _ _ , _)
+    with at/send-inv td
+  ... | _ , _ , w , _
+    with waitLeaf {R} gr (_ , eqR) w
+  ...   | _ , (α″ , eq″ , g″)
+    with comm-ev (recv-overlap {Q = R} gr g″ (_ , _ , eqR) (_ , eq″)) eqR
+  ...     | _ , eq‴ =
+    ⊥-elim (recv≢send (trans (sym eq‴) eq″))
+
+  recv-head {P = P} {R} gr eqR recv≡ td@(_ , a/recv _ _ , _)
+    with waitLeaf {R} gr (_ , eqR) (proj₁ (at/recv-inv td))
+  ... | _ , _ , _ , (α‴ , eq‴ , g‴)
+    with comm-ev (recv-overlap {Q = R} gr g‴ (_ , _ , eqR) (_ , eq‴)) eqR
+  ...   | _ , eqP
+    with trans (sym eqP) eq‴
+  ...     | refl
+    with step-arity-det gr g‴ eqR eq‴
+  ...       | refl =
+    inj₁ (_ , recv≡)
+
+  recv-head gr eqR recv≡ (_ , a/if etd′ _ _ , _) =
+    inj₂ (if/progress etd′ recv≡)
+
+  recv-head {G = G} {R = R} gr eqR recv≡ (_ , a/end done , mem) =
+    ⊥-elim (done {[] , G} mem (in/ev {R} gr eqR))
+
+  recv-head gr eqR recv≡ (_ , a/var {X = ()} _ , _)
+
+  recv-head {R = R} gr eqR recv≡ (_ , a/rec _ _ _ , _) =
+    inj₂ (nothing , _ , s/rec R recv≡)
+
+  -- `P`'s multicast is at the head of `P`; every receiver is at its
+  -- receive (then `s/comm` fires) or some receiver has a τ step.
+  receivers/progress :
+    ∀ {M G G′ P Qs I}
       {i : Fin (suc I)}
       {S : Sort}
       {E : Exp 0}
       {Pr : Proc 0 0}
-      {QPr : Proc 0 0}
     → ⊢s M ∶ G
+    → G -< P ⟶ Qs # i < S > >-> G′
+    → P ∉ Qs
     → [] ⊢e E ∶ S
-    → G -< P ⟶ Q # i < S > >-> G′
-    → M [ P ]= Q ! i < E >∙ Pr
-    → M [ Q ]= QPr
-    → [] ⊢at Q ◂ QPr ∶ ([] , G)
-    → ∃[ α ] ∃[ M′ ] M [ α ]⇒ M′
+    → M [ P ]= Qs ! i < E >∙ Pr
+    → ∃[ β ] ∃[ M′ ] M [ β ]⇒ M′
 
-  -- `Q` cannot be sending here: the two actions would share a comm, making
-  -- `Q` its own sender and receiver.
-  receiver/head-progress M⊢G etd gr send≡ recv≡ td@(_ , a/send _ _ _ , _)
-    with at/send-inv td
-  ... | _ , _ , w , _
-    with waitLeaf gr (∈R refl) w
-  ...   | _ , gr′
-    with recv-overlap⇒same-comm gr gr′ (∈S refl)
-  ...     | refl =
-    ⊥-elim (sender≢receiver gr refl)
-
-  receiver/head-progress {P = P} {Q = Q} {i = i}
-    M⊢G etd gr send≡ recv≡ td@(_ , a/recv _ _ , _)
-    with waitLeaf gr (∈R refl) (proj₁ (at/recv-inv td))
-  ... | _ , _ , _ , gr′
-    with recv-overlap⇒same-comm gr gr′ (∈R refl)
-  ...   | refl
-    with step-arity-deterministic gr gr′
-  ...     | refl
+  receivers/progress {M} {G} {P = P} {Qs} {I} {i} {S}
+    M⊢G g P∉Qs etd send≡
+    with fin-collect
+           {A = λ R → R ∈ Qs
+                    → Σ[ Br ∈ Vec (Proc 1 0) (suc I) ] M [ R ]= Σ P ？· Br}
+           each
+    where
+      each :
+        ∀ R
+        → (R ∈ Qs → Σ[ Br ∈ Vec (Proc 1 0) (suc I) ] M [ R ]= Σ P ？· Br)
+          ⊎ (∃[ β ] ∃[ M′ ] M [ β ]⇒ M′)
+      each R with R ∈? Qs
+      ... | no R∉ = inj₁ (λ m → ⊥-elim (R∉ m))
+      ... | yes m
+        with recv-head {i = i} g
+               (ev-recv {P} {Qs} {i < S >} {R} (λ { refl → P∉Qs m }) m)
+               (lookup⇒[]= R M refl)
+               (at/lookup M⊢G (lookup⇒[]= R M refl))
+      ...   | inj₁ x = inj₁ (λ _ → x)
+      ...   | inj₂ τ = inj₂ τ
+  ... | inj₂ τ = τ
+  ... | inj₁ recvs
     with eval-exp etd
-  ...       | V , e⇓v =
-    just (P ⟶ Q # i < sort/value V >) , _ ,
-    s/comm P Q send≡ e⇓v recv≡
-
-  receiver/head-progress M⊢G etd gr send≡ recv≡ (_ , a/if etd′ _ _ , _) =
-    if/progress etd′ recv≡
-
-  receiver/head-progress {G = G} M⊢G etd gr send≡ recv≡ (_ , a/end done , mem) =
-    ⊥-elim (done {[] , G} mem (in/recv gr))
-
-  receiver/head-progress M⊢G etd gr send≡ recv≡ (_ , a/var {X = ()} _ , _)
-
-  receiver/head-progress {Q = Q}
-    M⊢G etd gr send≡ recv≡ (_ , a/rec _ _ _ , _) =
-    nothing , _ , s/rec Q recv≡
+  ...   | V , e⇓v =
+    just (P ⟶ Qs # i < sort/value V >) , _ ,
+    s/comm {Br = λ R m → proj₁ (recvs R m)}
+      P send≡ e⇓v (λ R m → proj₂ (recvs R m))
 
   -- `P` is active at `G` (it is `gr`'s sender), so `waitLeaf` collapses the
   -- tree walk.
   sender/head-progress :
-    ∀ {M G G′ P Q I}
-      {i : Fin (suc I)}
-      {S : Sort}
+    ∀ {M G G′ α P Qs c}
       {Pr : Proc 0 0}
     → ⊢s M ∶ G
-    → G -< P ⟶ Q # i < S > >-> G′
+    → G -< α >-> G′
+    → ev α P ≡ just ((! Qs) # c)
     → M [ P ]= Pr
     → [] ⊢at P ◂ Pr ∶ ([] , G)
     → ∃[ β ] ∃[ M′ ] M [ β ]⇒ M′
 
-  sender/head-progress {M = M} M⊢G gr send≡
-    td@(_ , a/send {Q = Q′} _ _ _ , _)
+  sender/head-progress {P = P} M⊢G gr eqP send≡ td@(_ , a/send _ _ _ , _)
     with at/send-inv td
   ... | _ , etd , w , _
-    with waitLeaf gr (∈S refl) w
-  ...   | _ , gr′ =
-    receiver/head-progress
-      M⊢G
-      etd
-      gr′
-      send≡
-      (lookup⇒[]= Q′ M refl)
-      (at/lookup M⊢G (lookup⇒[]= Q′ M refl))
+    with waitLeaf {P} gr (_ , eqP) w
+  ...   | _ , (α′ , eq′ , g′)
+    with send-action g′ eq′
+  ...     | P∉Qs′ , refl =
+    receivers/progress M⊢G g′ P∉Qs′ etd send≡
 
-  sender/head-progress M⊢G gr send≡ td@(_ , a/recv _ _ , _)
-    with waitLeaf gr (∈S refl) (proj₁ (at/recv-inv td))
-  ... | _ , _ , _ , gr′
-    with recv-overlap⇒same-comm gr′ gr (∈S refl)
-  ...   | refl =
-    ⊥-elim (sender≢receiver gr refl)
+  -- `P` cannot be receiving: `P`'s event in `gr` is a send, and the two
+  -- steps would be the same communication.
+  sender/head-progress {P = P} M⊢G gr eqP send≡ td@(_ , a/recv _ _ , _)
+    with waitLeaf {P} gr (_ , eqP) (proj₁ (at/recv-inv td))
+  ... | _ , _ , _ , (α″ , eq″ , g″)
+    with comm-ev (recv-overlap {Q = P} g″ gr (_ , _ , eq″) (_ , eqP)) eq″
+  ...   | _ , eq‴ =
+    ⊥-elim (recv≢send (trans (sym eq‴) eqP))
 
-  sender/head-progress M⊢G gr send≡ (_ , a/if etd _ _ , _) =
+  sender/head-progress M⊢G gr eqP send≡ (_ , a/if etd _ _ , _) =
     if/progress etd send≡
 
-  sender/head-progress {G = G} M⊢G gr send≡ (_ , a/end done , mem) =
-    ⊥-elim (done {[] , G} mem (in/send gr))
+  sender/head-progress {G = G} {P = P} M⊢G gr eqP send≡
+    (_ , a/end done , mem) =
+    ⊥-elim (done {[] , G} mem (in/ev {P} gr eqP))
 
-  sender/head-progress M⊢G gr send≡ (_ , a/var {X = ()} _ , _)
+  sender/head-progress M⊢G gr eqP send≡ (_ , a/var {X = ()} _ , _)
 
-  sender/head-progress {P = P} M⊢G gr send≡ (_ , a/rec _ _ _ , _) =
+  sender/head-progress {P = P} M⊢G gr eqP send≡ (_ , a/rec _ _ _ , _) =
     nothing , _ , s/rec P send≡
 
+  -- Every step is some `P`'s multicast (`balanced`): ask `P`.
   step/progress :
     ∀ {M G G′ α}
     → ⊢s M ∶ G
     → G -< α >-> G′
     → ∃[ β ] ∃[ M′ ] M [ β ]⇒ M′
-  step/progress {M = M} {α = P ⟶ Q # i < S >} M⊢G gr =
+  step/progress {M = M} M⊢G gr
+    with balanced gr
+  ... | P , Qs , c , _ , _ , refl =
     sender/head-progress
       M⊢G
       gr
+      (ev-sender {P} {Qs} {c})
       (lookup⇒[]= P M refl)
       (at/lookup M⊢G (lookup⇒[]= P M refl))
 

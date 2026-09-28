@@ -29,7 +29,8 @@ open import Check
 import Definitions.Typing as Typing
 
 open import Definitions.Graph.Algebra 3 hiding (var)
-open import Definitions.Actions 3 renaming (_<_> to mkChoice) hiding (_,_)
+open import Data.Fin.Subset using (⁅_⁆)
+open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
 A B S : Fin 3
@@ -60,16 +61,16 @@ private
 -- s3 --A→S no(unit)--> ended;  s5 --A→S buy(unit)--> ended
 rec2buy : OpenGraph 0
 rec2buy = openGraph 6 (node zero)
-  (  ( ((A ⟶ S # mkChoice here s/nat) , t1) ∷ [] )                    -- s0
-  v∷ ( ((S ⟶ A # mkChoice here s/nat) , t2) ∷ [] )                    -- s1
-  v∷ ( ((A ⟶ B # mkChoice lbl0 s/nat) , t4)                           -- s2: split
-     ∷ ((A ⟶ B # mkChoice lbl1 s/unit) , t3)                          --     cancel
+  (  ( ((A ⟶ ⁅ S ⁆ # mkChoice here s/nat) , t1) ∷ [] )                    -- s0
+  v∷ ( ((S ⟶ ⁅ A ⁆ # mkChoice here s/nat) , t2) ∷ [] )                    -- s1
+  v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/nat) , t4)                           -- s2: split
+     ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/unit) , t3)                          --     cancel
      ∷ [] )
-  v∷ ( ((A ⟶ S # mkChoice lbl1 s/unit) , ended) ∷ [] )                 -- s3: no-s
-  v∷ ( ((B ⟶ A # mkChoice lbl0 s/nat) , t5)                           -- s4: yes
-     ∷ ((B ⟶ A # mkChoice lbl1 s/unit) , t2)                          --     no (loop)
+  v∷ ( ((A ⟶ ⁅ S ⁆ # mkChoice lbl1 s/unit) , ended) ∷ [] )                 -- s3: no-s
+  v∷ ( ((B ⟶ ⁅ A ⁆ # mkChoice lbl0 s/nat) , t5)                           -- s4: yes
+     ∷ ((B ⟶ ⁅ A ⁆ # mkChoice lbl1 s/unit) , t2)                          --     no (loop)
      ∷ [] )
-  v∷ ( ((A ⟶ S # mkChoice lbl0 s/unit) , ended) ∷ [] )                 -- s5: buy
+  v∷ ( ((A ⟶ ⁅ S ⁆ # mkChoice lbl0 s/unit) , ended) ∷ [] )                 -- s5: buy
   v∷ v[]
   )
 
@@ -80,31 +81,31 @@ open Typing.MPST (wb-of wbg) using (⊢s_∶_)
 
 p/A : Proc 0 0
 p/A =
-  S ! here < val (v/nat 0) >∙
+  ⁅ S ⁆ ! here < val (v/nat 0) >∙
   (Σ S ？·
     ( rec (ifp is-zero (var zero)
-           then (B ! lbl0 < val (v/nat 0) >∙
+           then (⁅ B ⁆ ! lbl0 < val (v/nat 0) >∙
                  (Σ B ？·
-                   (  (S ! lbl0 < val v/unit >∙ ∅)
+                   (  (⁅ S ⁆ ! lbl0 < val v/unit >∙ ∅)
                    v∷ v zero
                    v∷ v[])))
-           else (B ! lbl1 < val v/unit >∙
-                 (S ! lbl1 < val v/unit >∙ ∅)))
+           else (⁅ B ⁆ ! lbl1 < val v/unit >∙
+                 (⁅ S ⁆ ! lbl1 < val v/unit >∙ ∅)))
     v∷ v[]))
 
 p/B : Proc 0 0
 p/B =
   rec (Σ A ？·
         (  (ifp is-zero (var zero)
-            then (A ! lbl0 < val (v/nat 0) >∙ ∅)
-            else (A ! lbl1 < val v/unit >∙ v zero))
+            then (⁅ A ⁆ ! lbl0 < val (v/nat 0) >∙ ∅)
+            else (⁅ A ⁆ ! lbl1 < val v/unit >∙ v zero))
         v∷ ∅
         v∷ v[]))
 
 p/S : Proc 0 0
 p/S =
   Σ A ？·
-    (  (A ! here < val (v/nat 0) >∙
+    (  (⁅ A ⁆ ! here < val (v/nat 0) >∙
         (Σ A ？· (∅ v∷ ∅ v∷ v[])))
     v∷ v[])
 

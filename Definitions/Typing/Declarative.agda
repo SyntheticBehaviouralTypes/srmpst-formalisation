@@ -30,8 +30,6 @@ module MPST {N : ℕ} {B : BTheory N} (wb : WellBehaved B) where
   open import Definitions.Actions N public
 
   open Subst
-  open Action
-  open Comm
   open Choice
 
   private
@@ -40,11 +38,11 @@ module MPST {N : ℕ} {B : BTheory N} (wb : WellBehaved B) where
 
   data MessageGuarded : Proc γ δ → Set where
     mg/send :
-      ∀ {Q I}
+      ∀ {Qs : PartSet} {I}
         {i  : Fin (suc I)}
         {E  : Exp γ}
         {Pr : Proc γ δ}
-      → MessageGuarded (Q ! i < E >∙ Pr)
+      → MessageGuarded (Qs ! i < E >∙ Pr)
 
     mg/recv :
       ∀ {P I}
@@ -95,16 +93,16 @@ module MPST {N : ℕ} {B : BTheory N} (wb : WellBehaved B) where
    where
 
    t/send :
-     ∀ {P Q I}
+     ∀ {P Qs I}
        {i  : Fin (suc I)}
        {G G' : Behav}
        {Pr : Proc γ δ}
        {E  : Exp γ}
        {S  : Sort}
-     → (gr  : G -< P ⟶ Q # i < S > >-> G')
+     → (gr  : G -<[ P ↦ (! Qs) # i < S > ]>-> G')
      → (etd : Γ ⊢e E ∶ S)
      → (td  : Γ & Δ ⊢p P ◂ Pr ∶ G')
-     → Γ & Δ ⊢p P ◂ Q ! i < E >∙ Pr ∶ G
+     → Γ & Δ ⊢p P ◂ Qs ! i < E >∙ Pr ∶ G
 
    t/recv :
      ∀ {P Q I}
@@ -112,10 +110,10 @@ module MPST {N : ℕ} {B : BTheory N} (wb : WellBehaved B) where
        {T  : Sort}
        {G G' : Behav}
        {Br : Vec (Proc (suc γ) δ) (suc I)}
-     → (gr : G -< P ⟶ Q # i < T > >-> G')
+     → (gr : G -<[ Q ↦ (？ P) # i < T > ]>-> G')
      → (conts :
          ∀ {j U G″}
-         → (gr′ : G -< P ⟶ Q # j < U > >-> G″)
+         → (gr′ : G -<[ Q ↦ (？ P) # j < U > ]>-> G″)
          → (U ∷ Γ) & Δ ⊢p Q ◂ lu Br j ∶ G″)
      → Γ & Δ ⊢p Q ◂ Σ P ？· Br ∶ G
 

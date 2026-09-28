@@ -15,6 +15,7 @@ open import Data.Unit using (tt)
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Relation.Nullary.Decidable using (⌊_⌋; toWitness; T?)
 open import Data.Vec using (lookup)
+open import Data.Fin.Subset using (⁅_⁆)
 
 open import Definitions.Expr using (s/unit)
 open import Definitions.Behav using (WellBehaved)
@@ -27,7 +28,7 @@ module ∈T?-sanity where
   open import Definitions.Graph.Core 3 using (State; graphTheory)
   open import Definitions.Graph.Decision 3 using (wellBehaved?)
   open import Definitions.Actions 3
-    using (Action; _⟶_; _#_) renaming (_<_> to mkChoice)
+    using (Action; _⟶_#_) renaming (_<_> to mkChoice)
 
   A B C : Fin 3
   A = zero
@@ -37,8 +38,8 @@ module ∈T?-sanity where
   -- s0 --A⟶B<unit>--> s1 --A⟶B<unit>--> ended
   g : OpenGraph 0
   g = openGraph 2 (node zero)
-    ( ( ((A ⟶ B # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
-    v∷ ( ((A ⟶ B # mkChoice {nchoices = 0} zero s/unit) , ended) ∷ [] )
+    ( ( ((A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
+    v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} zero s/unit) , ended) ∷ [] )
     v∷ v[]
     )
 
@@ -84,7 +85,7 @@ module unskip?-sanity where
   open import Definitions.Graph.Core 3 using (State; graphTheory)
   open import Definitions.Graph.Decision 3 using (wellBehaved?)
   open import Definitions.Actions 3
-    using (Action; _⟶_; _#_) renaming (_<_> to mkChoice)
+    using (Action; _⟶_#_) renaming (_<_> to mkChoice)
 
   A B C : Fin 3
   A = zero
@@ -97,8 +98,8 @@ module unskip?-sanity where
   -- (the only edge into it is the `A`-edge itself).
   g : OpenGraph 0
   g = openGraph 2 (node zero)
-    ( ( ((B ⟶ C # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
-    v∷ ( ((A ⟶ B # mkChoice {nchoices = 0} zero s/unit) , ended) ∷ [] )
+    ( ( ((B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
+    v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} zero s/unit) , ended) ∷ [] )
     v∷ v[]
     )
 
@@ -141,7 +142,7 @@ module Wait?-sanity where
   open import Definitions.Graph.Core 3 using (State; graphTheory)
   open import Definitions.Graph.Decision 3 using (wellBehaved?)
   open import Definitions.Actions 3
-    using (Action; _⟶_; _#_) renaming (_<_> to mkChoice)
+    using (Action; _⟶_#_) renaming (_<_> to mkChoice)
 
   A B C : Fin 3
   A = zero
@@ -150,8 +151,8 @@ module Wait?-sanity where
 
   g : OpenGraph 0
   g = openGraph 2 (node zero)
-    ( ( ((B ⟶ C # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
-    v∷ ( ((A ⟶ B # mkChoice {nchoices = 0} zero s/unit) , ended) ∷ [] )
+    ( ( ((B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 0} zero s/unit) , node (suc zero)) ∷ [] )
+    v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} zero s/unit) , ended) ∷ [] )
     v∷ v[]
     )
 

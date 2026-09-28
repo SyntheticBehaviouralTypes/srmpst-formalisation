@@ -5,6 +5,9 @@ open import Data.Fin using (Fin; zero; suc)
 
 open import Data.Vec using (Vec; []; _∷_; lookup)
 open import Data.Product using (∃-syntax; _,_; _×_; proj₁; proj₂)
+open import Data.Maybe using (just)
+open import Data.Fin.Subset using (_∉_; Nonempty)
+open import Data.Sum using (inj₁; inj₂)
 
 open import Data.List using (List; []; _∷_; _++_)
 open import Data.List.Relation.Unary.Any using (Any; here; there)
@@ -15,7 +18,7 @@ import Data.List.Relation.Unary.All.Properties as AllProp
 open import Relation.Nullary using (¬_)
 
 open import Relation.Binary.PropositionalEquality
-  using (_≡_; _≢_; refl; subst; sym)
+  using (_≡_; _≢_; refl; subst; sym; trans)
 
 open import Definitions.Expr using (Sort)
 
@@ -26,7 +29,6 @@ module Definitions.Behav where
 
   record BTheory (N : ℕ) : Set₁ where
     open Definitions.Actions N
-    open Action
     open Definitions.Common N
 
     field
@@ -59,6 +61,12 @@ module Definitions.Behav where
       → G -[ αs ]-> G′ → G′ -[ βs ]-> G″ → G -[ αs ++ βs ]-> G″
     tr/trans tr/refl tr′         = tr′
     tr/trans (tr/step gr tr) tr′ = tr/step gr (tr/trans tr tr′)
+
+    -- A step whose event at `P` is `e`: the triple `(α , eq , gr)`.
+    infix 4 _-<[_↦_]>->_
+
+    _-<[_↦_]>->_ : Behav → Part → Event → Behav → Set
+    s -<[ P ↦ e ]>-> t = ∃[ α ] ev α P ≡ just e × s -< α >-> t
 
     -- `P ∈T G`: there is a trace out of `G` somewhere along which `P` is
     -- mentioned. `G -[¬ P ]->* G′`: there is a trace from `G` to `G′` none
@@ -93,13 +101,8 @@ module Definitions.Behav where
     in/later : ∀ {P G G′ α} → G -< α >-> G′ → P ∈T G′ → P ∈T G
     in/later gr (αs , G″ , tr , mem) = _ ∷ αs , G″ , tr/step gr tr , there mem
 
-    in/send : ∀ {G α G′} → G -< α >-> G′ → sender α ∈T G
-    in/send gr =
-      in/α gr (∈S refl)
-
-    in/recv : ∀ {G α G′} → G -< α >-> G′ → receiver α ∈T G
-    in/recv gr =
-      in/α gr (∈R refl)
+    in/ev : ∀ {P e G α G′} → G -< α >-> G′ → ev α P ≡ just e → P ∈T G
+    in/ev gr eq = in/α gr (_ , eq)
 
     skip/refl : ∀ {G P} → G -[¬ P ]->* G
     skip/refl = [] , tr/refl , []
@@ -307,24 +310,21 @@ module Definitions.Behav where
 
   record WellBehaved {N : ℕ} (B : BTheory N) : Set₁ where
     open Definitions.Actions N
-    open Action
     open Definitions.Common N
     open BTheory B
 
     field
-      -- Action equality
+      -- Action equality: a receiver of `α` that takes part in `α′` means
+      -- the two steps are the same communication.
 
-      recv-overlap⇒same-comm :
-        ∀ {G α α′ G′ G″}
+      -- (`overlap` would be the natural name, but it is an Agda keyword.)
+      recv-overlap :
+        ∀ {G α α′ G′ G″ Q}
         → G -< α  >-> G′
         → G -< α′ >-> G″
-        → receiver α ∈α α′
+        → Recv α Q
+        → Q ∈α α′
         → comm α ≡ comm α′
-
-      sender≢receiver :
-        ∀ {G G′ α}
-        → G -< α >-> G′
-        → sender α ≢ receiver α
 
       step-deterministic :
         ∀ {G α G′ G″}
@@ -332,19 +332,24 @@ module Definitions.Behav where
         → G -< α >-> G″
         → G′ ≡ G″
 
-      step-sort-deterministic :
-        ∀ {G G′ G″ α I S T}
+      -- Sort/arity determinism, for receive events only.
+      step-sort-det :
+        ∀ {G G′ G″ α α′ P Q I S T}
           {i : Fin (suc I)}
-        → G -< α # i < S > >-> G′
-        → G -< α # i < T > >-> G″
+        → G -< α >-> G′
+        → G -< α′ >-> G″
+        → ev α Q ≡ just ((？ P) # i < S >)
+        → ev α′ Q ≡ just ((？ P) # i < T >)
         → S ≡ T
 
-      step-arity-deterministic :
-        ∀ {G G′ G″ α I J S T}
+      step-arity-det :
+        ∀ {G G′ G″ α α′ P Q I J S T}
           {i : Fin (suc I)}
           {j : Fin (suc J)}
-        → G -< α # i < S > >-> G′
-        → G -< α # j < T > >-> G″
+        → G -< α >-> G′
+        → G -< α′ >-> G″
+        → ev α Q ≡ just ((？ P) # i < S >)
+        → ev α′ Q ≡ just ((？ P) # j < T >)
         → I ≡ J
 
       -- There should be at most one proof term per transition in your LTS
@@ -358,22 +363,13 @@ module Definitions.Behav where
         → gr₁ ≡ gr₂
 
       no-new-branch/step :
-        ∀ {G G′ Gᵢ Gⱼ′ β γ cᵢ cⱼ}
+        ∀ {G G′ Gᵢ Gⱼ′ β γ γ′}
         → G -< β >-> G′
-        → Comm.receiver γ ∉α β
-        → G  -< γ # cᵢ >-> Gᵢ
-        → G′ -< γ # cⱼ >-> Gⱼ′
-        → ∃[ Gⱼ ] G -< γ # cⱼ >-> Gⱼ
-
-      -- Unrelated steps cannot be the first point where a communication
-      -- becomes available.
-      no-new-comm/step :
-        ∀ {G G′ Gγ β γ}
-        → G -< β >-> G′
-        → sender γ ∉α β
-        → receiver γ ∉α β
-        → G′ -< γ >-> Gγ
-        → ∃[ Gγ′ ] G -< γ >-> Gγ′
+        → (∀ Q → Recv γ Q → Q ∉α β)
+        → G  -< γ  >-> Gᵢ
+        → G′ -< γ′ >-> Gⱼ′
+        → comm γ′ ≡ comm γ
+        → ∃[ Gⱼ ] G -< γ′ >-> Gⱼ
 
       -- Bisimulation stepback
 
@@ -413,20 +409,32 @@ module Definitions.Behav where
       → P ∈α α
       → P ∉α β
       → α ⋄ β
-    active-inactive/⋄ {P = P} grα grβ P∈α P∉β =
-      ¬∈c→∉c
-        (λ rα∈β →
-          ∉c→¬∈c P∉β
-            (subst (λ γ → P ∈c γ)
-              (recv-overlap⇒same-comm grα grβ rα∈β)
-              P∈α))
+    active-inactive/⋄ {P = P} {α} {β} grα grβ P∈α P∉β =
+      ∈∉→≢ {P} {α} {β} P∈α P∉β
       ,
-      ¬∈c→∉c
-        (λ rβ∈α →
-          ∉c→¬∈c P∉β
-            (subst (λ γ → P ∈c γ)
-              (sym (recv-overlap⇒same-comm grβ grα rβ∈α))
-              P∈α))
+      (λ Q rQ → ¬∈α→∉α {Q} {β} λ Q∈β →
+        ∉α→¬∈α {P} {β} P∉β
+          (comm-∈α {α} {β} {P} (recv-overlap {Q = Q} grα grβ rQ Q∈β) P∈α))
+      ,
+      (λ Q rQ → ¬∈α→∉α {Q} {α} λ Q∈α →
+        ∉α→¬∈α {P} {β} P∉β
+          (comm-∈α {α} {β} {P}
+            (sym (recv-overlap {Q = Q} grβ grα rQ Q∈α)) P∈α))
+
+    -- If one receiver of `γ` is idle in `β`, all of them are: an active one
+    -- would make `γ` and `β` the same communication.
+    recv-idle/all :
+      ∀ {G Gγ Gβ γ β R}
+      → G -< γ >-> Gγ
+      → G -< β >-> Gβ
+      → Recv γ R
+      → R ∉α β
+      → ∀ Q → Recv γ Q → Q ∉α β
+    recv-idle/all {γ = γ} {β} {R} grγ grβ rR R∉β Q rQ =
+      ¬∈α→∉α {Q} {β} λ Q∈β →
+        ∉α→¬∈α {R} {β} R∉β
+          (comm-∈α {γ} {β} {R} (recv-overlap {Q = Q} grγ grβ rQ Q∈β)
+            (Recv→∈α {γ} {R} rR))
 
     -- `skip/advance`/`no-new-branch/skip` recurse via `-aux` helpers that
     -- take the run `tr : G -[ αs ]-> G′` as its own curried argument
@@ -463,45 +471,121 @@ module Definitions.Behav where
       skip/advance-aux tr allP
 
     no-new-branch/skip-aux :
-      ∀ {G G′ Gᵢ Gⱼ′ γ αs}
-        {cᵢ cⱼ : Choice}
+      ∀ {G G′ Gᵢ Gⱼ′ γ γ′ Q αs}
       → G -[ αs ]-> G′
-      → All (Comm.receiver γ ∉α_) αs
-      → G  -< γ # cᵢ >-> Gᵢ
-      → G′ -< γ # cⱼ >-> Gⱼ′
-      → ∃[ Gⱼ ] G -< γ # cⱼ >-> Gⱼ
-    no-new-branch/skip-aux tr/refl [] grᵢ grⱼ =
+      → All (Q ∉α_) αs
+      → Recv γ Q
+      → G  -< γ  >-> Gᵢ
+      → G′ -< γ′ >-> Gⱼ′
+      → comm γ′ ≡ comm γ
+      → ∃[ Gⱼ ] G -< γ′ >-> Gⱼ
+    no-new-branch/skip-aux tr/refl [] rQ grᵢ grⱼ ceq =
       _ , grⱼ
-    no-new-branch/skip-aux (tr/step grβ tr) (recvγ∉β ∷ allP) grᵢ grⱼ′
-      with step-diamond grᵢ grβ (active-inactive/⋄ grᵢ grβ (∈R refl) recvγ∉β)
+    no-new-branch/skip-aux {γ = γ} {Q = Q}
+      (tr/step grβ tr) (Q∉β ∷ allP) rQ grᵢ grⱼ′ ceq
+      with step-diamond grᵢ grβ
+             (active-inactive/⋄ grᵢ grβ (Recv→∈α {γ} {Q} rQ) Q∉β)
     ... | _ , _ , grᵢ′
-      with no-new-branch/skip-aux tr allP grᵢ′ grⱼ′
+      with no-new-branch/skip-aux tr allP rQ grᵢ′ grⱼ′ ceq
     ... | _ , grⱼ =
-      no-new-branch/step grβ recvγ∉β grᵢ grⱼ
+      no-new-branch/step grβ (recv-idle/all grᵢ grβ rQ Q∉β) grᵢ grⱼ ceq
 
     no-new-branch/skip :
-      ∀ {G G′ Gᵢ Gⱼ′ γ}
-        {cᵢ cⱼ : Choice}
-      → G -[¬ Comm.receiver γ ]->* G′
-      → G  -< γ # cᵢ >-> Gᵢ
-      → G′ -< γ # cⱼ >-> Gⱼ′
-      → ∃[ Gⱼ ] G -< γ # cⱼ >-> Gⱼ
+      ∀ {G G′ Gᵢ Gⱼ′ γ γ′ Q}
+      → G -[¬ Q ]->* G′
+      → Recv γ Q
+      → G  -< γ  >-> Gᵢ
+      → G′ -< γ′ >-> Gⱼ′
+      → comm γ′ ≡ comm γ
+      → ∃[ Gⱼ ] G -< γ′ >-> Gⱼ
     no-new-branch/skip (_ , tr , allP) =
       no-new-branch/skip-aux tr allP
 
     branch/before :
-      ∀ {G G′ Gᵢ Gⱼ′ γ}
-        {cᵢ cⱼ : Choice}
-      → (tr   : G -[¬ Comm.receiver γ ]->* G′)
-      → (grᵢ  : G  -< γ # cᵢ >-> Gᵢ)
-      → (grⱼ′ : G′ -< γ # cⱼ >-> Gⱼ′)
-      → ∃[ Gⱼ ]
-          (G -< γ # cⱼ >-> Gⱼ)
-        × (Gⱼ -[¬ Comm.receiver γ ]->* Gⱼ′)
-    branch/before tr grᵢ grⱼ′
-      with no-new-branch/skip tr grᵢ grⱼ′
+      ∀ {G G′ Gᵢ Gⱼ′ γ γ′ Q}
+      → (tr   : G -[¬ Q ]->* G′)
+      → Recv γ Q
+      → (grᵢ  : G  -< γ  >-> Gᵢ)
+      → (grⱼ′ : G′ -< γ′ >-> Gⱼ′)
+      → comm γ′ ≡ comm γ
+      → ∃[ Gⱼ ] (G -< γ′ >-> Gⱼ) × (Gⱼ -[¬ Q ]->* Gⱼ′)
+    branch/before {γ = γ} {γ′} {Q} tr rQ grᵢ grⱼ′ ceq
+      with no-new-branch/skip tr rQ grᵢ grⱼ′ ceq
     ... | Gⱼ , grⱼ
-      with skip/advance tr grⱼ (∈R refl)
+      with skip/advance tr grⱼ
+             (comm-∈α {γ} {γ′} {Q} (sym ceq) (Recv→∈α {γ} {Q} rQ))
     ... | _ , grⱼ″ , trⱼ
       rewrite step-deterministic grⱼ″ grⱼ′ =
       Gⱼ , grⱼ , trⱼ
+
+    -- Two receives by `Q`, one before and one after a `Q`-free run, are the
+    -- same communication.
+    recv/same-comm :
+      ∀ {G G′ Gγ Gγ′ γ γ′ Q}
+      → G -[¬ Q ]->* G′
+      → G -< γ >-> Gγ
+      → Recv γ Q
+      → G′ -< γ′ >-> Gγ′
+      → Recv γ′ Q
+      → comm γ′ ≡ comm γ
+    recv/same-comm {γ = γ} {Q = Q} tr grγ rQ grγ′ rQ′
+      with skip/advance tr grγ (Recv→∈α {γ} {Q} rQ)
+    ... | _ , grγ-at-G′ , _ =
+      recv-overlap {Q = Q} grγ′ grγ-at-G′ rQ′ (Recv→∈α {γ} {Q} rQ)
+
+  -- Facts of the synchronous instance only; consumed by `Safety/` alone.
+  record Synchronous {N : ℕ} (B : BTheory N) : Set₁ where
+    open Definitions.Actions N
+    open Definitions.Common N
+    open BTheory B
+
+    field
+      -- Every step is one multicast to somebody, and nobody sends to
+      -- themselves.
+      balanced :
+        ∀ {G G′ α}
+        → G -< α >-> G′
+        → ∃[ P ] ∃[ Qs ] ∃[ c ] P ∉ Qs × Nonempty Qs × α ≡ P ⟶ Qs # c
+
+      -- Unrelated steps cannot be the first point where a communication
+      -- becomes available.
+      no-new-comm/step :
+        ∀ {G G′ Gγ β γ}
+        → G -< β >-> G′
+        → (∀ X → X ∈α γ → X ∉α β)
+        → G′ -< γ >-> Gγ
+        → ∃[ Gγ′ ] G -< γ >-> Gγ′
+
+    -- A step with a send event at `P` IS `P`'s multicast.
+    send-action :
+      ∀ {G G′ α P Qs c}
+      → G -< α >-> G′
+      → ev α P ≡ just ((! Qs) # c)
+      → P ∉ Qs × α ≡ P ⟶ Qs # c
+    send-action {P = P} gr eq with balanced gr
+    ... | P′ , Qs′ , c′ , P′∉Qs′ , _ , refl with ev-inv {P′} {Qs′} {c′} {P} eq
+    ...   | inj₁ (refl , refl) = P′∉Qs′ , refl
+    ...   | inj₂ (_ , _ , ())
+
+    -- The sender of a receive takes part in the same step.
+    recv-sender :
+      ∀ {G G′ α R P c}
+      → G -< α >-> G′
+      → ev α R ≡ just ((？ P) # c)
+      → P ∈α α
+    recv-sender {R = R} gr eq with balanced gr
+    ... | P′ , Qs′ , c′ , _ , _ , refl with ev-inv {P′} {Qs′} {c′} {R} eq
+    ...   | inj₁ (_ , ())
+    ...   | inj₂ (_ , _ , refl) = _ , ev-sender {P′} {Qs′} {c′}
+
+    -- So `P`'s send event determines the action.  This is what `⊢p → ⊢a`
+    -- needs at a send (`AlgNorm.sendAt`).
+    send-det :
+      ∀ {G G′ G″ α α′ P Qs c}
+      → G -< α >-> G′
+      → G -< α′ >-> G″
+      → ev α P ≡ just ((! Qs) # c)
+      → ev α′ P ≡ just ((! Qs) # c)
+      → α ≡ α′
+    send-det gr gr′ eq eq′ =
+      trans (proj₂ (send-action gr eq)) (sym (proj₂ (send-action gr′ eq′)))

@@ -19,6 +19,7 @@ open import Check
 import Definitions.Typing as Typing
 
 open import Definitions.Graph.Algebra 2
+open import Data.Fin.Subset using (⁅_⁆)
 open import Definitions.Actions 2 renaming (_<_> to mkChoice)
 open import Definitions.Proc 2
 
@@ -33,7 +34,8 @@ module NonRecursive where
   -- A --bool--> B --nat--> A, end
   ping-pong : OpenGraph 0
   ping-pong =
-    (A ⟶ B # mkChoice here s/bool) ∙ ((B ⟶ A # mkChoice here s/nat) ∙ end)
+    (A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙
+    ((B ⟶ ⁅ A ⁆ # mkChoice here s/nat) ∙ end)
 
   wbg : WBGraph {N = 2}
   wbg = buildG ping-pong
@@ -41,11 +43,11 @@ module NonRecursive where
   open Typing.MPST (wb-of wbg) using (⊢s_∶_)
 
   p/A : Proc 0 0
-  p/A = B ! here < val (v/bool true) >∙ (Σ B ？· (∅ ∷ []))
+  p/A = ⁅ B ⁆ ! here < val (v/bool true) >∙ (Σ B ？· (∅ ∷ []))
 
   p/B : Proc 0 0
   p/B =
-    Σ A ？· ((A ! here < val (v/nat 0) >∙ ∅) ∷ [])
+    Σ A ？· ((⁅ A ⁆ ! here < val (v/nat 0) >∙ ∅) ∷ [])
 
   M : Session
   M = p/A ∷ p/B ∷ []
@@ -60,7 +62,7 @@ module Recursive where
   -- μ (A --bool--> B --nat--> loop)
   ping-pong : OpenGraph 0
   ping-pong =
-    μ ((A ⟶ B # mkChoice here s/bool) ∙ ((B ⟶ A # mkChoice here s/nat) ∙ var zero))
+    μ ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ ((B ⟶ ⁅ A ⁆ # mkChoice here s/nat) ∙ var zero))
 
   wbg : WBGraph {N = 2}
   wbg = buildG ping-pong
@@ -68,11 +70,11 @@ module Recursive where
   open Typing.MPST (wb-of wbg) using (⊢s_∶_)
 
   p/A : Proc 0 0
-  p/A = rec (B ! here < val (v/bool true) >∙ (Σ B ？· (v zero ∷ [])))
+  p/A = rec (⁅ B ⁆ ! here < val (v/bool true) >∙ (Σ B ？· (v zero ∷ [])))
 
   p/B : Proc 0 0
   p/B =
-    rec (Σ A ？· ((A ! here < val (v/nat 0) >∙ v zero) ∷ []))
+    rec (Σ A ？· ((⁅ A ⁆ ! here < val (v/nat 0) >∙ v zero) ∷ []))
 
   M : Session
   M = p/A ∷ p/B ∷ []

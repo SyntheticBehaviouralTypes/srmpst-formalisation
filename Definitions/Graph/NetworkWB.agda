@@ -31,12 +31,13 @@ open import Relation.Binary.PropositionalEquality
 open import Relation.Nullary using (Dec; yes; no; ¬_)
 open import Relation.Nullary.Decidable using (_×-dec_)
 
-open import Definitions.Behav using (BTheory; WellBehaved)
+open import Definitions.Behav using (BTheory; WellBehaved; Synchronous)
 
 module Definitions.Graph.NetworkWB (N : ℕ) where
 
   open import Definitions.Actions N
   open import Definitions.Common N using (Part)
+  open import Definitions.Graph.Action N using (_⋄?_)
   open import Definitions.Graph.Network N
 
   -- ── quantification over all edges of a network ──
@@ -85,17 +86,25 @@ module Definitions.Graph.NetworkWB (N : ℕ) where
   pfree⇒na {n = n} pf st = step-edge n pf st
 
   -- ── receiver-disjointness of two networks ──
+  --
+  -- Every edge has a receiver (`HasRecv`): the cross-side "same comm"
+  -- cases of `parWB` are refuted through it.  A receiver-less action (a
+  -- send to nobody) could share its comm with the other side.
+
+  HasRecv : Action → Set
+  HasRecv α = ∃[ Q ] Recv α Q
 
   Disjoint : Net → Net → Set
   Disjoint n₁ n₂ =
-    EdgePred n₁ (λ α → EdgePred n₂ (λ β →
-      (receiver α ∉α β) × (receiver β ∉α α)))
+    EdgePred n₁ HasRecv
+    × EdgePred n₂ HasRecv
+    × EdgePred n₁ (λ α → EdgePred n₂ (λ β → α ⋄ β))
 
   disjoint? : ∀ n₁ n₂ → Dec (Disjoint n₁ n₂)
   disjoint? n₁ n₂ =
-    edgePred? n₁ (λ α →
-      edgePred? n₂ (λ β →
-        (receiver α ∉α? β) ×-dec (receiver β ∉α? α)))
+    edgePred? n₁ (λ α → FinP.any? (Recv? α))
+    ×-dec edgePred? n₂ (λ α → FinP.any? (Recv? α))
+    ×-dec edgePred? n₁ (λ α → edgePred? n₂ (λ β → α ⋄? β))
 
   module _ {n₁ n₂ : Net} (dis : Disjoint n₁ n₂) where
 
@@ -104,17 +113,33 @@ module Definitions.Graph.NetworkWB (N : ℕ) where
       ∀ {a α a′ b β b′}
       → NStep n₁ a α a′ → NStep n₂ b β b′
       → α ⋄ β
-    dis-⋄ st₁ st₂ = step-edge n₂ (step-edge n₁ dis st₁) st₂
+    dis-⋄ st₁ st₂ = step-edge n₂ (step-edge n₁ (proj₂ (proj₂ dis)) st₁) st₂
 
-    -- … in particular they can never carry the same communication
+    -- … so a receiver on one side takes no part in the other …
+    dis-recv₁ :
+      ∀ {a α a′ b β b′ Q}
+      → NStep n₁ a α a′ → NStep n₂ b β b′
+      → Recv α Q → Q ∈α β → ⊥
+    dis-recv₁ {β = β} {Q = Q} st₁ st₂ rQ Q∈β =
+      ∉α→¬∈α {Q} {β} (proj₁ (proj₂ (dis-⋄ st₁ st₂)) Q rQ) Q∈β
+
+    dis-recv₂ :
+      ∀ {a α a′ b β b′ Q}
+      → NStep n₁ a α a′ → NStep n₂ b β b′
+      → Recv β Q → Q ∈α α → ⊥
+    dis-recv₂ {α = α} {Q = Q} st₁ st₂ rQ Q∈α =
+      ∉α→¬∈α {Q} {α} (proj₂ (proj₂ (dis-⋄ st₁ st₂)) Q rQ) Q∈α
+
+    -- … and they can never carry the same communication.
     dis-¬share :
       ∀ {a α a′ b β b′}
       → NStep n₁ a α a′ → NStep n₂ b β b′
-      → Action.comm α ≡ Action.comm β
+      → comm α ≡ comm β
       → ⊥
-    dis-¬share {α = α} st₁ st₂ eq =
-      ∉c→¬∈c (proj₁ (dis-⋄ st₁ st₂))
-        (subst (Comm.receiver (Action.comm α) ∈c_) eq (∈R refl))
+    dis-¬share {α = α} {β = β} st₁ st₂ eq
+      with step-edge n₁ (proj₁ dis) st₁
+    ... | Q , rQ =
+      dis-recv₁ st₁ st₂ rQ (comm-∈α {α} {β} {Q} eq (Recv→∈α {α} {Q} rQ))
 
   -- ── every product state is a pair ──
 
@@ -208,24 +233,19 @@ module Definitions.Graph.NetworkWB (N : ℕ) where
     -- ── the axioms ──
 
     parWB : WellBehaved (netTheory (n₁ ∥ n₂))
-    parWB .WellBehaved.recv-overlap⇒same-comm {G} {α} {α′} st st′ rov
+    parWB .WellBehaved.recv-overlap {G} {α} {α′} st st′ rQ Q∈
       with pairView n₁ n₂ G
     ... | is-pair a b
       with pstep-inv n₁ n₂ {a = a} {b = b} st
          | pstep-inv n₁ n₂ {a = a} {b = b} st′
     ... | inj₁ (_ , st₁ , _) | inj₁ (_ , st₁′ , _) =
-      W₁.recv-overlap⇒same-comm st₁ st₁′ rov
+      W₁.recv-overlap st₁ st₁′ rQ Q∈
     ... | inj₁ (_ , st₁ , _) | inj₂ (_ , st₂′ , _) =
-      ⊥-elim (∉c→¬∈c (proj₁ (dis-⋄ dis st₁ st₂′)) rov)
+      ⊥-elim (dis-recv₁ dis st₁ st₂′ rQ Q∈)
     ... | inj₂ (_ , st₂ , _) | inj₁ (_ , st₁′ , _) =
-      ⊥-elim (∉c→¬∈c (proj₂ (dis-⋄ dis st₁′ st₂)) rov)
+      ⊥-elim (dis-recv₂ dis st₁′ st₂ rQ Q∈)
     ... | inj₂ (_ , st₂ , _) | inj₂ (_ , st₂′ , _) =
-      W₂.recv-overlap⇒same-comm st₂ st₂′ rov
-    parWB .WellBehaved.sender≢receiver {G} st
-      with pairView n₁ n₂ G
-    ... | is-pair a b with pstep-inv n₁ n₂ {a = a} {b = b} st
-    ... | inj₁ (_ , st₁ , _) = W₁.sender≢receiver st₁
-    ... | inj₂ (_ , st₂ , _) = W₂.sender≢receiver st₂
+      W₂.recv-overlap st₂ st₂′ rQ Q∈
     parWB .WellBehaved.step-deterministic {G} st st′
       with pairView n₁ n₂ G
     ... | is-pair a b
@@ -239,52 +259,53 @@ module Definitions.Graph.NetworkWB (N : ℕ) where
       ⊥-elim (dis-¬share dis st₁′ st₂ refl)
     ... | inj₂ (_ , st₂ , refl) | inj₂ (_ , st₂′ , refl) =
       cong (mkPair a) (W₂.step-deterministic st₂ st₂′)
-    parWB .WellBehaved.step-sort-deterministic {G} st st′
+    -- Cross-side: `Q` receives on one side and acts on the other.
+    parWB .WellBehaved.step-sort-det {G} st st′ eq eq′
       with pairView n₁ n₂ G
     ... | is-pair a b
       with pstep-inv n₁ n₂ {a = a} {b = b} st
          | pstep-inv n₁ n₂ {a = a} {b = b} st′
     ... | inj₁ (_ , st₁ , _) | inj₁ (_ , st₁′ , _) =
-      W₁.step-sort-deterministic st₁ st₁′
+      W₁.step-sort-det st₁ st₁′ eq eq′
     ... | inj₁ (_ , st₁ , _) | inj₂ (_ , st₂′ , _) =
-      ⊥-elim (dis-¬share dis st₁ st₂′ refl)
+      ⊥-elim (dis-recv₁ dis st₁ st₂′ (_ , _ , eq) (_ , eq′))
     ... | inj₂ (_ , st₂ , _) | inj₁ (_ , st₁′ , _) =
-      ⊥-elim (dis-¬share dis st₁′ st₂ refl)
+      ⊥-elim (dis-recv₂ dis st₁′ st₂ (_ , _ , eq) (_ , eq′))
     ... | inj₂ (_ , st₂ , _) | inj₂ (_ , st₂′ , _) =
-      W₂.step-sort-deterministic st₂ st₂′
-    parWB .WellBehaved.step-arity-deterministic {G} st st′
+      W₂.step-sort-det st₂ st₂′ eq eq′
+    parWB .WellBehaved.step-arity-det {G} st st′ eq eq′
       with pairView n₁ n₂ G
     ... | is-pair a b
       with pstep-inv n₁ n₂ {a = a} {b = b} st
          | pstep-inv n₁ n₂ {a = a} {b = b} st′
     ... | inj₁ (_ , st₁ , _) | inj₁ (_ , st₁′ , _) =
-      W₁.step-arity-deterministic st₁ st₁′
+      W₁.step-arity-det st₁ st₁′ eq eq′
     ... | inj₁ (_ , st₁ , _) | inj₂ (_ , st₂′ , _) =
-      ⊥-elim (dis-¬share dis st₁ st₂′ refl)
+      ⊥-elim (dis-recv₁ dis st₁ st₂′ (_ , _ , eq) (_ , eq′))
     ... | inj₂ (_ , st₂ , _) | inj₁ (_ , st₁′ , _) =
-      ⊥-elim (dis-¬share dis st₁′ st₂ refl)
+      ⊥-elim (dis-recv₂ dis st₁′ st₂ (_ , _ , eq) (_ , eq′))
     ... | inj₂ (_ , st₂ , _) | inj₂ (_ , st₂′ , _) =
-      W₂.step-arity-deterministic st₂ st₂′
+      W₂.step-arity-det st₂ st₂′ eq eq′
     parWB .WellBehaved.step-is-prop st st′ =
       cong nstep (T-irrelevant (un st) (un st′))
-    parWB .WellBehaved.no-new-branch/step {G} {G′} st r∉β stᵢ stⱼ′
+    parWB .WellBehaved.no-new-branch/step {G} {G′} st idle stᵢ stⱼ′ ceq
       with pairView n₁ n₂ G
     ... | is-pair a b
       with pstep-inv n₁ n₂ {a = a} {b = b} st
-    parWB .WellBehaved.no-new-branch/step _ r∉β stᵢ stⱼ′
+    parWB .WellBehaved.no-new-branch/step _ idle stᵢ stⱼ′ ceq
       | is-pair a b | inj₁ (a′ , st₁ , refl)
       with pstep-inv n₁ n₂ {a = a′} {b = b} stⱼ′
     ... | inj₂ (bⱼ , st₂ⱼ , _) =
-      -- the γ-branch lives in the untouched right component
+      -- the γ′-branch lives in the untouched right component
       mkPair a bⱼ , stepR {b = b} {b′ = bⱼ} a st₂ⱼ
     ... | inj₁ (aⱼ , st₁ⱼ , _)
       with pstep-inv n₁ n₂ {a = a} {b = b} stᵢ
     ...   | inj₂ (_ , st₂ᵢ , _) =
-      ⊥-elim (dis-¬share dis st₁ⱼ st₂ᵢ refl)
+      ⊥-elim (dis-¬share dis st₁ⱼ st₂ᵢ ceq)
     ...   | inj₁ (_ , st₁ᵢ , _) =
-      let aⱼ₀ , st₁ⱼ₀ = W₁.no-new-branch/step st₁ r∉β st₁ᵢ st₁ⱼ
+      let aⱼ₀ , st₁ⱼ₀ = W₁.no-new-branch/step st₁ idle st₁ᵢ st₁ⱼ ceq
       in mkPair aⱼ₀ b , stepL {a = a} {a′ = aⱼ₀} b st₁ⱼ₀
-    parWB .WellBehaved.no-new-branch/step _ r∉β stᵢ stⱼ′
+    parWB .WellBehaved.no-new-branch/step _ idle stᵢ stⱼ′ ceq
       | is-pair a b | inj₂ (b′ , st₂ , refl)
       with pstep-inv n₁ n₂ {a = a} {b = b′} stⱼ′
     ... | inj₁ (aⱼ , st₁ⱼ , _) =
@@ -292,30 +313,10 @@ module Definitions.Graph.NetworkWB (N : ℕ) where
     ... | inj₂ (bⱼ , st₂ⱼ , _)
       with pstep-inv n₁ n₂ {a = a} {b = b} stᵢ
     ...   | inj₁ (_ , st₁ᵢ , _) =
-      ⊥-elim (dis-¬share dis st₁ᵢ st₂ⱼ refl)
+      ⊥-elim (dis-¬share dis st₁ᵢ st₂ⱼ (sym ceq))
     ...   | inj₂ (_ , st₂ᵢ , _) =
-      let bⱼ₀ , st₂ⱼ₀ = W₂.no-new-branch/step st₂ r∉β st₂ᵢ st₂ⱼ
+      let bⱼ₀ , st₂ⱼ₀ = W₂.no-new-branch/step st₂ idle st₂ᵢ st₂ⱼ ceq
       in mkPair a bⱼ₀ , stepR {b = b} {b′ = bⱼ₀} a st₂ⱼ₀
-    parWB .WellBehaved.no-new-comm/step {G} {G′} st s∉β r∉β stγ
-      with pairView n₁ n₂ G
-    ... | is-pair a b
-      with pstep-inv n₁ n₂ {a = a} {b = b} st
-    parWB .WellBehaved.no-new-comm/step _ s∉β r∉β stγ
-      | is-pair a b | inj₁ (a′ , st₁ , refl)
-      with pstep-inv n₁ n₂ {a = a′} {b = b} stγ
-    ... | inj₂ (bγ , st₂γ , _) =
-      mkPair a bγ , stepR {b = b} {b′ = bγ} a st₂γ
-    ... | inj₁ (aγ , st₁γ , _) =
-      let aγ₀ , st₁γ₀ = W₁.no-new-comm/step st₁ s∉β r∉β st₁γ
-      in mkPair aγ₀ b , stepL {a = a} {a′ = aγ₀} b st₁γ₀
-    parWB .WellBehaved.no-new-comm/step _ s∉β r∉β stγ
-      | is-pair a b | inj₂ (b′ , st₂ , refl)
-      with pstep-inv n₁ n₂ {a = a} {b = b′} stγ
-    ... | inj₁ (aγ , st₁γ , _) =
-      mkPair aγ b , stepL {a = a} {a′ = aγ} b st₁γ
-    ... | inj₂ (bγ , st₂γ , _) =
-      let bγ₀ , st₂γ₀ = W₂.no-new-comm/step st₂ s∉β r∉β st₂γ
-      in mkPair a bγ₀ , stepR {b = b} {b′ = bγ₀} a st₂γ₀
     parWB .WellBehaved.stepback/~ {α} {G₀} {G₁} {G₁′} pr st
       with pairView n₁ n₂ G₀ | pairView n₁ n₂ G₁′
     ... | is-pair a b | is-pair c′ d′
@@ -346,3 +347,46 @@ module Definitions.Graph.NetworkWB (N : ℕ) where
     ... | inj₂ (b₁ , st₂ , refl) | inj₂ (b₂ , st₂′ , refl) =
       let b₃ , d₁ , d₂ = W₂.step-diamond st₂ st₂′ ind
       in mkPair a b₃ , stepR {b = b₁} {b′ = b₃} a d₁ , stepR {b = b₂} {b′ = b₃} a d₂
+
+  -- ── the synchronous facts, compositionally ──
+  --
+  -- The product's action IS a side's action, so `balanced` is the side's;
+  -- `no-new-comm` needs no disjointness (a side's enabledness depends only
+  -- on its own state).
+
+  module ParSync
+    (n₁ n₂ : Net)
+    (sy₁ : Synchronous (netTheory n₁))
+    (sy₂ : Synchronous (netTheory n₂))
+    where
+
+    private
+      module S₁ = Synchronous sy₁
+      module S₂ = Synchronous sy₂
+
+    parSync : Synchronous (netTheory (n₁ ∥ n₂))
+    parSync .Synchronous.balanced {G} st
+      with pairView n₁ n₂ G
+    ... | is-pair a b with pstep-inv n₁ n₂ {a = a} {b = b} st
+    ... | inj₁ (_ , st₁ , _) = S₁.balanced st₁
+    ... | inj₂ (_ , st₂ , _) = S₂.balanced st₂
+    parSync .Synchronous.no-new-comm/step {G} {G′} st idle stγ
+      with pairView n₁ n₂ G
+    ... | is-pair a b
+      with pstep-inv n₁ n₂ {a = a} {b = b} st
+    parSync .Synchronous.no-new-comm/step _ idle stγ
+      | is-pair a b | inj₁ (a′ , st₁ , refl)
+      with pstep-inv n₁ n₂ {a = a′} {b = b} stγ
+    ... | inj₂ (bγ , st₂γ , _) =
+      mkPair a bγ , stepR {b = b} {b′ = bγ} a st₂γ
+    ... | inj₁ (aγ , st₁γ , _) =
+      let aγ₀ , st₁γ₀ = S₁.no-new-comm/step st₁ idle st₁γ
+      in mkPair aγ₀ b , stepL {a = a} {a′ = aγ₀} b st₁γ₀
+    parSync .Synchronous.no-new-comm/step _ idle stγ
+      | is-pair a b | inj₂ (b′ , st₂ , refl)
+      with pstep-inv n₁ n₂ {a = a} {b = b′} stγ
+    ... | inj₁ (aγ , st₁γ , _) =
+      mkPair aγ b , stepL {a = a} {a′ = aγ} b st₁γ
+    ... | inj₂ (bγ , st₂γ , _) =
+      let bγ₀ , st₂γ₀ = S₂.no-new-comm/step st₂ idle st₂γ
+      in mkPair a bγ₀ , stepR {b = b} {b′ = bγ₀} a st₂γ₀

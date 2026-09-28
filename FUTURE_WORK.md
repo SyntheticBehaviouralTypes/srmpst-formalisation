@@ -189,7 +189,10 @@ Two facts that already hold and should be used:
 * **`PFree` is finer than disjointness of participants.** `Disjoint`
   separates *receivers* only, and a sender may appear on both sides. So
   per-participant `pfree?` takes the slow path only for participants that
-  genuinely straddle.
+  genuinely straddle. (`PFree` is unchanged by the multicast rework,
+  2026-09-28; `Disjoint` now also requires every edge on both sides to have
+  a receiver, `HasRecv`, through which `parWB` refutes cross-side "same
+  comm" cases — `PLAN.md` D4.)
 
 ---
 
@@ -310,7 +313,7 @@ measured (see the top of this file), and `README.md` is current.
 | file | what |
 |---|---|
 | `Stale/NetworkProject.agda.stale` | `projL`/`projR`, the trace lemmas, and **`project`** over the retired `⊢a`: §A's starting point. `LiftStmt` is stated there and is FALSE as written (§A.3). |
-| `Definitions/Graph/NetworkWB.agda` | `PFree`/`pfree?`/`pfree⇒na`; `Disjoint`; `ParWB` with `~-pair`/`~-projL`/`~-projR`/`dis-⋄`. |
+| `Definitions/Graph/NetworkWB.agda` | `PFree`/`pfree?`/`pfree⇒na`; `Disjoint` (with `HasRecv`); `ParWB` with `~-pair`/`~-projL`/`~-projR`/`dis-⋄`; `ParSync`. |
 | `Definitions/Graph/Network.agda` | `nedges`, `mkPair`, `stepL`/`stepR`/`pstep-inv`, the `nix`/`nst` bijection, `present`. |
 | `Definitions/Typing/Alg.agda` | the set-indexed `⊢a` that §A must be restated over: `WaitV`, `Unskip`, `Var`, `Diag`, `a/var`, `a/rec`. |
 | `Definitions/Graph/Reachability.agda` | `reachVia` (the specification) and `reachFix`/`reachFix≡` (what to compute). |

@@ -26,6 +26,7 @@ open import Check
 import Definitions.Typing as Typing
 
 open import Definitions.Graph.Algebra 3
+open import Data.Fin.Subset using (⁅_⁆)
 open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
@@ -41,9 +42,9 @@ module NonRecursive where
   -- A --bool--> B --bool--> C --bool--> A, end
   round : OpenGraph 0
   round =
-    (A ⟶ B # mkChoice here s/bool) ∙
-    ((B ⟶ C # mkChoice here s/bool) ∙
-     ((C ⟶ A # mkChoice here s/bool) ∙ end))
+    (A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙
+    ((B ⟶ ⁅ C ⁆ # mkChoice here s/bool) ∙
+     ((C ⟶ ⁅ A ⁆ # mkChoice here s/bool) ∙ end))
 
   wbg : WBGraph {N = 3}
   wbg = buildG round
@@ -51,13 +52,13 @@ module NonRecursive where
   open Typing.MPST (wb-of wbg) using (⊢s_∶_)
 
   p/A : Proc 0 0
-  p/A = B ! here < val (v/bool true) >∙ (Σ C ？· (∅ ∷ []))
+  p/A = ⁅ B ⁆ ! here < val (v/bool true) >∙ (Σ C ？· (∅ ∷ []))
 
   p/B : Proc 0 0
-  p/B = Σ A ？· ((C ! here < val (v/bool true) >∙ ∅) ∷ [])
+  p/B = Σ A ？· ((⁅ C ⁆ ! here < val (v/bool true) >∙ ∅) ∷ [])
 
   p/C : Proc 0 0
-  p/C = Σ B ？· ((A ! here < val (v/bool true) >∙ ∅) ∷ [])
+  p/C = Σ B ？· ((⁅ A ⁆ ! here < val (v/bool true) >∙ ∅) ∷ [])
 
   M : Session
   M = p/A ∷ p/B ∷ p/C ∷ []
@@ -73,9 +74,9 @@ module Recursive where
   -- unfinished.
   round : OpenGraph 0
   round =
-    μ ((A ⟶ B # mkChoice here s/bool) ∙
-       ((B ⟶ C # mkChoice here s/bool) ∙
-        ((C ⟶ A # mkChoice here s/bool) ∙ var zero)))
+    μ ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙
+       ((B ⟶ ⁅ C ⁆ # mkChoice here s/bool) ∙
+        ((C ⟶ ⁅ A ⁆ # mkChoice here s/bool) ∙ var zero)))
 
   wbg : WBGraph {N = 3}
   wbg = buildG round
@@ -83,16 +84,16 @@ module Recursive where
   open Typing.MPST (wb-of wbg) using (⊢s_∶_)
 
   p/A : Proc 0 0
-  p/A = rec (B ! here < val (v/bool true) >∙
+  p/A = rec (⁅ B ⁆ ! here < val (v/bool true) >∙
               (Σ C ？· (v zero ∷ [])))
 
   p/B : Proc 0 0
   p/B = rec (Σ A ？·
-              ((C ! here < val (v/bool true) >∙ v zero) ∷ []))
+              ((⁅ C ⁆ ! here < val (v/bool true) >∙ v zero) ∷ []))
 
   p/C : Proc 0 0
   p/C = rec (Σ B ？·
-              ((A ! here < val (v/bool true) >∙ v zero) ∷ []))
+              ((⁅ A ⁆ ! here < val (v/bool true) >∙ v zero) ∷ []))
 
   M : Session
   M = p/A ∷ p/B ∷ p/C ∷ []

@@ -30,6 +30,8 @@ import Definitions.Typing as Typing
 here : Fin 1
 here = zero
 
+open import Data.Fin.Subset using (⁅_⁆)
+
 -- A single state with no edges at all.
 module MinimalGraph where
   open import Definitions.Graph.Algebra 1
@@ -60,7 +62,7 @@ module Size2Linear where
   B = suc zero
 
   wbg : WBGraph {N = 2}
-  wbg = buildG ((A ⟶ B # mkChoice here s/bool) ∙ end)
+  wbg = buildG ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ end)
 
   open Typing.MPST (wb-of wbg) using (_&_⊢p_∶_)
 
@@ -83,7 +85,7 @@ module Size3Linear where
   C = suc (suc zero)
 
   wbg : WBGraph {N = 3}
-  wbg = buildG ((A ⟶ B # mkChoice here s/bool) ∙ ((B ⟶ C # mkChoice here s/bool) ∙ end))
+  wbg = buildG ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ ((B ⟶ ⁅ C ⁆ # mkChoice here s/bool) ∙ end))
 
   open Typing.MPST (wb-of wbg) using (_&_⊢p_∶_)
 
@@ -112,7 +114,7 @@ module Size2LinearUninvolved where
   C = suc (suc zero)
 
   wbg : WBGraph {N = 3}
-  wbg = buildG ((A ⟶ B # mkChoice here s/bool) ∙ end)
+  wbg = buildG ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ end)
 
   open Typing.MPST (wb-of wbg) using (_&_⊢p_∶_)
 
@@ -125,7 +127,7 @@ module Size2LinearUninvolved where
 -- A 2-way choice at the root, both branches to the shared `ended`.
 module Size2Choice where
   open import Definitions.Graph.Algebra 2
-  open import Definitions.Actions 2 renaming (_<_> to mkChoice) hiding (_,_)
+  open import Definitions.Actions 2 renaming (_<_> to mkChoice)
   open import Definitions.Proc 2
 
   A B : Fin 2
@@ -138,8 +140,8 @@ module Size2Choice where
 
   round : OpenGraph 0
   round = openGraph 1 (node zero)
-    ( ( ((A ⟶ B # mkChoice lbl0 s/bool) , ended)
-      ∷ ((A ⟶ B # mkChoice lbl1 s/bool) , ended)
+    ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , ended)
+      ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , ended)
       ∷ [] )
     v∷ v[] )
 
@@ -158,7 +160,7 @@ module Size2Choice where
 -- branch continuing `B → C`), checking `A`, who is active at the root.
 module Size3Choice where
   open import Definitions.Graph.Algebra 3
-  open import Definitions.Actions 3 renaming (_<_> to mkChoice) hiding (_,_)
+  open import Definitions.Actions 3 renaming (_<_> to mkChoice)
   open import Definitions.Proc 3
 
   A B C : Fin 3
@@ -172,10 +174,10 @@ module Size3Choice where
 
   round : OpenGraph 0
   round = openGraph 2 (node zero)
-    ( ( ((A ⟶ B # mkChoice lbl0 s/bool) , ended)
-      ∷ ((A ⟶ B # mkChoice lbl1 s/bool) , node (suc zero))
+    ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , ended)
+      ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , node (suc zero))
       ∷ [] )                                              -- s0
-    v∷ ( ((B ⟶ C # mkChoice here s/bool) , ended) ∷ [] )  -- s1
+    v∷ ( ((B ⟶ ⁅ C ⁆ # mkChoice here s/bool) , ended) ∷ [] )  -- s1
     v∷ v[]
     )
 

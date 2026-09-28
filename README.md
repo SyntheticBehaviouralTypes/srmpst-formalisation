@@ -3,12 +3,14 @@
 
 **Abstract:** This repository contains a complete Agda formalisation of the Synthetic Reconstruction of Multiparty Session Types (SRMPST). The formalisation provides mechanized proofs of fundamental safety and liveness properties for concurrent communicating systems, including type safety, progress, and deadlock freedom.
 
-The metatheory is parameterised over an abstract **behavioural theory** (`BTheory`: a carrier with a labelled transition relation) satisfying a bundle of axioms (`WellBehaved`). Safety is proved once, for every well-behaved theory. A concrete instance, finite graphs, is shown separately to satisfy the axioms, and for it typing is **decidable**: the examples are type-checked by running the decision procedure, not by hand-written derivations.
+The metatheory is parameterised over an abstract **behavioural theory** (`BTheory`: a carrier with a labelled transition relation) satisfying a bundle of axioms (`WellBehaved`), plus the two facts that make it synchronous (`Synchronous`). Safety is proved once, for every such theory. A concrete instance, finite graphs, is shown separately to satisfy the axioms, and for it typing is **decidable**: the examples are type-checked by running the decision procedure, not by hand-written derivations.
+
+Sends are **multicasts**: `Qs ! i < E >∙ Pr` sends to every participant in the set `Qs`, and all of them receive in the same step.
 
 ## Status
 
-- **Metatheory: complete.** Preservation, progress and termination are proved for every well-behaved theory.
-- **Equivalence: complete.** The algorithmic judgment `⊢a` is proved equivalent to the declarative `⊢p` for every well-behaved theory. There are no finiteness assumptions.
+- **Metatheory: complete.** Preservation, progress and termination are proved for every well-behaved synchronous theory.
+- **Equivalence: complete.** The algorithmic judgment `⊢a` is proved equivalent to the declarative `⊢p`: `⊢a → ⊢p` for every well-behaved theory, `⊢p → ⊢a` for every well-behaved synchronous one. There are no finiteness assumptions.
 - **Graph model and decision procedure: complete.** Well-behavedness and typing are decidable for finite graphs. Every example is type-checked by running the procedure.
 - **Nets (`∥`, `⨾`): supported by flattening.** Their well-behavedness is certified compositionally, but typing runs the graph checker on the flattened product. Checking a participant against only the sub-net it acts in is the main open line of work (`FUTURE_WORK.md` §A).
 
@@ -26,18 +28,18 @@ No file contains holes or postulates, and every `.agda` file outside `Stale/` ty
 
 ### Definition Modules
 
-- `Definitions/Common.agda` - Participants and labels
-- `Definitions/Actions.agda` - Communication actions and independence
+- `Definitions/Common.agda` - Participants, sets of participants (`PartSet`), labels
+- `Definitions/Actions.agda` - Events, actions (one event per participant), the multicast `P ⟶ Qs # c`, and independence
 - `Definitions/Expr.agda` - Expression language, evaluation and typing
 - `Definitions/Proc.agda` - Process language syntax and operational semantics
 - `Definitions/Guard.agda` - The guardedness lattice
-- `Definitions/Behav.agda` - Behavioural theories (`BTheory`), bisimilarity, and the `WellBehaved` axioms
+- `Definitions/Behav.agda` - Behavioural theories (`BTheory`), bisimilarity, the `WellBehaved` axioms, and `Synchronous`
 
 ### Typing
 
 - `Definitions/Typing/Declarative.agda` - The declarative typing judgment `⊢p` (and `⊢skip`, `⊢s`)
 - `Definitions/Typing/Alg.agda` - The set-indexed algorithmic judgment `⊢a`
-- `Definitions/Typing/AlgDeclarative.agda`, `AlgNorm.agda` - `⊢a ⟺ ⊢p`, for every well-behaved theory
+- `Definitions/Typing/AlgDeclarative.agda`, `AlgNorm.agda` - `⊢a ⟺ ⊢p` (the `→` for every well-behaved theory, the `←` for synchronous ones)
 - `Definitions/Typing/AlgEquiv.agda`, `MainLeaf.agda` - `Wait ⟺ ⊢skip`
 - `Definitions/Typing/Properties.agda`, `Substitution.agda` - Bisimulation and substitution lemmas
 
@@ -49,7 +51,7 @@ No file contains holes or postulates, and every `.agda` file outside `Stale/` ty
 
 ### Concrete Model and Decision Procedure
 
-- `Definitions/Graph.agda`, `Definitions/Graph/*.agda` - Finite graphs as a behavioural theory, with a decision procedure for `WellBehaved`; nets (`∥`, `⨾`) of graphs
+- `Definitions/Graph.agda`, `Definitions/Graph/*.agda` - Finite graphs as a behavioural theory, with decision procedures for `WellBehaved` and `Synchronous`; nets (`∥`, `⨾`) of graphs
 - `Check/Alg.agda` - Deciding `⊢a` over a graph
 - `Check/TypeCheck.agda`, `Check/Graph.agda`, `Check/Network.agda` - Deciding `⊢p` and whole sessions (`typecheck`, `typecheckSession`, `typecheckNet`)
 
@@ -65,7 +67,7 @@ No file contains holes or postulates, and every `.agda` file outside `Stale/` ty
 - `Examples/RecMW.agda` - Recursive map/reduce (Figure 12, c)
 - `Examples/IndepW.agda` - Recursive multiparty worker, built as a net (Figure 12, d)
 
-`Tests/` holds regression tests for the checker and specific counterexamples. `Stale/` holds retired material that is not type-checked, including the `∥` projection proof over the previous judgment (`FUTURE_WORK.md` §A).
+`Tests/` holds regression tests for the checker and specific counterexamples; `Tests/Multicast.agda` covers multicast sends (acceptance, order-free receiver sets, missing or wrong receivers, non-synchronous graphs, a multicast loop). `Stale/` holds retired material that is not type-checked, including the `∥` projection proof over the previous judgment (`FUTURE_WORK.md` §A).
 
 ### Design Records
 
@@ -78,7 +80,7 @@ The formalisation defines a process calculus with the following constructs (`γ`
 
 ```agda
 data Proc (γ δ : ℕ) : Set where
-  _!_<_>∙_       : Part → {I : ℕ} → Fin (suc I) → Exp γ → Proc γ δ → Proc γ δ   -- Send
+  _!_<_>∙_       : PartSet → {I : ℕ} → Fin (suc I) → Exp γ → Proc γ δ → Proc γ δ -- Multicast send
   Σ_？·_          : Part → {I : ℕ} → Vec (Proc (suc γ) δ) (suc I) → Proc γ δ     -- Receive (branching)
   ifp_then_else_ : Exp γ → Proc γ δ → Proc γ δ → Proc γ δ                      -- Conditional
   rec            : Proc γ (suc δ) → Proc γ δ                                    -- Recursion
@@ -86,9 +88,17 @@ data Proc (γ δ : ℕ) : Set where
   ∅              : Proc γ δ                                                     -- Termination
 ```
 
+`PartSet = Subset N` (`Data.Fin.Subset`): receiver sets have no order and no duplicates, so `⁅ B ⁆ ∪ ⁅ C ⁆` and `⁅ C ⁆ ∪ ⁅ B ⁆` are the same set.
+
+## Actions
+
+An action has **one event per participant**: `Action = Vec (Maybe Event) N`, where an event is a send `(! Qs) # c` or a receive `(？ P) # c` (`c` a label and sort). The theory, not the action type, says which events happen together. `P ⟶ Qs # c` is the multicast: `P` sends `c` to `Qs`, and every `Q ∈ Qs` receives `c` from `P`.
+
+`WellBehaved` asks: a receiver of one step that takes part in another means they are the same communication (`recv-overlap`); determinism (`step-deterministic`, `step-is-prop`); receives agree on sort and arity (`step-sort-det`, `step-arity-det`); no branch appears out of nowhere (`no-new-branch/step`); bisimulation step-back (`stepback/~`); and independent steps commute (`step-diamond`; `α ⋄ β` means the actions differ and no receiver of either takes part in the other). `Synchronous` adds that every step is one multicast to a nonempty `Qs` with `P ∉ Qs` (`balanced`) and that no communication appears out of nowhere (`no-new-comm/step`); `Safety/` and `⊢p → ⊢a` use it.
+
 ## Type System
 
-The typing judgment `Γ & Δ ⊢p P ◂ Pr ∶ G` establishes that process `Pr` implements participant `P` at behaviour `G`, under expression context `Γ` and recursion context `Δ`. A whole session is typed by `⊢s M ∶ G`: every participant's process is typed at `G`.
+The typing judgment `Γ & Δ ⊢p P ◂ Pr ∶ G` establishes that process `Pr` implements participant `P` at behaviour `G`, under expression context `Γ` and recursion context `Δ`. Both communication rules ask one question of the theory: is there a step whose event at `P` is `e` (`G -<[ P ↦ e ]>-> G′`)? A whole session is typed by `⊢s M ∶ G`: every participant's process is typed at `G`.
 
 ---
 
@@ -97,7 +107,7 @@ The typing judgment `Γ & Δ ⊢p P ◂ Pr ∶ G` establishes that process `Pr` 
 - Agda 2.8.0
 - Agda Standard Library 2.3
 
-There is no `.agda-lib` file: the standard library must be registered globally (`~/.agda/libraries`).
+There is no `.agda-lib` file: the standard library must be registered globally (`~/.agda/libraries`). Receiver sets use its `Data.Fin.Subset`.
 
 ## Checking the Proof and the Examples
 

@@ -9,12 +9,12 @@
 
 open import Data.Bool using (T)
 open import Data.Nat using (ℕ)
-open import Data.Product using (Σ-syntax; _,_; proj₁; proj₂)
+open import Data.Product using (Σ-syntax; _,_; _×_; proj₁; proj₂)
 open import Data.Vec using ([])
 open import Relation.Nullary using (Dec)
 open import Relation.Nullary.Decidable using (⌊_⌋; toWitness)
 
-open import Definitions.Behav using (WellBehaved)
+open import Definitions.Behav using (WellBehaved; Synchronous)
 import Check.Core as Core
 import Check.TypeCheck
 
@@ -27,26 +27,34 @@ module Check.Graph (N : ℕ) where
   open import Definitions.Graph.Algebra N
     using (RootedGraph; OpenGraph; compile; underlying; initial)
   open import Definitions.Graph.Core N using (graphTheory)
-  open import Definitions.Graph.Decision N using (wellBehaved?)
+  open import Definitions.Graph.Decision N using (wellBehaved?; synchronous?)
   open Check.TypeCheck N using (module TypeCheck)
 
+  -- Both certificates: well-behaved, and synchronous (PLAN.md D3/D7).
   WBGraph : Set
-  WBGraph = Σ[ R ∈ RootedGraph ] T ⌊ wellBehaved? (underlying R) ⌋
+  WBGraph =
+    Σ[ R ∈ RootedGraph ]
+      T ⌊ wellBehaved? (underlying R) ⌋ × T ⌊ synchronous? (underlying R) ⌋
 
   wb-of : (WR : WBGraph) → WellBehaved (graphTheory (underlying (proj₁ WR)))
-  wb-of WR = toWitness (proj₂ WR)
+  wb-of WR = toWitness (proj₁ (proj₂ WR))
+
+  sync-of : (WR : WBGraph) → Synchronous (graphTheory (underlying (proj₁ WR)))
+  sync-of WR = toWitness (proj₂ (proj₂ WR))
 
   buildG :
-    (OG : OpenGraph 0) → {p : T ⌊ wellBehaved? (underlying (compile OG)) ⌋}
+    (OG : OpenGraph 0)
+    → {p : T ⌊ wellBehaved? (underlying (compile OG)) ⌋}
+    → {q : T ⌊ synchronous? (underlying (compile OG)) ⌋}
     → WBGraph
-  buildG OG {p} = compile OG , p
+  buildG OG {p} {q} = compile OG , p , q
 
   typecheck :
     (WR : WBGraph) (P : Part) (Pr : Proc 0 0)
     → Dec (ProcessTyping (underlying (proj₁ WR)) (wb-of WR) [] P Pr
              (initial (proj₁ WR)))
   typecheck WR P Pr =
-    TypeCheck.tc? (underlying (proj₁ WR)) (wb-of WR) [] [] P Pr
+    TypeCheck.tc? (underlying (proj₁ WR)) (wb-of WR) (sync-of WR) [] [] P Pr
       (initial (proj₁ WR))
 
   typecheckSession :
@@ -54,5 +62,5 @@ module Check.Graph (N : ℕ) where
     → Dec (SessionTyping (underlying (proj₁ WR)) (wb-of WR) M
              (initial (proj₁ WR)))
   typecheckSession WR M =
-    TypeCheck.tcSession? (underlying (proj₁ WR)) (wb-of WR) M
+    TypeCheck.tcSession? (underlying (proj₁ WR)) (wb-of WR) (sync-of WR) M
       (initial (proj₁ WR))

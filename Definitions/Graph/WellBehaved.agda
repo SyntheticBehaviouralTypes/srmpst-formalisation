@@ -15,17 +15,22 @@ open import Data.Nat using (ℕ; suc)
 import Data.Nat.Properties as Nat
 open import Data.Product
   using (_×_; _,_; proj₁; proj₂; Σ-syntax)
+open import Data.Fin.Subset using (_∉_; Nonempty)
+open import Data.Fin.Subset.Properties using (_∈?_; nonempty?)
+open import Data.Maybe using (Maybe; just; nothing)
+open import Data.Unit using (⊤; tt)
 open import Function using (_∘_)
 open import Relation.Binary.PropositionalEquality
-  using (_≡_; _≢_; refl; sym)
+  using (_≡_; _≢_; refl; sym; subst₂)
 open import Relation.Nullary using (Dec; yes; no; ¬?)
 open import Relation.Nullary.Decidable using (_×-dec_; _→-dec_)
 
-open import Definitions.Behav using (BTheory; WellBehaved)
+open import Definitions.Behav using (BTheory; WellBehaved; Synchronous)
 open import Definitions.Expr using (_≟Sort_)
 
 module Definitions.Graph.WellBehaved (N : ℕ) where
 
+  open import Definitions.Common N using (PartSet)
   open import Definitions.Actions N
   open import Definitions.Graph.Action N
   open import Definitions.Graph.Core N
@@ -36,12 +41,6 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
 
   EdgeAction : Edge n → Action
   EdgeAction = proj₁
-
-  Proper : Edge n → Set
-  Proper (α , _) = sender α ≢ receiver α
-
-  proper? : (edge : Edge n) → Dec (Proper edge)
-  proper? (α , _) = ¬? (sender α ≟Fin receiver α)
 
   SameTarget : Edge n → Edge n → Set
   SameTarget (α , t) (α′ , t′) = α ≡ α′ → t ≡ t′
@@ -62,13 +61,13 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
 
   RecvCoherent : Edge n → Edge n → Set
   RecvCoherent (α , _) (α′ , _) =
-    receiver α ∈α α′ → Action.comm α ≡ Action.comm α′
+    ∀ Q → Recv α Q → Q ∈α α′ → comm α ≡ comm α′
 
   recvCoherent? :
     (left right : Edge n) → Dec (RecvCoherent left right)
   recvCoherent? (α , _) (α′ , _) =
-    (_∈α?_ (receiver α) α′) →-dec
-      (Action.comm α ≟Comm Action.comm α′)
+    Fin.all? λ Q →
+      Recv? α Q →-dec (Q ∈α? α′) →-dec (comm α ≟Comm comm α′)
 
   BothRecvCoherent : Edge n → Edge n → Set
   BothRecvCoherent left right =
@@ -81,7 +80,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
 
   recvCoherent/refl :
     ∀ {n} (edge : Edge n) → BothRecvCoherent edge edge
-  recvCoherent/refl _ = (λ _ → refl) , (λ _ → refl)
+  recvCoherent/refl _ = (λ _ _ _ → refl) , (λ _ _ _ → refl)
 
   recvCoherent/sym :
     ∀ {n} {left right : Edge n}
@@ -89,15 +88,31 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     → BothRecvCoherent right left
   recvCoherent/sym (left , right) = right , left
 
+  -- Two receive events from the same sender agree on the arity.
+  AgreeArity : Maybe Event → Maybe Event → Set
+  AgreeArity (just ((？ P) # c)) (just ((？ P′) # c′)) =
+    P ≡ P′ → Choice.nchoices c ≡ Choice.nchoices c′
+  AgreeArity _ _ = ⊤
+
+  agreeArity? : ∀ x y → Dec (AgreeArity x y)
+  agreeArity? (just ((？ P) # c)) (just ((？ P′) # c′)) =
+    (P ≟Fin P′) →-dec (Choice.nchoices c Nat.≟ Choice.nchoices c′)
+  agreeArity? nothing            _                   = yes tt
+  agreeArity? (just ((! _) # _)) _                   = yes tt
+  agreeArity? (just ((？ _) # _)) nothing             = yes tt
+  agreeArity? (just ((？ _) # _)) (just ((! _) # _))  = yes tt
+
+  agreeArity/refl : ∀ x → AgreeArity x x
+  agreeArity/refl nothing            = tt
+  agreeArity/refl (just ((! _) # _)) = tt
+  agreeArity/refl (just ((？ _) # _)) = λ _ → refl
+
   SameArity : Edge n → Edge n → Set
-  SameArity (α , _) (α′ , _) =
-    Action.comm α ≡ Action.comm α′
-      → nchoices α ≡ nchoices α′
+  SameArity (α , _) (α′ , _) = ∀ Q → AgreeArity (ev α Q) (ev α′ Q)
 
   sameArity? : (left right : Edge n) → Dec (SameArity left right)
   sameArity? (α , _) (α′ , _) =
-    (Action.comm α ≟Comm Action.comm α′) →-dec
-      (nchoices α Nat.≟ nchoices α′)
+    Fin.all? λ Q → agreeArity? (ev α Q) (ev α′ Q)
 
   BothSameArity : Edge n → Edge n → Set
   BothSameArity left right =
@@ -110,7 +125,8 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
 
   sameArity/refl :
     ∀ {n} (edge : Edge n) → BothSameArity edge edge
-  sameArity/refl _ = (λ _ → refl) , (λ _ → refl)
+  sameArity/refl (α , _) =
+    (λ Q → agreeArity/refl (ev α Q)) , (λ Q → agreeArity/refl (ev α Q))
 
   sameArity/sym :
     ∀ {n} {left right : Edge n}
@@ -118,18 +134,34 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     → BothSameArity right left
   sameArity/sym (left , right) = right , left
 
+  -- Two receive events from the same sender with the same label agree on
+  -- the sort.
+  AgreeSort : Maybe Event → Maybe Event → Set
+  AgreeSort (just ((？ P) # c)) (just ((？ P′) # c′)) =
+    P ≡ P′ → choiceKey c ≡ choiceKey c′ → Choice.sort c ≡ Choice.sort c′
+  AgreeSort _ _ = ⊤
+
+  agreeSort? : ∀ x y → Dec (AgreeSort x y)
+  agreeSort? (just ((？ P) # c)) (just ((？ P′) # c′)) =
+    (P ≟Fin P′) →-dec
+      ((choiceKey c ≟ChoiceKey choiceKey c′) →-dec
+        (Choice.sort c ≟Sort Choice.sort c′))
+  agreeSort? nothing            _                   = yes tt
+  agreeSort? (just ((! _) # _)) _                   = yes tt
+  agreeSort? (just ((？ _) # _)) nothing             = yes tt
+  agreeSort? (just ((？ _) # _)) (just ((! _) # _))  = yes tt
+
+  agreeSort/refl : ∀ x → AgreeSort x x
+  agreeSort/refl nothing            = tt
+  agreeSort/refl (just ((! _) # _)) = tt
+  agreeSort/refl (just ((？ _) # _)) = λ _ _ → refl
+
   SameSort : Edge n → Edge n → Set
-  SameSort (α , _) (α′ , _) =
-    Action.comm α ≡ Action.comm α′
-      → choiceKey (Action.choice α) ≡ choiceKey (Action.choice α′)
-      → sort α ≡ sort α′
+  SameSort (α , _) (α′ , _) = ∀ Q → AgreeSort (ev α Q) (ev α′ Q)
 
   sameSort? : (left right : Edge n) → Dec (SameSort left right)
   sameSort? (α , _) (α′ , _) =
-    (Action.comm α ≟Comm Action.comm α′) →-dec
-      ((choiceKey (Action.choice α)
-          ≟ChoiceKey choiceKey (Action.choice α′)) →-dec
-        (sort α ≟Sort sort α′))
+    Fin.all? λ Q → agreeSort? (ev α Q) (ev α′ Q)
 
   BothSameSort : Edge n → Edge n → Set
   BothSameSort left right =
@@ -142,8 +174,8 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
 
   sameSort/refl :
     ∀ {n} (edge : Edge n) → BothSameSort edge edge
-  sameSort/refl _ =
-    (λ _ _ → refl) , (λ _ _ → refl)
+  sameSort/refl (α , _) =
+    (λ Q → agreeSort/refl (ev α Q)) , (λ Q → agreeSort/refl (ev α Q))
 
   sameSort/sym :
     ∀ {n} {left right : Edge n}
@@ -179,8 +211,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     All
       (λ where
         (γ , _) →
-          sender γ ∉α β
-            × receiver γ ∉α β
+          (∀ X → X ∈α γ → X ∉α β)
             → Available γ (edges G s))
       (edges G t)
 
@@ -191,8 +222,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     All.all?
       (λ where
         (γ , _) →
-          ((_∉α?_ (sender γ) β)
-            ×-dec (_∉α?_ (receiver γ) β))
+          Fin.all? (λ X → (X ∈α? γ) →-dec (X ∉α? β))
           →-dec available? γ (edges G s))
       (edges G t)
 
@@ -202,11 +232,11 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     All
       (λ where
         (α , _) →
-          receiver α ∉α β
+          (∀ Q → Recv α Q → Q ∉α β)
             → All
                 (λ where
                   (α′ , _) →
-                    Action.comm α ≡ Action.comm α′
+                    comm α′ ≡ comm α
                       → Available α′ (edges G s))
                 (edges G t))
       (edges G s)
@@ -218,11 +248,11 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     All.all?
       (λ where
         (α , _) →
-          (_∉α?_ (receiver α) β) →-dec
+          Fin.all? (λ Q → Recv? α Q →-dec (Q ∉α? β)) →-dec
             All.all?
               (λ where
                 (α′ , _) →
-                  (Action.comm α ≟Comm Action.comm α′) →-dec
+                  (comm α′ ≟Comm comm α) →-dec
                     available? α′ (edges G s))
               (edges G t))
       (edges G s)
@@ -267,8 +297,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
   commutes/refl {G} edge@(α , _) = impossible , impossible
     where
       impossible : Commutes G edge edge
-      impossible (receiver∉ , _) =
-        ⊥-elim (∉c→¬∈c receiver∉ (∈R refl))
+      impossible (α≢α , _) = ⊥-elim (α≢α refl)
 
   commutes/sym :
     ∀ {G} {left right : Edge (size G)}
@@ -312,9 +341,6 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
 
   record LocalConditions (G : Graph) : Set where
     field
-      proper :
-        ∀ s → All Proper (edges G s)
-
       deterministic :
         ∀ s → AllPairs SameTarget (edges G s)
 
@@ -327,9 +353,6 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
       same-sort :
         ∀ s → AllPairs BothSameSort (edges G s)
 
-      no-new-comm :
-        ∀ s → All (NoNewAfter G s) (edges G s)
-
       no-new-branch :
         ∀ s → All (NoNewBranchAfter G s) (edges G s)
 
@@ -337,11 +360,6 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
         ∀ s → AllPairs (BothCommute G) (edges G s)
 
   open LocalConditions
-
-  properConditions? :
-    (G : Graph) → Dec (∀ s → All Proper (edges G s))
-  properConditions? G =
-    Fin.all? (λ s → All.all? proper? (edges G s))
 
   deterministicConditions? :
     (G : Graph) → Dec (∀ s → AllPairs SameTarget (edges G s))
@@ -389,52 +407,34 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
 
   localConditions? : (G : Graph) → Dec (LocalConditions G)
   localConditions? G
-    with properConditions? G
-       | deterministicConditions? G
+    with deterministicConditions? G
        | recvConditions? G
        | arityConditions? G
        | sortConditions? G
-       | noNewCommConditions? G
        | noNewBranchConditions? G
        | diamondConditions? G
-  ... | yes proper′ | yes deterministic′ | yes recv′ | yes arity′
-      | yes sort′ | yes no-new′ | yes no-branch′ | yes diamond′ =
+  ... | yes deterministic′ | yes recv′ | yes arity′
+      | yes sort′ | yes no-branch′ | yes diamond′ =
     yes record
-      { proper = proper′
-      ; deterministic = deterministic′
+      { deterministic = deterministic′
       ; recv-coherent = recv′
       ; same-arity = arity′
       ; same-sort = sort′
-      ; no-new-comm = no-new′
       ; no-new-branch = no-branch′
       ; diamond = diamond′
       }
-  ... | no ¬proper | _ | _ | _ | _ | _ | _ | _ =
-    no (¬proper ∘ proper)
-  ... | _ | no ¬deterministic | _ | _ | _ | _ | _ | _ =
+  ... | no ¬deterministic | _ | _ | _ | _ | _ =
     no (¬deterministic ∘ deterministic)
-  ... | _ | _ | no ¬recv | _ | _ | _ | _ | _ =
+  ... | _ | no ¬recv | _ | _ | _ | _ =
     no (¬recv ∘ recv-coherent)
-  ... | _ | _ | _ | no ¬arity | _ | _ | _ | _ =
+  ... | _ | _ | no ¬arity | _ | _ | _ =
     no (¬arity ∘ same-arity)
-  ... | _ | _ | _ | _ | no ¬sort | _ | _ | _ =
+  ... | _ | _ | _ | no ¬sort | _ | _ =
     no (¬sort ∘ same-sort)
-  ... | _ | _ | _ | _ | _ | no ¬no-new | _ | _ =
-    no (¬no-new ∘ no-new-comm)
-  ... | _ | _ | _ | _ | _ | _ | no ¬no-branch | _ =
+  ... | _ | _ | _ | _ | no ¬no-branch | _ =
     no (¬no-branch ∘ no-new-branch)
-  ... | _ | _ | _ | _ | _ | _ | _ | no ¬diamond =
+  ... | _ | _ | _ | _ | _ | no ¬diamond =
     no (¬diamond ∘ diamond)
-
-  sender≢receiver/sound :
-    ∀ {G s α t}
-    → (conditions : LocalConditions G)
-    → _-<_>->_ {G} s α t
-    → sender α ≢ receiver α
-  sender≢receiver/sound {G = G} {s = s} conditions gr =
-    All.lookup
-      (proper conditions s)
-      (step⇒listed {G = G} gr)
 
   step-deterministic/sound :
     ∀ {G s α t t′}
@@ -456,10 +456,10 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     → (conditions : LocalConditions G)
     → _-<_>->_ {G} s α t
     → _-<_>->_ {G} s α′ t′
-    → receiver α ∈α α′
-    → Action.comm α ≡ Action.comm α′
+    → ∀ {Q} → Recv α Q → Q ∈α α′
+    → comm α ≡ comm α′
   recv-coherent/sound
-    {G = G} {s = s} conditions gr gr′ included =
+    {G = G} {s = s} conditions gr gr′ {Q} rQ included =
     proj₁
       (allPairs/member
         {A = Edge (size G)}
@@ -471,17 +471,16 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
         (recv-coherent conditions s)
         (step⇒listed {G = G} gr)
         (step⇒listed {G = G} gr′))
-      included
+      Q rQ included
 
-  arity-deterministic/sound :
+  same-arity/sound :
     ∀ {G s α α′ t t′}
     → (conditions : LocalConditions G)
     → _-<_>->_ {G} s α t
     → _-<_>->_ {G} s α′ t′
-    → Action.comm α ≡ Action.comm α′
-    → nchoices α ≡ nchoices α′
-  arity-deterministic/sound
-    {G = G} {s = s} conditions gr gr′ same-comm =
+    → ∀ Q → AgreeArity (ev α Q) (ev α′ Q)
+  same-arity/sound
+    {G = G} {s = s} conditions gr gr′ =
     proj₁
       (allPairs/member
         {A = Edge (size G)}
@@ -493,18 +492,15 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
         (same-arity conditions s)
         (step⇒listed {G = G} gr)
         (step⇒listed {G = G} gr′))
-      same-comm
 
-  sort-deterministic/sound :
+  same-sort/sound :
     ∀ {G s α α′ t t′}
     → (conditions : LocalConditions G)
     → _-<_>->_ {G} s α t
     → _-<_>->_ {G} s α′ t′
-    → Action.comm α ≡ Action.comm α′
-    → choiceKey (Action.choice α) ≡ choiceKey (Action.choice α′)
-    → sort α ≡ sort α′
-  sort-deterministic/sound
-    {G = G} {s = s} conditions gr gr′ same-comm same-choice =
+    → ∀ Q → AgreeSort (ev α Q) (ev α′ Q)
+  same-sort/sound
+    {G = G} {s = s} conditions gr gr′ =
     proj₁
       (allPairs/member
         {A = Edge (size G)}
@@ -516,68 +512,51 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
         (same-sort conditions s)
         (step⇒listed {G = G} gr)
         (step⇒listed {G = G} gr′))
-      same-comm
-      same-choice
 
-  step-sort-deterministic/sound :
-    ∀ {G s t t′ γ I S T}
+  step-sort-det/sound :
+    ∀ {G s t t′ α α′ P Q I S T}
       {i : Fin (suc I)}
     → (conditions : LocalConditions G)
-    → _-<_>->_ {G} s (γ # i < S >) t
-    → _-<_>->_ {G} s (γ # i < T >) t′
+    → _-<_>->_ {G} s α t
+    → _-<_>->_ {G} s α′ t′
+    → ev α Q ≡ just ((？ P) # i < S >)
+    → ev α′ Q ≡ just ((？ P) # i < T >)
     → S ≡ T
-  step-sort-deterministic/sound conditions gr gr′ =
-    sort-deterministic/sound conditions gr gr′ refl refl
+  step-sort-det/sound {Q = Q} conditions gr gr′ eq eq′ =
+    subst₂ AgreeSort eq eq′ (same-sort/sound conditions gr gr′ Q) refl refl
 
-  step-arity-deterministic/sound :
-    ∀ {G s t t′ γ I J S T}
+  step-arity-det/sound :
+    ∀ {G s t t′ α α′ P Q I J S T}
       {i : Fin (suc I)}
       {j : Fin (suc J)}
     → (conditions : LocalConditions G)
-    → _-<_>->_ {G} s (γ # i < S >) t
-    → _-<_>->_ {G} s (γ # j < T >) t′
+    → _-<_>->_ {G} s α t
+    → _-<_>->_ {G} s α′ t′
+    → ev α Q ≡ just ((？ P) # i < S >)
+    → ev α′ Q ≡ just ((？ P) # j < T >)
     → I ≡ J
-  step-arity-deterministic/sound conditions gr gr′ =
-    arity-deterministic/sound conditions gr gr′ refl
-
-  no-new-comm/sound :
-    ∀ {G s t u β γ}
-    → (conditions : LocalConditions G)
-    → _-<_>->_ {G} s β t
-    → sender γ ∉α β
-    → receiver γ ∉α β
-    → _-<_>->_ {G} t γ u
-    → Σ[ v ∈ State G ] _-<_>->_ {G} s γ v
-  no-new-comm/sound
-    {G = G} {s = s} conditions grβ sender∉ receiver∉ grγ =
-    let after =
-          All.lookup
-            (no-new-comm conditions s)
-            (step⇒listed {G = G} grβ)
-        available =
-          All.lookup after (step⇒listed {G = G} grγ)
-            (sender∉ , receiver∉)
-        target , member = available/target available
-    in target , listed⇒step {G = G} member
+  step-arity-det/sound {Q = Q} conditions gr gr′ eq eq′ =
+    subst₂ AgreeArity eq eq′ (same-arity/sound conditions gr gr′ Q) refl
 
   no-new-branch/sound :
-    ∀ {G s t u v β γ cᵢ cⱼ}
+    ∀ {G s t u v β γ γ′}
     → (conditions : LocalConditions G)
     → _-<_>->_ {G} s β t
-    → Comm.receiver γ ∉α β
-    → _-<_>->_ {G} s (γ # cᵢ) u
-    → _-<_>->_ {G} t (γ # cⱼ) v
-    → Σ[ w ∈ State G ] _-<_>->_ {G} s (γ # cⱼ) w
+    → (∀ Q → Recv γ Q → Q ∉α β)
+    → _-<_>->_ {G} s γ u
+    → _-<_>->_ {G} t γ′ v
+    → comm γ′ ≡ comm γ
+    → Σ[ w ∈ State G ] _-<_>->_ {G} s γ′ w
   no-new-branch/sound
-    {G = G} {s = s} conditions grβ receiver∉ grᵢ grⱼ =
+    {G = G} {s = s} conditions grβ idle grᵢ grⱼ ceq =
     let after =
           All.lookup
             (no-new-branch conditions s)
             (step⇒listed {G = G} grβ)
         branches =
-          All.lookup after (step⇒listed {G = G} grᵢ) receiver∉
+          All.lookup after (step⇒listed {G = G} grᵢ) idle
         available =
-          All.lookup branches (step⇒listed {G = G} grⱼ) refl
+          All.lookup branches (step⇒listed {G = G} grⱼ) ceq
         target , member = available/target available
     in target , listed⇒step {G = G} member
 
@@ -615,17 +594,98 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     → WellBehaved (graphTheory G)
   wellBehaved G conditions stepback =
     record
-      { recv-overlap⇒same-comm = recv-coherent/sound conditions
-      ; sender≢receiver = sender≢receiver/sound conditions
+      { recv-overlap = λ gr gr′ → recv-coherent/sound conditions gr gr′
       ; step-deterministic = step-deterministic/sound conditions
-      ; step-sort-deterministic =
-          step-sort-deterministic/sound conditions
-      ; step-arity-deterministic =
-          step-arity-deterministic/sound conditions
+      ; step-sort-det = step-sort-det/sound conditions
+      ; step-arity-det = step-arity-det/sound conditions
       ; step-is-prop = λ gr gr′ →
           step-is-prop {G = G} gr gr′
       ; no-new-branch/step = no-new-branch/sound conditions
-      ; no-new-comm/step = no-new-comm/sound conditions
       ; stepback/~ = stepback
       ; step-diamond = step-diamond/sound conditions
+      }
+
+  -- ══════════════════════════════════════════════════════════════════
+  --  The synchronous instance
+  -- ══════════════════════════════════════════════════════════════════
+
+  -- `α` is `P`'s multicast to a nonempty set not containing `P`.  The `ev`
+  -- equation is redundant (it follows from the last one) but is what the
+  -- decision reads.
+  SendsAt : Action → Fin N → Set
+  SendsAt α P =
+    Σ[ Qs ∈ PartSet ] Σ[ c ∈ Choice ]
+      ev α P ≡ just ((! Qs) # c)
+      × P ∉ Qs × Nonempty Qs × α ≡ P ⟶ Qs # c
+
+  sendsAt? : ∀ α P → Dec (SendsAt α P)
+  sendsAt? α P with ev α P
+  ... | nothing            = no λ { (_ , _ , () , _) }
+  ... | just ((？ _) # _)   = no λ { (_ , _ , () , _) }
+  ... | just ((! Qs) # c)
+    with ¬? (P ∈? Qs) ×-dec nonempty? Qs ×-dec (α ≟Action (P ⟶ Qs # c))
+  ...   | yes b = yes (Qs , c , refl , b)
+  ...   | no ¬b = no λ { (_ , _ , refl , b) → ¬b b }
+
+  Balanced : Edge n → Set
+  Balanced (α , _) = Σ[ P ∈ Fin N ] SendsAt α P
+
+  balanced? : (edge : Edge n) → Dec (Balanced edge)
+  balanced? (α , _) = Fin.any? (sendsAt? α)
+
+  record SyncConditions (G : Graph) : Set where
+    field
+      balanced :
+        ∀ s → All Balanced (edges G s)
+
+      no-new-comm :
+        ∀ s → All (NoNewAfter G s) (edges G s)
+
+  open SyncConditions
+
+  syncConditions? : (G : Graph) → Dec (SyncConditions G)
+  syncConditions? G
+    with Fin.all? (λ s → All.all? balanced? (edges G s))
+       | noNewCommConditions? G
+  ... | yes balanced′ | yes no-new′ =
+    yes record { balanced = balanced′ ; no-new-comm = no-new′ }
+  ... | no ¬balanced | _ =
+    no (¬balanced ∘ balanced)
+  ... | _ | no ¬no-new =
+    no (¬no-new ∘ no-new-comm)
+
+  balanced/sound :
+    ∀ {G s α t}
+    → (conditions : SyncConditions G)
+    → _-<_>->_ {G} s α t
+    → Σ[ P ∈ Fin N ] Σ[ Qs ∈ PartSet ] Σ[ c ∈ Choice ]
+        P ∉ Qs × Nonempty Qs × α ≡ P ⟶ Qs # c
+  balanced/sound {G = G} {s = s} conditions gr
+    with All.lookup (balanced conditions s) (step⇒listed {G = G} gr)
+  ... | P , Qs , c , _ , rest = P , Qs , c , rest
+
+  no-new-comm/sound :
+    ∀ {G s t u β γ}
+    → (conditions : SyncConditions G)
+    → _-<_>->_ {G} s β t
+    → (∀ X → X ∈α γ → X ∉α β)
+    → _-<_>->_ {G} t γ u
+    → Σ[ v ∈ State G ] _-<_>->_ {G} s γ v
+  no-new-comm/sound
+    {G = G} {s = s} conditions grβ idle grγ =
+    let after =
+          All.lookup
+            (no-new-comm conditions s)
+            (step⇒listed {G = G} grβ)
+        available =
+          All.lookup after (step⇒listed {G = G} grγ) idle
+        target , member = available/target available
+    in target , listed⇒step {G = G} member
+
+  synchronous :
+    (G : Graph) → SyncConditions G → Synchronous (graphTheory G)
+  synchronous G conditions =
+    record
+      { balanced = balanced/sound conditions
+      ; no-new-comm/step = no-new-comm/sound conditions
       }

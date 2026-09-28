@@ -30,7 +30,7 @@ open import Data.Vec using ([])
 open import Relation.Nullary using (Dec)
 open import Relation.Nullary.Decidable using (⌊_⌋; toWitness)
 
-open import Definitions.Behav using (WellBehaved)
+open import Definitions.Behav using (WellBehaved; Synchronous)
 import Check.Core as Core
 import Check.TypeCheck
 
@@ -43,16 +43,21 @@ module Check.Network (N : ℕ) where
   open import Definitions.Proc N using (Proc; Session)
   open import Definitions.Graph.Algebra N using (underlying; initial)
   open import Definitions.Graph.Bisimulation N using (bisimulationCorrect)
-  open import Definitions.Graph.Decision N using (wellBehaved?; finiteStepback?; stepback/sound)
+  open import Definitions.Graph.Decision N
+    using (wellBehaved?; synchronous?; finiteStepback?; stepback/sound)
   open import Definitions.Graph.Network N
-  open import Definitions.Graph.NetworkPresent N using (pres→net; net→pres)
-  open import Definitions.Graph.NetworkWB N using (disjoint?; module ParWB)
-  open import Definitions.Graph.NetworkSeq N using (seamComm?; seamBranch?; module SeqWB)
+  open import Definitions.Graph.NetworkPresent N
+    using (pres→net; net→pres; pres→netSync; net→presSync)
+  open import Definitions.Graph.NetworkWB N
+    using (disjoint?; module ParWB; module ParSync)
+  open import Definitions.Graph.NetworkSeq N
+    using (seamComm?; seamBranch?; module SeqWB; module SeqSync)
 
   data WBNet : Net → Set where
     base :
       ∀ {G}
       → {p : T ⌊ wellBehaved? (underlying (present (base G))) ⌋}
+      → {q : T ⌊ synchronous? (underlying (present (base G))) ⌋}
       → WBNet (base G)
     _∥_ :
       ∀ {n₁ n₂}
@@ -72,16 +77,27 @@ module Check.Network (N : ℕ) where
     pres→net (base G) (toWitness p)
   netWB {n₁ ∥ n₂} ((w₁ ∥ w₂) {d = d}) =
     ParWB.parWB n₁ n₂ (netWB w₁) (netWB w₂) (toWitness d)
-  netWB {n₁ ⨾ n₂} ((w₁ ⨾ w₂) {sc = sc} {sb = sb} {gs = gs}) =
+  netWB {n₁ ⨾ n₂} ((w₁ ⨾ w₂) {sb = sb} {gs = gs}) =
     SeqWB.seqWB n₁ n₂ (netWB w₁) (netWB w₂)
-      (toWitness sc) (toWitness sb)
+      (toWitness sb)
       (stepback/sound
         (bisimulationCorrect (underlying (present (n₁ ⨾ n₂))))
         (toWitness gs))
 
-  -- the compositional witness, on the presentation's side of the fence
+  netSync : ∀ {n} → WBNet n → Synchronous (netTheory n)
+  netSync {base G} (base {q = q}) =
+    pres→netSync (base G) (toWitness q)
+  netSync {n₁ ∥ n₂} (w₁ ∥ w₂) =
+    ParSync.parSync n₁ n₂ (netSync w₁) (netSync w₂)
+  netSync {n₁ ⨾ n₂} ((w₁ ⨾ w₂) {sc = sc}) =
+    SeqSync.seqSync n₁ n₂ (netSync w₁) (netSync w₂) (toWitness sc)
+
+  -- the compositional witnesses, on the presentation's side of the fence
   wb-net : ∀ {n} → WBNet n → WellBehaved _
   wb-net {n} w = net→pres n (netWB w)
+
+  sync-net : ∀ {n} → WBNet n → Synchronous _
+  sync-net {n} w = net→presSync n (netSync w)
 
   -- Over `Check.TypeCheck`.  Note the checker runs on
   -- the net's finite *presentation* with the transported compositional
@@ -91,7 +107,7 @@ module Check.Network (N : ℕ) where
     → Dec (ProcessTyping (underlying (present n)) (wb-net w) [] P Pr
              (initial (present n)))
   typecheckNet {n} w P Pr =
-    TypeCheck.tc? (underlying (present n)) (wb-net w) [] [] P Pr
+    TypeCheck.tc? (underlying (present n)) (wb-net w) (sync-net w) [] [] P Pr
       (initial (present n))
 
   typecheckSessionNet :
@@ -99,5 +115,5 @@ module Check.Network (N : ℕ) where
     → Dec (SessionTyping (underlying (present n)) (wb-net w) M
              (initial (present n)))
   typecheckSessionNet {n} w M =
-    TypeCheck.tcSession? (underlying (present n)) (wb-net w) M
+    TypeCheck.tcSession? (underlying (present n)) (wb-net w) (sync-net w) M
       (initial (present n))

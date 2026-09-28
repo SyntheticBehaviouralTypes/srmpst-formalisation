@@ -24,7 +24,8 @@ open import Check
 import Definitions.Typing as Typing
 
 open import Definitions.Graph.Algebra 3
-open import Definitions.Actions 3 renaming (_<_> to mkChoice) hiding (_,_)
+open import Data.Fin.Subset using (⁅_⁆)
+open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
 A B C : Fin 3
@@ -45,10 +46,10 @@ here = zero
 nosyn : OpenGraph 0
 nosyn =
   choice
-    ((A ⟶ B # mkChoice here s/unit) ⇒
-      ((A ⟶ C # mkChoice here s/unit) ∙ end))
-    ( ((A ⟶ C # mkChoice here s/unit) ⇒
-        ((A ⟶ B # mkChoice here s/unit) ∙ end))
+    ((A ⟶ ⁅ B ⁆ # mkChoice here s/unit) ⇒
+      ((A ⟶ ⁅ C ⁆ # mkChoice here s/unit) ∙ end))
+    ( ((A ⟶ ⁅ C ⁆ # mkChoice here s/unit) ⇒
+        ((A ⟶ ⁅ B ⁆ # mkChoice here s/unit) ∙ end))
     ∷ [])
 
 wbg : WBGraph {N = 3}
@@ -59,8 +60,8 @@ open Typing.MPST (wb-of wbg) using (⊢s_∶_)
 p/A : Proc 0 0
 p/A =
   ifp is-zero (val (v/nat 0))
-    then (B ! here < val v/unit >∙ (C ! here < val v/unit >∙ ∅))
-    else (C ! here < val v/unit >∙ (B ! here < val v/unit >∙ ∅))
+    then (⁅ B ⁆ ! here < val v/unit >∙ (⁅ C ⁆ ! here < val v/unit >∙ ∅))
+    else (⁅ C ⁆ ! here < val v/unit >∙ (⁅ B ⁆ ! here < val v/unit >∙ ∅))
 
 p/B : Proc 0 0
 p/B = Σ A ？· (∅ v∷ v[])

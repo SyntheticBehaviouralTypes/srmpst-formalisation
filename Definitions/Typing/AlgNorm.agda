@@ -242,8 +242,9 @@ module Definitions.Typing.AlgNorm
 
   endChase inT (skip/main x) = x inT
   endChase (_ , _ , tr/refl , ()) (skip/step _ _ _)
-  endChase (_ , _ , tr/step gr₁ _ , here p) (skip/step _ na _) =
-    ∉c→¬∈c (na gr₁) p
+  endChase {P = P} (_ , _ , tr/step {α = α} gr₁ _ , here p)
+           (skip/step _ na _) =
+    ∉α→¬∈α {P} {α} (na gr₁) p
   endChase (_ , _ , tr/step gr₁ tr , there mem) std@(skip/step _ _ ktd) =
     endChase (_ , _ , tr , mem) (endUnfold std (ktd gr₁))
 
@@ -258,20 +259,20 @@ module Definitions.Typing.AlgNorm
     ---------------------------------------------------------------------
 
     SendL :
-      ∀ {I} → Part → Part → Fin (suc I) → Sort → Proc γ δ → Behavs
-    SendL P Q i S Pr u =
-      ∃[ u′ ] (u -< P ⟶ Q # i < S > >-> u′) × Typ Γ Δ (P ◂ Pr) u′
+      ∀ {I} → Part → PartSet → Fin (suc I) → Sort → Proc γ δ → Behavs
+    SendL P Qs i S Pr u =
+      ∃[ u′ ] (u -<[ P ↦ (! Qs) # i < S > ]>-> u′) × Typ Γ Δ (P ◂ Pr) u′
 
     sendL/closed :
-      ∀ {I P Q}{i : Fin (suc I)}{S}{Pr} → Closed (SendL P Q i S Pr)
-    sendL/closed G~H (_ , gr , td) =
-      _ , ~L→ G~H gr , typ/closed (~L→~ G~H gr) td
+      ∀ {I P Qs}{i : Fin (suc I)}{S}{Pr} → Closed (SendL P Qs i S Pr)
+    sendL/closed G~H (_ , (α , eq , gr) , td) =
+      _ , (α , eq , ~L→ G~H gr) , typ/closed (~L→~ G~H gr) td
 
     sendL/adv :
-      ∀ {I P Q}{i : Fin (suc I)}{S}{Pr} → Advances P (SendL P Q i S Pr)
-    sendL/adv (_ , gr , td) grα P∉α
-      with skip/advance (one grα P∉α) gr (∈S refl)
-    ... | _ , gr′ , tr = _ , gr′ , t/unskip tr td
+      ∀ {I P Qs}{i : Fin (suc I)}{S}{Pr} → Advances P (SendL P Qs i S Pr)
+    sendL/adv {P = P} (_ , (α , eq , gr) , td) grα P∉α
+      with skip/advance {P = P} (one {P = P} grα P∉α) gr (_ , eq)
+    ... | _ , gr′ , tr = _ , (α , eq , gr′) , t/unskip tr td
 
     ---------------------------------------------------------------------
     -- recv
@@ -280,25 +281,30 @@ module Definitions.Typing.AlgNorm
     RecvL :
       ∀ {I} → Part → Part → Vec (Proc (suc γ) δ) (suc I) → Behavs
     RecvL {I} P Q Br u =
-      (Σ[ j ∈ Fin (suc I) ] ∃[ U ] ∃[ t ] (u -< P ⟶ Q # j < U > >-> t))
-      × (∀ {j U t} → u -< P ⟶ Q # j < U > >-> t
+      (Σ[ j ∈ Fin (suc I) ] ∃[ U ] ∃[ t ] (u -<[ Q ↦ (？ P) # j < U > ]>-> t))
+      × (∀ {j U t} → u -<[ Q ↦ (？ P) # j < U > ]>-> t
                    → Typ (U ∷ Γ) Δ (Q ◂ lu Br j) t)
 
     recvL/closed :
       ∀ {I P Q}{Br : Vec (Proc (suc γ) δ) (suc I)} → Closed (RecvL P Q Br)
-    recvL/closed G~H ((j , U , _ , gr) , k) =
-      (j , U , _ , ~L→ G~H gr) ,
-      λ gr′ → typ/closed (~R→~ G~H gr′) (k (~R→ G~H gr′))
+    recvL/closed G~H ((j , U , _ , (α , eq , gr)) , k) =
+      (j , U , _ , (α , eq , ~L→ G~H gr)) ,
+      λ { (α′ , eq′ , gr′) →
+          typ/closed (~R→~ G~H gr′) (k (α′ , eq′ , ~R→ G~H gr′)) }
 
+    -- A branch offered after the `¬Q` step was offered before it
+    -- (`recv/same-comm`, `branch/before`), so `k` covers it.
     recvL/adv :
       ∀ {I P Q}{Br : Vec (Proc (suc γ) δ) (suc I)} → Advances Q (RecvL P Q Br)
-    recvL/adv ((j , U , _ , gr) , k) grα Q∉α
-      with skip/advance (one grα Q∉α) gr (∈R refl)
+    recvL/adv {Q = Q} ((j , U , _ , (α , eq , gr)) , k) grα Q∉α
+      with skip/advance {P = Q} (one {P = Q} grα Q∉α) gr (_ , eq)
     ... | _ , gr′ , _ =
-      (j , U , _ , gr′) ,
-      λ gr″ →
-        let _ , gr₀ , tr₀ = branch/before (one grα Q∉α) gr gr″
-        in t/unskip tr₀ (k gr₀)
+      (j , U , _ , (α , eq , gr′)) ,
+      λ { (α″ , eq″ , gr″) →
+          let tr  = one {P = Q} grα Q∉α
+              ceq = recv/same-comm tr gr (_ , _ , eq) gr″ (_ , _ , eq″)
+              _ , gr₀ , tr₀ = branch/before tr (_ , _ , eq) gr gr″ ceq
+          in t/unskip tr₀ (k (α″ , eq″ , gr₀)) }
 
     ---------------------------------------------------------------------
     -- var and rec: both `After`, so both advance by `skip/cat`
@@ -344,22 +350,22 @@ module Definitions.Typing.AlgNorm
     -- at the sort found.  `⊢e-unique` is what makes "the sort found" and
     -- "every leaf's sort" the same thing.
     SendE :
-      ∀ {I} → Part → Part → Fin (suc I) → Exp γ → Proc γ δ → Behavs
-    SendE P Q i E Pr u =
+      ∀ {I} → Part → PartSet → Fin (suc I) → Exp γ → Proc γ δ → Behavs
+    SendE P Qs i E Pr u =
       Σ[ S ∈ Sort ]
-        ∃[ u′ ] (Γ ⊢e E ∶ S) × (u -< P ⟶ Q # i < S > >-> u′)
+        ∃[ u′ ] (Γ ⊢e E ∶ S) × (u -<[ P ↦ (! Qs) # i < S > ]>-> u′)
               × Typ Γ Δ (P ◂ Pr) u′
 
     sendE/closed :
-      ∀ {I P Q}{i : Fin (suc I)}{E}{Pr} → Closed (SendE P Q i E Pr)
-    sendE/closed G~H (S , _ , etd , gr , td) =
-      S , _ , etd , ~L→ G~H gr , typ/closed (~L→~ G~H gr) td
+      ∀ {I P Qs}{i : Fin (suc I)}{E}{Pr} → Closed (SendE P Qs i E Pr)
+    sendE/closed G~H (S , _ , etd , (α , eq , gr) , td) =
+      S , _ , etd , (α , eq , ~L→ G~H gr) , typ/closed (~L→~ G~H gr) td
 
     sendE/adv :
-      ∀ {I P Q}{i : Fin (suc I)}{E}{Pr} → Advances P (SendE P Q i E Pr)
-    sendE/adv (S , _ , etd , gr , td) grα P∉α
-      with skip/advance (one grα P∉α) gr (∈S refl)
-    ... | _ , gr′ , tr = S , _ , etd , gr′ , t/unskip tr td
+      ∀ {I P Qs}{i : Fin (suc I)}{E}{Pr} → Advances P (SendE P Qs i E Pr)
+    sendE/adv {P = P} (S , _ , etd , (α , eq , gr) , td) grα P∉α
+      with skip/advance {P = P} (one {P = P} grα P∉α) gr (_ , eq)
+    ... | _ , gr′ , tr = S , _ , etd , (α , eq , gr′) , t/unskip tr td
 
     -- `if`: the guard's typing, constant in the state.
     IfE : Exp γ → Behavs
@@ -389,10 +395,10 @@ module Definitions.Typing.AlgNorm
     mutual
 
       sendWait :
-        ∀ {I P Q}{i : Fin (suc I)}{S E}{Pr : Proc γ δ}{G}
+        ∀ {I P Qs}{i : Fin (suc I)}{S E}{Pr : Proc γ δ}{G}
         → Γ ⊢e E ∶ S
-        → Γ & Δ ⊢p P ◂ Q ! i < E >∙ Pr ∶ G
-        → WaitV P (SendL {Γ = Γ} {Δ = Δ} P Q i S Pr) (λ _ → ⊥) G
+        → Γ & Δ ⊢p P ◂ Qs ! i < E >∙ Pr ∶ G
+        → WaitV P (SendL {Γ = Γ} {Δ = Δ} P Qs i S Pr) (λ _ → ⊥) G
 
       sendWait etd (t/send gr etd′ td)
         rewrite ⊢e-unique etd′ etd = wv/leaf (_ , gr , td)
@@ -407,10 +413,10 @@ module Definitions.Typing.AlgNorm
           ⊥-elim′ ()
 
       sendTree :
-        ∀ {ξ}{Ξ : Vec Behav ξ}{I P Q}{i : Fin (suc I)}{S E}{Pr : Proc γ δ}{G}
+        ∀ {ξ}{Ξ : Vec Behav ξ}{I P Qs}{i : Fin (suc I)}{S E}{Pr : Proc γ δ}{G}
         → Γ ⊢e E ∶ S
-        → (Γ & Δ ⊢p_∶_) & Ξ ⊢skip P ◂ Q ! i < E >∙ Pr ∶ G
-        → WaitV P (SendL {Γ = Γ} {Δ = Δ} P Q i S Pr) (Vof Ξ) G
+        → (Γ & Δ ⊢p_∶_) & Ξ ⊢skip P ◂ Qs ! i < E >∙ Pr ∶ G
+        → WaitV P (SendL {Γ = Γ} {Δ = Δ} P Qs i S Pr) (Vof Ξ) G
 
       sendTree etd (skip/main td) =
         waitV/mono (λ ()) (sendWait etd td)
@@ -549,9 +555,9 @@ module Definitions.Typing.AlgNorm
     mutual
 
       sendEWait :
-        ∀ {I P Q}{i : Fin (suc I)}{E}{Pr : Proc γ δ}{G}
-        → Γ & Δ ⊢p P ◂ Q ! i < E >∙ Pr ∶ G
-        → WaitV P (SendE {Γ = Γ} {Δ = Δ} P Q i E Pr) (λ _ → ⊥) G
+        ∀ {I P Qs}{i : Fin (suc I)}{E}{Pr : Proc γ δ}{G}
+        → Γ & Δ ⊢p P ◂ Qs ! i < E >∙ Pr ∶ G
+        → WaitV P (SendE {Γ = Γ} {Δ = Δ} P Qs i E Pr) (λ _ → ⊥) G
 
       sendEWait (t/send gr etd td) =
         wv/leaf (_ , _ , etd , gr , td)
@@ -566,9 +572,9 @@ module Definitions.Typing.AlgNorm
           ⊥-elim′ ()
 
       sendETree :
-        ∀ {ξ}{Ξ : Vec Behav ξ}{I P Q}{i : Fin (suc I)}{E}{Pr : Proc γ δ}{G}
-        → (Γ & Δ ⊢p_∶_) & Ξ ⊢skip P ◂ Q ! i < E >∙ Pr ∶ G
-        → WaitV P (SendE {Γ = Γ} {Δ = Δ} P Q i E Pr) (Vof Ξ) G
+        ∀ {ξ}{Ξ : Vec Behav ξ}{I P Qs}{i : Fin (suc I)}{E}{Pr : Proc γ δ}{G}
+        → (Γ & Δ ⊢p_∶_) & Ξ ⊢skip P ◂ Qs ! i < E >∙ Pr ∶ G
+        → WaitV P (SendE {Γ = Γ} {Δ = Δ} P Qs i E Pr) (Vof Ξ) G
 
       sendETree (skip/main td) =
         waitV/mono (λ ()) (sendEWait td)
@@ -765,83 +771,95 @@ module Definitions.Typing.AlgNorm
   Entry : ∀ {γ δ} → Vec Sort γ → Part → Proc γ (suc δ) → States δ
   Entry Γ P Pr (ws , W) = Γ & (W ∷ ws) ⊢p P ◂ Pr ∶ W
 
-  sendAt :
-    ∀ {γ δ}{Γ : Vec Sort γ}{I P Q}{i : Fin (suc I)}{S E}{Pr : Proc γ δ}
-    → Γ ⊢e E ∶ S
-    → Post (P ⟶ Q # i < S >) (Front P (Typed Γ (P ◂ Q ! i < E >∙ Pr)))
-      ⊆ Typed Γ (P ◂ Pr)
-
-  sendAt etd {ws , t} (_ , ((_ , td , run) , _) , gr)
-    with waitLeaf gr (∈S refl)
-           (waitFollow sendL/closed sendL/adv (sendWait etd td) (idle⇒unskip run))
-  ... | _ , gr′ , td′ rewrite step-deterministic gr gr′ = td′
-
   recvAt :
     ∀ {γ δ}{Γ : Vec Sort γ}{I P Q}{Br : Vec (Proc (suc γ) δ) (suc I)}{j U}
-    → Post (P ⟶ Q # j < U >) (Front Q (Typed Γ (Q ◂ Σ P ？· Br)))
+    → Post Q ((？ P) # j < U >) (Front Q (Typed Γ (Q ◂ Σ P ？· Br)))
       ⊆ Typed (U ∷ Γ) (Q ◂ lu Br j)
 
-  recvAt {Br = Br}{j}{U}{ws , t} (_ , ((_ , td , run) , _) , gr)
-    with waitLeaf gr (∈R refl)
+  recvAt {Q = Q}{Br = Br}{j}{U}{ws , t}
+         (_ , ((_ , td , run) , _) , (α , eq , gr))
+    with waitLeaf {Q} gr (_ , eq)
            (waitFollow (recvL/closed {Br = Br}) (recvL/adv {Br = Br})
               (recvWait td) (idle⇒unskip run))
-  ... | _ , k = k gr
+  ... | _ , k = k (α , eq , gr)
 
-  mutual
+  -- The send case needs the SYNCHRONOUS instance: `a/send` types the
+  -- continuation after EVERY step with `P`'s event, `t/send` after one, and
+  -- only `balanced` (via `send-det`) makes those the same step.
+  module _ (sync : Synchronous B) where
+    open Synchronous sync using (send-det)
 
-    typing⇒alg :
-      ∀ {γ δ}{Γ : Vec Sort γ}{P}(Pr : Proc γ δ){ws G}
+    sendAt :
+      ∀ {γ δ}{Γ : Vec Sort γ}{I P Qs}{i : Fin (suc I)}{S E}{Pr : Proc γ δ}
+      → Γ ⊢e E ∶ S
+      → Post P ((! Qs) # i < S >) (Front P (Typed Γ (P ◂ Qs ! i < E >∙ Pr)))
+        ⊆ Typed Γ (P ◂ Pr)
+
+    sendAt {P = P} etd {ws , t} (_ , ((_ , td , run) , _) , (α , eq , gr))
+      with waitLeaf {P} gr (_ , eq)
+             (waitFollow sendL/closed sendL/adv (sendWait etd td)
+               (idle⇒unskip run))
+    ... | _ , (α′ , eq′ , gr′) , td′
+      with send-det gr gr′ eq eq′
+    ...   | refl rewrite step-deterministic gr gr′ = td′
+
+    mutual
+
+      typing⇒alg :
+        ∀ {γ δ}{Γ : Vec Sort γ}{P}(Pr : Proc γ δ){ws G}
+        → Γ & ws ⊢p P ◂ Pr ∶ G
+        → Γ ⊢a P ◂ Pr ∶ Typed Γ (P ◂ Pr)
+
+      typing⇒alg (Qs ! i < E >∙ Pr) td
+        with waitFind (Qs ! i < E >∙ Pr) (sendEWait td)
+      ... | _ , _ , _ , etd , _ , cont =
+        a/send etd
+          (λ td′ → waitV/leaf-mono (λ { (_ , gr , _) → _ , gr })
+                     (sendWait etd td′))
+          (alg/mono (sendAt etd) (typing⇒alg Pr cont))
+
+      typing⇒alg (Σ Q ？· Br) td =
+        a/recv
+          (λ td′ → waitV/leaf-mono proj₁ (recvWait td′))
+          (λ { {j} (_ , x∈) →
+               alg/mono (recvAt {Br = Br})
+                 (typBr Br j (recvAt {Br = Br} x∈)) })
+
+      typing⇒alg (ifp E then A else B) td
+        with waitFind (ifp E then A else B) (ifEWait td)
+      ... | _ , etd =
+        a/if etd
+          (alg/mono ifTrue  (typing⇒alg A (ifTrue td)))
+          (alg/mono ifFalse (typing⇒alg B (ifFalse td)))
+
+      typing⇒alg ∅ td = a/end endNotin
+
+      typing⇒alg (v X) td = a/var varWait
+
+      typing⇒alg {Γ = Γ}{P} (rec Pr) td
+        with waitFind (rec Pr) (recGWait td) | waitFind (rec Pr) (recWait td)
+      ... | _ , guarded | _ , _ , aW , _ =
+        a/rec {𝒜 = Entry Γ P Pr} guarded
+          (alg/mono (λ { {_ ∷ _ , _} (aW′ , W~s) → typ/closed W~s aW′ })
+                    (typing⇒alg Pr aW))
+          recWait
+
+      typBr :
+        ∀ {γ δ n}{Γ : Vec Sort γ}{Q}
+          (Br : Vec (Proc (suc γ) δ) n)(j : Fin n){U ws t}
+        → (U ∷ Γ) & ws ⊢p Q ◂ lu Br j ∶ t
+        → (U ∷ Γ) ⊢a Q ◂ lu Br j ∶ Typed (U ∷ Γ) (Q ◂ lu Br j)
+
+      typBr (B ∷ Bs) zero    w = typing⇒alg B w
+      typBr (B ∷ Bs) (suc j) w = typBr Bs j w
+
+    -- ════════════════════════════════════════════════════════════════
+    --  The boundary `Safety/` uses
+    -- ════════════════════════════════════════════════════════════════
+
+    td⇒at :
+      ∀ {γ δ}{Γ : Vec Sort γ}{P}{Pr : Proc γ δ}{ws G}
       → Γ & ws ⊢p P ◂ Pr ∶ G
-      → Γ ⊢a P ◂ Pr ∶ Typed Γ (P ◂ Pr)
+      → Γ ⊢at P ◂ Pr ∶ (ws , G)
 
-    typing⇒alg (Q ! i < E >∙ Pr) td
-      with waitFind (Q ! i < E >∙ Pr) (sendEWait td)
-    ... | _ , _ , _ , etd , _ , cont =
-      a/send etd
-        (λ td′ → waitV/leaf-mono (λ { (_ , gr , _) → _ , gr }) (sendWait etd td′))
-        (alg/mono (sendAt etd) (typing⇒alg Pr cont))
-
-    typing⇒alg (Σ Q ？· Br) td =
-      a/recv
-        (λ td′ → waitV/leaf-mono proj₁ (recvWait td′))
-        (λ { {j} (_ , x∈) →
-             alg/mono (recvAt {Br = Br}) (typBr Br j (recvAt {Br = Br} x∈)) })
-
-    typing⇒alg (ifp E then A else B) td
-      with waitFind (ifp E then A else B) (ifEWait td)
-    ... | _ , etd =
-      a/if etd
-        (alg/mono ifTrue  (typing⇒alg A (ifTrue td)))
-        (alg/mono ifFalse (typing⇒alg B (ifFalse td)))
-
-    typing⇒alg ∅ td = a/end endNotin
-
-    typing⇒alg (v X) td = a/var varWait
-
-    typing⇒alg {Γ = Γ}{P} (rec Pr) td
-      with waitFind (rec Pr) (recGWait td) | waitFind (rec Pr) (recWait td)
-    ... | _ , guarded | _ , _ , aW , _ =
-      a/rec {𝒜 = Entry Γ P Pr} guarded
-        (alg/mono (λ { {_ ∷ _ , _} (aW′ , W~s) → typ/closed W~s aW′ })
-                  (typing⇒alg Pr aW))
-        recWait
-
-    typBr :
-      ∀ {γ δ n}{Γ : Vec Sort γ}{Q}
-        (Br : Vec (Proc (suc γ) δ) n)(j : Fin n){U ws t}
-      → (U ∷ Γ) & ws ⊢p Q ◂ lu Br j ∶ t
-      → (U ∷ Γ) ⊢a Q ◂ lu Br j ∶ Typed (U ∷ Γ) (Q ◂ lu Br j)
-
-    typBr (B ∷ Bs) zero    w = typing⇒alg B w
-    typBr (B ∷ Bs) (suc j) w = typBr Bs j w
-
-  -- ══════════════════════════════════════════════════════════════════
-  --  The boundary `Safety/` uses
-  -- ══════════════════════════════════════════════════════════════════
-
-  td⇒at :
-    ∀ {γ δ}{Γ : Vec Sort γ}{P}{Pr : Proc γ δ}{ws G}
-    → Γ & ws ⊢p P ◂ Pr ∶ G
-    → Γ ⊢at P ◂ Pr ∶ (ws , G)
-
-  td⇒at {Pr = Pr} td = _ , typing⇒alg Pr td , td
+    td⇒at {Pr = Pr} td = _ , typing⇒alg Pr td , td

@@ -37,7 +37,8 @@ open import Check
 import Definitions.Typing as Typing
 
 open import Definitions.Graph.Algebra 3
-open import Definitions.Actions 3 renaming (_<_> to mkChoice) hiding (_,_)
+open import Data.Fin.Subset using (⁅_⁆)
+open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
 A B C : Fin 3
@@ -54,11 +55,11 @@ lbl1 = suc zero
 -- s0 --A→B[1]--> s2 --B→C[1]--> ended    (`ended` is the DSL's unique end)
 round : OpenGraph 0
 round = openGraph 3 (node zero)
-  ( ( ((A ⟶ B # mkChoice lbl0 s/bool) , node (suc zero))
-    ∷ ((A ⟶ B # mkChoice lbl1 s/bool) , node (suc (suc zero)))
+  ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , node (suc zero))
+    ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , node (suc (suc zero)))
     ∷ [] )                                                            -- s0
-  v∷ ( ((B ⟶ C # mkChoice lbl0 s/bool) , ended) ∷ [] )                 -- s1
-  v∷ ( ((B ⟶ C # mkChoice lbl1 s/bool) , ended) ∷ [] )                 -- s2
+  v∷ ( ((B ⟶ ⁅ C ⁆ # mkChoice lbl0 s/bool) , ended) ∷ [] )             -- s1
+  v∷ ( ((B ⟶ ⁅ C ⁆ # mkChoice lbl1 s/bool) , ended) ∷ [] )             -- s2
   v∷ v[]
   )
 

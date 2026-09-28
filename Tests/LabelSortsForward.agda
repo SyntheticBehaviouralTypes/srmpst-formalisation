@@ -43,7 +43,8 @@ open import Check hiding (base; _∥_; _⨾_)
 import Definitions.Typing as Typing
 
 open import Definitions.Graph.Algebra 3 renaming (var to gvar)
-open import Definitions.Actions 3 renaming (_<_> to mkChoice) hiding (_,_)
+open import Data.Fin.Subset using (⁅_⁆)
+open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
 A B C : Fin 3
@@ -61,10 +62,11 @@ lbl1 = suc zero
 g : OpenGraph 0
 g =
   choice
-    ((A ⟶ C # mkChoice lbl0 s/unit) ⇒
-      ((A ⟶ B # mkChoice here s/nat) ∙ (B ⟶ C # mkChoice here s/nat) ∙ end))
-    ( ((A ⟶ C # mkChoice lbl1 s/unit) ⇒
-        ((A ⟶ B # mkChoice here s/bool) ∙ (B ⟶ C # mkChoice here s/bool) ∙ end))
+    ((A ⟶ ⁅ C ⁆ # mkChoice lbl0 s/unit) ⇒
+      ((A ⟶ ⁅ B ⁆ # mkChoice here s/nat) ∙
+       (B ⟶ ⁅ C ⁆ # mkChoice here s/nat) ∙ end))
+    ( ((A ⟶ ⁅ C ⁆ # mkChoice lbl1 s/unit) ⇒
+        ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ (B ⟶ ⁅ C ⁆ # mkChoice here s/bool) ∙ end))
     ∷ [])
 
 wbg : WBGraph {N = 3}
@@ -75,12 +77,12 @@ open Typing.MPST (wb-of wbg) using (⊢s_∶_)
 p/A : Proc 0 0
 p/A =
   ifp val (v/bool true)
-  then (C ! lbl0 < val v/unit >∙ (B ! here < val (v/nat 0) >∙ ∅))
-  else (C ! lbl1 < val v/unit >∙ (B ! here < val (v/bool true) >∙ ∅))
+  then (⁅ C ⁆ ! lbl0 < val v/unit >∙ (⁅ B ⁆ ! here < val (v/nat 0) >∙ ∅))
+  else (⁅ C ⁆ ! lbl1 < val v/unit >∙ (⁅ B ⁆ ! here < val (v/bool true) >∙ ∅))
 
 -- USES the bound variable, at two different sorts, in one derivation
 p/B : Proc 0 0
-p/B = Σ A ？· ((C ! here < var zero >∙ ∅) v∷ v[])
+p/B = Σ A ？· ((⁅ C ⁆ ! here < var zero >∙ ∅) v∷ v[])
 
 p/C : Proc 0 0
 p/C =

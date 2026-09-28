@@ -95,15 +95,15 @@ module Definitions.Typing.MainLeaf {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
     findRun anc (skip/cycle _ _) tr/refl ()
 
     -- The run's first action is `P`'s, but this node is `P`-inactive.
-    findRun anc (skip/step _ na _) (tr/step gr tr) (here px) =
-      ⊥-elim (∉c→¬∈c (na gr) px)
+    findRun anc (skip/step _ na _) (tr/step {α = α} gr tr) (here px) =
+      ⊥-elim (∉α→¬∈α {P} {α} (na gr) px)
 
     findRun anc (skip/step _ na ktd) (tr/step gr tr) (there mem) =
       findRun (anc/cons na ktd anc) (ktd gr) tr mem
 
     -- At a cycle leaf, replay the run at the ancestor it is `~` to.
-    findRun anc (skip/cycle {X = X} eq _) (tr/step gr tr) (here px) =
-      ⊥-elim (∉c→¬∈c (proj₁ (ancLu anc X) (~R→ eq gr)) px)
+    findRun anc (skip/cycle {X = X} eq _) (tr/step {α = α} gr tr) (here px) =
+      ⊥-elim (∉α→¬∈α {P} {α} (proj₁ (ancLu anc X) (~R→ eq gr)) px)
 
     findRun anc (skip/cycle {X = X} eq _) (tr/step gr tr) (there mem) =
       let A′ , grA , A′~G′  = ~R eq gr

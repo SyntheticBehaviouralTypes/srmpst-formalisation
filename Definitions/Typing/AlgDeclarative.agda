@@ -44,21 +44,24 @@ module Definitions.Typing.AlgDeclarative
     → (ws , G) ∈ 𝒮
     → Γ & ws ⊢p PPr ∶ G
 
-  alg⇒typing {ws = ws}{G} (a/send {P = P}{Q}{i = i}{E = E}{Pr} etd rdy td) mem =
+  alg⇒typing {ws = ws}{G}
+             (a/send {P = P}{Qs}{i = i}{E = E}{Pr} etd rdy td) mem =
     t/skip
       (skip/map
-        (λ { ((_ , gr) , run) →
-             t/send gr etd
-               (alg⇒typing td (_ , ((G , mem , run) , (_ , _ , gr , ∈S refl)) , gr)) })
-        (wait⇒skip P (Q ! i < E >∙ Pr) _ (waitV/walk (rdy {ws , G} mem))))
+        (λ { ((_ , (α , eq , g)) , run) →
+             t/send (α , eq , g) etd
+               (alg⇒typing td
+                 (_ , ((G , mem , run) , (α , _ , g , (_ , eq)))
+                    , (α , eq , g))) })
+        (wait⇒skip P (Qs ! i < E >∙ Pr) _ (waitV/walk (rdy {ws , G} mem))))
 
   alg⇒typing {ws = ws}{G} (a/recv {P = P}{Q}{Br = Br} rdy conts) mem =
     t/skip
       (skip/map
-        (λ { ((_ , _ , _ , gr) , run) →
-             t/recv gr
+        (λ { ((_ , _ , _ , (α , eq , g)) , run) →
+             t/recv (α , eq , g)
                (λ gr′ →
-                 let x∈ = _ , ((G , mem , run) , (_ , _ , gr , ∈R refl)) , gr′
+                 let x∈ = _ , ((G , mem , run) , (α , _ , g , (_ , eq))) , gr′
                  in alg⇒typing (conts (_ , x∈)) x∈) })
         (wait⇒skip Q (Σ P ？· Br) _ (waitV/walk (rdy {ws , G} mem))))
 

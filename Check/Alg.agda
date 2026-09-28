@@ -53,6 +53,7 @@ open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.Empty using (⊥; ⊥-elim)
 open import Data.Unit using (tt)
 open import Data.Bool using (Bool; true; false; T)
+open import Data.Maybe using (just)
 
 open import Function using (_∘_)
 
@@ -83,7 +84,8 @@ module Check.Alg (N : ℕ) where
     using (Matrix; approximation; bisimulationCorrect; sound; complete)
   open import Definitions.Graph.Action N
     using (eqFin; eqFin-sound; eqFin-refl
-          ; eqAction; eqAction-sound; eqAction-refl)
+          ; eqAction; eqAction-sound; eqAction-refl
+          ; eqMaybeEvent; eqMaybeEvent-sound; eqMaybeEvent-refl)
     renaming (_≟Actionᵇ_ to _≟A_)
   open import Definitions.Graph.Reachability N
     using (Step; PathVia; path/nil; path/cons; reachVia; reachFix; reachFix≡; reachVia-sound
@@ -262,6 +264,38 @@ module Check.Alg (N : ℕ) where
         hit : Edge n → Bool
         hit (α′ , t′) = eqAction α′ α ∧ eqFin t′ t
 
+    -- Is `P`'s event in `α` exactly `e`?  One bit.
+    matchEv : Part → Event → Action → Bool
+    matchEv P e α = eqMaybeEvent (ev α P) (just e)
+
+    matchEv-sound : ∀ P e α → T (matchEv P e α) → ev α P ≡ just e
+    matchEv-sound P e α = eqMaybeEvent-sound (ev α P) (just e)
+
+    matchEv-refl : ∀ P e α → ev α P ≡ just e → T (matchEv P e α)
+    matchEv-refl P e α eq =
+      subst (λ x → T (eqMaybeEvent x (just e))) (sym eq)
+        (eqMaybeEvent-refl (just e))
+
+    -- Is there a step `s → t` whose event at `P` is `e`?  Same scan as
+    -- `step?`, testing the event bit instead of the whole action.
+    evstep? : ∀ s P e t → Dec (s -<[ P ↦ e ]>-> t)
+    evstep? s P e t =
+      map′ (λ x →
+             let (α′ , t′) , mem , px = find (any⁻ hit (edges G s) x)
+                 a , b = Equivalence.to T-∧ px
+             in α′ , matchEv-sound P e α′ a
+              , subst (λ z → s -< α′ >-> z) (eqFin-sound b)
+                  (listed⇒step {G = G} mem))
+           (λ { (α′ , eq , gr) →
+                any⁺ hit
+                  (lose (step⇒listed {G = G} gr)
+                    (Equivalence.from T-∧
+                      (matchEv-refl P e α′ eq , eqFin-refl t))) })
+           (T? (Data.List.any hit (edges G s)))
+      where
+        hit : Edge n → Bool
+        hit (α′ , t′) = matchEv P e α′ ∧ eqFin t′ t
+
     Steps : Behav → Set
     Steps s = ∃[ β ] ∃[ u ] s -< β >-> u
 
@@ -301,9 +335,6 @@ module Check.Alg (N : ℕ) where
     Active : Part → Behav → Set
     Active P s = ∃[ α ] ∃[ t ] s -< α >-> t × P ∈α α
 
-    ∉α⇐ : ∀ {P α} → ¬ P ∈α α → P ∉α α
-    ∉α⇐ ¬p = (λ eq → ¬p (∈S eq)) , (λ eq → ¬p (∈R eq))
-
     active⇒? : ∀ P s → Dec (Active P s)
     active⇒? P s with active? G P s
     ... | yes any =
@@ -313,7 +344,7 @@ module Check.Alg (N : ℕ) where
       no λ { (_ , _ , gr , px) → ¬any (∈α-lift G (step⇒listed {G = G} gr) px) }
 
     idle : ∀ {P s} → ¬ Active P s → P not-active-in s
-    idle {P} ¬act {α} gr = ∉α⇐ {P} {α} (λ px → ¬act (_ , _ , gr , px))
+    idle {P} ¬act {α} gr = ¬∈α→∉α {P} {α} (λ px → ¬act (_ , _ , gr , px))
 
     -- ══════════════════════════════════════════════════════════════════
     --  Reachability, as rows of reachable states
@@ -344,7 +375,7 @@ module Check.Alg (N : ℕ) where
          path/cons
            (subst T (sym (ok≡ _)) (fromWitness λ any →
               let (α , u) , mem , px = anyActive→∈ G _ any
-              in ∉c→¬∈c (na (listed⇒step {G = G} mem)) px))
+              in ∉α→¬∈α {P} {α} (na (listed⇒step {G = G} mem)) px))
            gr p
 
     -- `¬P`-labelled runs: plain reachability in the graph without `P`'s edges.
@@ -662,8 +693,9 @@ module Check.Alg (N : ℕ) where
         ... | no ¬l with inT? s ×-dec vis? V s
         ...   | yes (inT , anc) = yes (wv/cycle (s , anc , ~refl) inT)
         ...   | no ¬cyc with act? s
-        ...     | yes (_ , _ , gr , px) =
-          no λ w → let _ , _ , _ , na , _ = stuck {V} ¬l ¬cyc w in ∉c→¬∈c (na gr) px
+        ...     | yes (α , _ , gr , px) =
+          no λ w → let _ , _ , _ , na , _ = stuck {V} ¬l ¬cyc w
+                   in ∉α→¬∈α {P} {α} (na gr) px
         ...     | no ¬act with moves? s
         ...       | no ¬st =
           no λ w → let β , u , gr , _ = stuck {V} ¬l ¬cyc w in ¬st (β , u , gr)
@@ -718,13 +750,13 @@ module Check.Alg (N : ℕ) where
 
       -- ── The sets the rules mention ──
 
-      Post? : ∀ α {X : States δ} → Decidable X → Decidable (Post α X)
+      Post? : ∀ e {X : States δ} → Decidable X → Decidable (Post P e X)
       -- Order in each search: the CHEAPER test first.  Reachability rows are
       -- the expensive tables, so they come after a set lookup; an edge test
       -- is cheaper than a set entry, so it comes first.
-      Post? α X? (ws , t) =
+      Post? e X? (ws , t) =
         map′ (λ (s , gr , x) → s , x , gr) (λ (s , x , gr) → s , gr , x)
-          (FinP.any? (λ s → step? s α t ×-dec X? (ws , s)))
+          (FinP.any? (λ s → evstep? s P e t ×-dec X? (ws , s)))
 
       Front? : {X : States δ} → Decidable X → Decidable (Front P X)
       -- `X` is a probe set (small, already tabulated); an idle-reachability
@@ -733,12 +765,13 @@ module Check.Alg (N : ℕ) where
         map′ (λ (a , r) → r , a) (λ (r , a) → a , r)
           (act? u ×-dec FinP.any? (λ s → X? (ws , s) ×-dec walk? s u))
 
-      Dom? : ∀ α → Decidable (Dom {δ = δ} α)
-      Dom? α (_ , s) = FinP.any? (step? s α)
+      Dom? : ∀ e → Decidable (Dom {δ = δ} P e)
+      Dom? e (_ , s) = FinP.any? (evstep? s P e)
 
       Offers? : ∀ Q I → Decidable (Offers {δ = δ} Q P I)
       Offers? Q I (_ , s) =
-        FinP.any? λ j → any-sort? λ U → FinP.any? (step? s (Q ⟶ P # j < U >))
+        FinP.any? λ j → any-sort? λ U →
+          FinP.any? (evstep? s P ((？ Q) # j < U >))
 
       Ended? : Decidable (Ended {δ = δ} P)
       Ended? (_ , s) = ¬? (inT? s)
@@ -755,12 +788,13 @@ module Check.Alg (N : ℕ) where
       Diag? : {X : States δ} → Decidable X → Decidable (Diag X)
       Diag? X? (W ∷ ws , s) = X? (ws , W) ×-dec bisim? W s
 
-      -- A send or receive: the states `α` out of the frontier of `𝒮`.
-      After : Action → States δ → States δ
-      After α 𝒮 = Post α (Front P 𝒮)
+      -- A send or receive: the states out of the frontier of `𝒮` by a step
+      -- whose event at `P` is `e`.
+      After : Event → States δ → States δ
+      After e 𝒮 = Post P e (Front P 𝒮)
 
-      After? : ∀ α {𝒮 : States δ} → Decidable 𝒮 → Decidable (After α 𝒮)
-      After? α 𝒮? = Post? α (memo (Front? 𝒮?))
+      After? : ∀ e {𝒮 : States δ} → Decidable 𝒮 → Decidable (After e 𝒮)
+      After? e 𝒮? = Post? e (memo (Front? 𝒮?))
 
       -- A `rec`: every state an idle walk from `𝒮` reaches, run back along
       -- `¬P` steps.
@@ -776,81 +810,95 @@ module Check.Alg (N : ℕ) where
       module _ {Γ : Vec Sort γ}{𝒮 : States δ}(𝒮? : Decidable 𝒮) where
 
         send-case :
-          ∀ {Q I}{i : Fin (suc I)}{E S}{Pr : Proc γ δ}
+          ∀ {Qs I}{i : Fin (suc I)}{E S}{Pr : Proc γ δ}
           → Γ ⊢e E ∶ S
-          → (dom? : Decidable (Dom {δ = δ} (P ⟶ Q # i < S >)))   -- a TABLE
-          → Probe Γ P Pr (After (P ⟶ Q # i < S >) 𝒮)
-          → Probe Γ P (Q ! i < E >∙ Pr) 𝒮
-        send-case {Q = Q}{i = i}{E}{S}{Pr} etd dom? r =
+          → (dom? : Decidable (Dom {δ = δ} P ((! Qs) # i < S >)))   -- a TABLE
+          → Probe Γ P Pr (After ((! Qs) # i < S >) 𝒮)
+          → Probe Γ P (Qs ! i < E >∙ Pr) 𝒮
+        send-case {Qs = Qs}{i = i}{E}{S}{Pr} etd dom? r =
           finish 𝒯 𝒯? proj₁ typed max
           where
-            α = P ⟶ Q # i < S >
+            e = (! Qs) # i < S >
 
             𝒯 : States _
             𝒯 (ws , s) =
               (ws , s) ∈ 𝒮 × (ws , s) ∈ Ready dom?
-              × (∀ u t → Star (_⇝[ P ]_) s u → u -< α >-> t → (ws , t) ∈ hit r)
+              × (∀ u t → Star (_⇝[ P ]_) s u → u -<[ P ↦ e ]>-> t
+                       → (ws , t) ∈ hit r)
 
             𝒯? : Decidable 𝒯
-            -- Scans each reachable `u`'s edges, not every `(u , t)`.
+            -- Scans each reachable `u`'s edges, not every `(u , t)`; the
+            -- event test is one bit (`matchEv`).
             𝒯? (ws , s) =
               𝒮? (ws , s) ×-dec Ready? dom? (ws , s)
-              ×-dec map′ (λ all u t run gr → all u run α t gr refl)
-                         (λ all u run α′ t gr → λ { refl → all u t run gr })
+              ×-dec map′ (λ { all u t run (α′ , eq , gr) →
+                              all u run α′ t gr (matchEv-refl P e α′ eq) })
+                         (λ all u run α′ t gr b →
+                            all u t run (α′ , matchEv-sound P e α′ b , gr))
                       (FinP.all? λ u → walk? s u →-dec
-                         all-out? u (λ α′ t → (α′ ≟A α) →-dec hit? r (ws , t)))
+                         all-out? u (λ α′ t →
+                           T? (matchEv P e α′) →-dec hit? r (ws , t)))
 
-            typed : Satisfiable 𝒯 → Γ ⊢a P ◂ Q ! i < E >∙ Pr ∶ 𝒯
+            typed : Satisfiable 𝒯 → Γ ⊢a P ◂ Qs ! i < E >∙ Pr ∶ 𝒯
             typed ((ws , s) , x∈) =
               a/send etd (λ {x} x∈′ → ready→ {L? = dom?}{x} (proj₁ (proj₂ x∈′)))
                 (from-hit r
                    (λ { {ws′ , t} (u , ((s′ , s∈ , run) , _) , gr) →
                         proj₂ (proj₂ s∈) u t run gr })
-                   (let u , (t , gr) , run =
-                          leaf {L = Dom α}{ws}{s}
+                   (let u , (t , (α , eq , g)) , run =
+                          leaf {L = Dom P e}{ws}{s}
                             (ready→ {L? = dom?}{ws , s} (proj₁ (proj₂ x∈)))
-                    in (ws , t) , u , ((s , x∈ , run) , (α , t , gr , ∈S refl)) , gr))
+                    in (ws , t) , u
+                     , ((s , x∈ , run) , (α , t , g , (_ , eq)))
+                     , (α , eq , g)))
 
-            max : ∀ {𝒰} → Γ ⊢a P ◂ Q ! i < E >∙ Pr ∶ 𝒰 → 𝒰 ∩ 𝒮 ⊆ 𝒯
+            max : ∀ {𝒰} → Γ ⊢a P ◂ Qs ! i < E >∙ Pr ∶ 𝒰 → 𝒰 ∩ 𝒮 ⊆ 𝒯
             max (a/send etd′ rdy td) {ws , s} (x∈𝒰 , x∈𝒮) with ⊢e-unique etd′ etd
             ... | refl =
               x∈𝒮 , →ready {L? = dom?}{ws , s} (rdy {ws , s} x∈𝒰) ,
-              λ u t run gr →
-                into-hit r td
-                  ( (u , ((s , x∈𝒰 , run) , (α , t , gr , ∈S refl)) , gr)
-                  , (u , ((s , x∈𝒮 , run) , (α , t , gr , ∈S refl)) , gr) )
+              λ { u t run (α , eq , g) →
+                  into-hit r td
+                    ( (u , ((s , x∈𝒰 , run) , (α , t , g , (_ , eq)))
+                         , (α , eq , g))
+                    , (u , ((s , x∈𝒮 , run) , (α , t , g , (_ , eq)))
+                         , (α , eq , g)) ) }
 
         -- `res` is a TABLE of the branch probes, one per `(j , U)`.
         recv-case :
           ∀ {Q I}{Br : Vec (Proc (suc γ) δ) (suc I)}
           → (offers? : Decidable (Offers {δ = δ} Q P I))   -- a TABLE
           → AllFin (suc I) (λ j → Sorted λ U →
-              Probe (U ∷ Γ) P (lookup Br j) (After (Q ⟶ P # j < U >) 𝒮))
+              Probe (U ∷ Γ) P (lookup Br j) (After ((？ Q) # j < U >) 𝒮))
           → Probe Γ P (Σ Q ？· Br) 𝒮
         recv-case {Q = Q}{I}{Br} offers? tbl =
           finish 𝒯 𝒯? proj₁ typed max
           where
-            α : Fin (suc I) → Sort → Action
-            α j U = Q ⟶ P # j < U >
+            e : Fin (suc I) → Sort → Event
+            e j U = (？ Q) # j < U >
 
-            res : ∀ j U → Probe (U ∷ Γ) P (lookup Br j) (After (α j U) 𝒮)
+            res : ∀ j U → Probe (U ∷ Γ) P (lookup Br j) (After (e j U) 𝒮)
             res j U = lookupSort (lookupAll tbl j) U
 
             𝒯 : States _
             𝒯 (ws , s) =
               (ws , s) ∈ 𝒮 × (ws , s) ∈ Ready offers?
-              × (∀ j U u t → Star (_⇝[ P ]_) s u → u -< α j U >-> t
+              × (∀ j U u t → Star (_⇝[ P ]_) s u → u -<[ P ↦ e j U ]>-> t
                            → (ws , t) ∈ hit (res j U))
 
             𝒯? : Decidable 𝒯
             -- Scans each reachable `u`'s edges, not every `(u , t)`.
             𝒯? (ws , s) =
               𝒮? (ws , s) ×-dec Ready? offers? (ws , s)
-              ×-dec map′ (λ all j U u t run gr → all u run (α j U) t gr j U refl)
-                         (λ all u run α′ t gr j U → λ { refl → all j U u t run gr })
+              ×-dec map′ (λ { all j U u t run (α′ , eq , gr) →
+                              all u run α′ t gr j U
+                                (matchEv-refl P (e j U) α′ eq) })
+                         (λ all u run α′ t gr j U b →
+                            all j U u t run
+                              (α′ , matchEv-sound P (e j U) α′ b , gr))
                       (FinP.all? λ u → walk? s u →-dec
                          all-out? u (λ α′ t → FinP.all? λ j → all-sort? λ U →
-                           (α′ ≟A α j U) →-dec hit? (res j U) (ws , t)))
+                           T? (matchEv P (e j U) α′) →-dec
+                             hit? (res j U) (ws , t)))
 
             typed : Satisfiable 𝒯 → Γ ⊢a P ◂ Σ Q ？· Br ∶ 𝒯
             typed _ =
@@ -864,10 +912,12 @@ module Check.Alg (N : ℕ) where
             max : ∀ {𝒰} → Γ ⊢a P ◂ Σ Q ？· Br ∶ 𝒰 → 𝒰 ∩ 𝒮 ⊆ 𝒯
             max (a/recv rdy conts) {ws , s} (x∈𝒰 , x∈𝒮) =
               x∈𝒮 , →ready {L? = offers?}{ws , s} (rdy {ws , s} x∈𝒰) ,
-              λ j U u t run gr →
-                let y∈𝒰 = u , ((s , x∈𝒰 , run) , (α j U , t , gr , ∈R refl)) , gr
-                    y∈C = u , ((s , x∈𝒮 , run) , (α j U , t , gr , ∈R refl)) , gr
-                in into-hit (res j U) (conts (_ , y∈𝒰)) (y∈𝒰 , y∈C)
+              λ { j U u t run (α , eq , g) →
+                  let y∈𝒰 = u , ((s , x∈𝒰 , run) , (α , t , g , (_ , eq)))
+                              , (α , eq , g)
+                      y∈C = u , ((s , x∈𝒮 , run) , (α , t , g , (_ , eq)))
+                              , (α , eq , g)
+                  in into-hit (res j U) (conts (_ , y∈𝒰)) (y∈𝒰 , y∈C) }
 
         if-case :
           ∀ {E}{A B : Proc γ δ}
@@ -952,18 +1002,18 @@ module Check.Alg (N : ℕ) where
           ∀ {γ δ}(Γ : Vec Sort γ)(Pr : Proc γ δ)(𝒮 : States δ)
           → Decidable 𝒮 → Probe Γ P Pr 𝒮
 
-        probe Γ (Q ! i < E >∙ Pr) 𝒮 𝒮?
+        probe Γ (Qs ! i < E >∙ Pr) 𝒮 𝒮?
           with any-sort? (exp? Γ E)
         ... | no ¬e = none λ { (a/send etd _ _) _ → ¬e (_ , etd) }
         ... | yes (S , etd) =
-          send-case 𝒮? etd (memo (Dom? (P ⟶ Q # i < S >)))
-            (probe Γ Pr (After (P ⟶ Q # i < S >) 𝒮)
-               (memo (After? (P ⟶ Q # i < S >) 𝒮?)))
+          send-case 𝒮? etd (memo (Dom? ((! Qs) # i < S >)))
+            (probe Γ Pr (After ((! Qs) # i < S >) 𝒮)
+               (memo (After? ((! Qs) # i < S >) 𝒮?)))
 
         probe Γ (Σ Q ？· Br) 𝒮 𝒮? =
           recv-case 𝒮? (memo (Offers? Q _)) (tabulateAll λ j → tabulateSort λ U →
-            branch Br j (U ∷ Γ) (After (Q ⟶ P # j < U >) 𝒮)
-              (memo (After? (Q ⟶ P # j < U >) 𝒮?)))
+            branch Br j (U ∷ Γ) (After ((？ Q) # j < U >) 𝒮)
+              (memo (After? ((？ Q) # j < U >) 𝒮?)))
 
         probe Γ (ifp E then A else B) 𝒮 𝒮?
           with exp? Γ E s/bool

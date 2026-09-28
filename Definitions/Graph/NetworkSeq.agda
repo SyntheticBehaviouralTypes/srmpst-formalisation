@@ -36,11 +36,11 @@ open import Data.Product
   using (_×_; _,_; proj₁; proj₂; ∃-syntax; Σ-syntax)
 open import Data.Sum using (inj₁; inj₂)
 open import Relation.Binary.PropositionalEquality
-  using (_≡_; refl; sym; trans; cong; subst)
+  using (_≡_; _≢_; refl; sym; trans; cong; subst)
 open import Relation.Nullary using (Dec; yes; no; ¬_)
 open import Relation.Nullary.Decidable using (map′; _→-dec_)
 
-open import Definitions.Behav using (BTheory; WellBehaved)
+open import Definitions.Behav using (BTheory; WellBehaved; Synchronous)
 
 module Definitions.Graph.NetworkSeq (N : ℕ) where
 
@@ -114,15 +114,14 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
       (t , there m)  → ¬ex (t , m)
 
   -- `no-new-comm/step` at the seam: an action available at `n₂`'s start
-  -- whose sender and receiver are both uninvolved in a seam-entering action
-  -- `β` must already be available just before the seam.
+  -- none of whose participants is involved in a seam-entering action `β`
+  -- must already be available just before the seam.
   SeamComm : Net → Net → Set
   SeamComm n₁ n₂ =
     ∀ i {β γ u}
     → (β , nend) ∈ nedges n₁ (nst n₁ i)
     → (γ , u) ∈ nedges n₂ (ninit n₂)
-    → sender γ ∉α β
-    → receiver γ ∉α β
+    → (∀ X → X ∈α γ → X ∉α β)
     → ∃[ t₀ ] (γ , t₀) ∈ nedges n₁ (nst n₁ i)
 
   seamComm? : ∀ n₁ n₂ → Dec (SeamComm n₁ n₂)
@@ -134,8 +133,9 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
             nEq? n₁ (proj₂ e₁) nend →-dec
             All.all?
               (λ e₂ →
-                (sender (proj₁ e₂) ∉α? proj₁ e₁) →-dec
-                (receiver (proj₁ e₂) ∉α? proj₁ e₁) →-dec
+                FinP.all?
+                  (λ X → (X ∈α? proj₁ e₂) →-dec (X ∉α? proj₁ e₁))
+                →-dec
                 findAction (proj₁ e₂) (nedges n₁ (nst n₁ i)))
               (nedges n₂ (ninit n₂)))
           (nedges n₁ (nst n₁ i)))
@@ -147,14 +147,13 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
             proj₂ e₁ ≡ nend →
             All.All
               (λ e₂ →
-                sender (proj₁ e₂) ∉α proj₁ e₁ →
-                receiver (proj₁ e₂) ∉α proj₁ e₁ →
+                (∀ X → X ∈α proj₁ e₂ → X ∉α proj₁ e₁) →
                 ∃[ t₀ ] (proj₁ e₂ , t₀) ∈ nedges n₁ (nst n₁ i))
               (nedges n₂ (ninit n₂)))
           (nedges n₁ (nst n₁ i)))
       → SeamComm n₁ n₂
-    from as i mβ mγ s∉ r∉ =
-      All.lookup (All.lookup (as i) mβ refl) mγ s∉ r∉
+    from as i mβ mγ idle =
+      All.lookup (All.lookup (as i) mβ refl) mγ idle
 
     to :
       SeamComm n₁ n₂
@@ -164,29 +163,28 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
             proj₂ e₁ ≡ nend →
             All.All
               (λ e₂ →
-                sender (proj₁ e₂) ∉α proj₁ e₁ →
-                receiver (proj₁ e₂) ∉α proj₁ e₁ →
+                (∀ X → X ∈α proj₁ e₂ → X ∉α proj₁ e₁) →
                 ∃[ t₀ ] (proj₁ e₂ , t₀) ∈ nedges n₁ (nst n₁ i))
               (nedges n₂ (ninit n₂)))
           (nedges n₁ (nst n₁ i))
     to sc i =
       All.tabulate λ {e₁} m₁ eq →
-        All.tabulate λ {e₂} m₂ s∉ r∉ →
+        All.tabulate λ {e₂} m₂ idle →
           sc i
             (subst (λ z → (proj₁ e₁ , z) ∈ nedges n₁ (nst n₁ i)) eq m₁)
-            m₂ s∉ r∉
+            m₂ idle
 
-  -- `no-new-branch/step` at the seam: a `γ`-labeled branch available at
-  -- `n₂`'s start, where a branch of the same communication `γ` already
-  -- exists just before the seam and `γ`'s receiver is uninvolved in the
-  -- seam-entering action, must already exist just before the seam.
+  -- `no-new-branch/step` at the seam: a branch available at `n₂`'s start,
+  -- of the same communication as a branch `α₁` that already exists just
+  -- before the seam, whose receivers are uninvolved in the seam-entering
+  -- action, must already exist just before the seam.
   SeamBranch : Net → Net → Set
   SeamBranch n₁ n₂ =
     ∀ i {β α₁ tᵢ α₂ u}
     → (β , nend) ∈ nedges n₁ (nst n₁ i)
     → (α₁ , tᵢ) ∈ nedges n₁ (nst n₁ i)
-    → Action.comm α₂ ≡ Action.comm α₁
-    → Comm.receiver (Action.comm α₁) ∉α β
+    → comm α₂ ≡ comm α₁
+    → (∀ Q → Recv α₁ Q → Q ∉α β)
     → (α₂ , u) ∈ nedges n₂ (ninit n₂)
     → ∃[ tⱼ ] (α₂ , tⱼ) ∈ nedges n₁ (nst n₁ i)
 
@@ -201,21 +199,16 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
               (λ eᵢ →
                 All.all?
                   (λ e₂ →
-                    (Action.comm (proj₁ e₂) ≟Comm Action.comm (proj₁ eᵢ))
+                    (comm (proj₁ e₂) ≟Comm comm (proj₁ eᵢ))
                       →-dec
-                    (Comm.receiver (Action.comm (proj₁ eᵢ)) ∉α? proj₁ e₁)
+                    FinP.all?
+                      (λ Q → Recv? (proj₁ eᵢ) Q →-dec (Q ∉α? proj₁ e₁))
                       →-dec
                     findAction (proj₁ e₂) (nedges n₁ (nst n₁ i)))
                   (nedges n₂ (ninit n₂)))
               (nedges n₁ (nst n₁ i)))
           (nedges n₁ (nst n₁ i)))
     where
-    P₂ : ∀ i → Action × NState n₁ → Action × NState n₂ → Set
-    P₂ i eᵢ e₂ =
-      Action.comm (proj₁ e₂) ≡ Action.comm (proj₁ eᵢ) →
-      Comm.receiver (Action.comm (proj₁ eᵢ)) ∉α proj₁ e₂ →
-      ∃[ tⱼ ] (proj₁ e₂ , tⱼ) ∈ nedges n₁ (nst n₁ i)
-
     from :
       (∀ i →
         All.All
@@ -225,15 +218,15 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
               (λ eᵢ →
                 All.All
                   (λ e₂ →
-                    Action.comm (proj₁ e₂) ≡ Action.comm (proj₁ eᵢ) →
-                    Comm.receiver (Action.comm (proj₁ eᵢ)) ∉α proj₁ e₁ →
+                    comm (proj₁ e₂) ≡ comm (proj₁ eᵢ) →
+                    (∀ Q → Recv (proj₁ eᵢ) Q → Q ∉α proj₁ e₁) →
                     ∃[ tⱼ ] (proj₁ e₂ , tⱼ) ∈ nedges n₁ (nst n₁ i))
                   (nedges n₂ (ninit n₂)))
               (nedges n₁ (nst n₁ i)))
           (nedges n₁ (nst n₁ i)))
       → SeamBranch n₁ n₂
-    from as i mβ mᵢ ceq r∉ m₂ =
-      All.lookup (All.lookup (All.lookup (as i) mβ refl) mᵢ) m₂ ceq r∉
+    from as i mβ mᵢ ceq idle m₂ =
+      All.lookup (All.lookup (All.lookup (as i) mβ refl) mᵢ) m₂ ceq idle
 
     to :
       SeamBranch n₁ n₂
@@ -245,8 +238,8 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
               (λ eᵢ →
                 All.All
                   (λ e₂ →
-                    Action.comm (proj₁ e₂) ≡ Action.comm (proj₁ eᵢ) →
-                    Comm.receiver (Action.comm (proj₁ eᵢ)) ∉α proj₁ e₁ →
+                    comm (proj₁ e₂) ≡ comm (proj₁ eᵢ) →
+                    (∀ Q → Recv (proj₁ eᵢ) Q → Q ∉α proj₁ e₁) →
                     ∃[ tⱼ ] (proj₁ e₂ , tⱼ) ∈ nedges n₁ (nst n₁ i))
                   (nedges n₂ (ninit n₂)))
               (nedges n₁ (nst n₁ i)))
@@ -254,10 +247,28 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
     to sb i =
       All.tabulate λ {e₁} m₁ eq →
         All.tabulate λ {eᵢ} mᵢ →
-          All.tabulate λ {e₂} m₂ ceq r∉ →
+          All.tabulate λ {e₂} m₂ ceq idle →
             sb i
               (subst (λ z → (proj₁ e₁ , z) ∈ nedges n₁ (nst n₁ i)) eq m₁)
-              mᵢ ceq r∉ m₂
+              mᵢ ceq idle m₂
+
+  -- convert an `n₁`-side membership at a live state to the indexed form
+  -- the seam conditions are stated in, and back
+  at₁ :
+    ∀ (n₁ : Net) (a : Live n₁) {α t}
+    → (α , t) ∈ nedges n₁ (live a)
+    → (α , t) ∈ nedges n₁ (nst n₁ (nix n₁ (live a)))
+  at₁ n₁ a m =
+    subst (λ z → (_ , _) ∈ nedges n₁ z)
+      (sym (nst-nix n₁ (live a))) m
+
+  from₁ :
+    ∀ (n₁ : Net) (a : Live n₁) {α t}
+    → (α , t) ∈ nedges n₁ (nst n₁ (nix n₁ (live a)))
+    → (α , t) ∈ nedges n₁ (live a)
+  from₁ n₁ a m =
+    subst (λ z → (_ , _) ∈ nedges n₁ z)
+      (nst-nix n₁ (live a)) m
 
   -- ── the compositional theorem ──
 
@@ -265,7 +276,6 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
     (n₁ n₂ : Net)
     (wb₁ : WellBehaved (netTheory n₁))
     (wb₂ : WellBehaved (netTheory n₂))
-    (scm : SeamComm n₁ n₂)
     (sbr : SeamBranch n₁ n₂)
     (gsb : Stepback (underlying (present (n₁ ⨾ n₂))))
     where
@@ -277,44 +287,16 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
       n⨾ : Net
       n⨾ = n₁ ⨾ n₂
 
-      -- convert an `n₁`-side membership at a live state to the indexed form
-      -- the seam conditions are stated in, and back
-      at₁ :
-        ∀ (a : Live n₁) {α t}
-        → (α , t) ∈ nedges n₁ (live a)
-        → (α , t) ∈ nedges n₁ (nst n₁ (nix n₁ (live a)))
-      at₁ a m =
-        subst (λ z → (_ , _) ∈ nedges n₁ z)
-          (sym (nst-nix n₁ (live a))) m
-
-      from₁ :
-        ∀ (a : Live n₁) {α t}
-        → (α , t) ∈ nedges n₁ (nst n₁ (nix n₁ (live a)))
-        → (α , t) ∈ nedges n₁ (live a)
-      from₁ a m =
-        subst (λ z → (_ , _) ∈ nedges n₁ z)
-          (nst-nix n₁ (live a)) m
-
-
     seqWB : WellBehaved (netTheory n⨾)
-    seqWB .WellBehaved.recv-overlap⇒same-comm {live (inj₂ a)} st st′ rov
+    seqWB .WellBehaved.recv-overlap {live (inj₂ a)} st st′ rQ Q∈
       with sstep-inv₁ n₁ n₂ {a = a} st | sstep-inv₁ n₁ n₂ {a = a} st′
     ... | _ , st₁ , _ | _ , st₁′ , _ =
-      W₁.recv-overlap⇒same-comm st₁ st₁′ rov
-    seqWB .WellBehaved.recv-overlap⇒same-comm {live (inj₁ b)} st st′ rov
+      W₁.recv-overlap st₁ st₁′ rQ Q∈
+    seqWB .WellBehaved.recv-overlap {live (inj₁ b)} st st′ rQ Q∈
       with sstep-inv₂ n₁ n₂ {b = b} st | sstep-inv₂ n₁ n₂ {b = b} st′
     ... | _ , st₂ , _ | _ , st₂′ , _ =
-      W₂.recv-overlap⇒same-comm st₂ st₂′ rov
-    seqWB .WellBehaved.recv-overlap⇒same-comm {nend} st st′ rov =
-      ⊥-elim (nstep-nend-⊥ n⨾ st)
-
-    seqWB .WellBehaved.sender≢receiver {live (inj₂ a)} st
-      with sstep-inv₁ n₁ n₂ {a = a} st
-    ... | _ , st₁ , _ = W₁.sender≢receiver st₁
-    seqWB .WellBehaved.sender≢receiver {live (inj₁ b)} st
-      with sstep-inv₂ n₁ n₂ {b = b} st
-    ... | _ , st₂ , _ = W₂.sender≢receiver st₂
-    seqWB .WellBehaved.sender≢receiver {nend} st =
+      W₂.recv-overlap st₂ st₂′ rQ Q∈
+    seqWB .WellBehaved.recv-overlap {nend} st st′ rQ Q∈ =
       ⊥-elim (nstep-nend-⊥ n⨾ st)
 
     seqWB .WellBehaved.step-deterministic {live (inj₂ a)} st st′
@@ -328,40 +310,43 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
     seqWB .WellBehaved.step-deterministic {nend} st st′ =
       ⊥-elim (nstep-nend-⊥ n⨾ st)
 
-    seqWB .WellBehaved.step-sort-deterministic {live (inj₂ a)} st st′
+    seqWB .WellBehaved.step-sort-det {live (inj₂ a)} st st′ eq eq′
       with sstep-inv₁ n₁ n₂ {a = a} st | sstep-inv₁ n₁ n₂ {a = a} st′
     ... | _ , st₁ , _ | _ , st₁′ , _ =
-      W₁.step-sort-deterministic st₁ st₁′
-    seqWB .WellBehaved.step-sort-deterministic {live (inj₁ b)} st st′
+      W₁.step-sort-det st₁ st₁′ eq eq′
+    seqWB .WellBehaved.step-sort-det {live (inj₁ b)} st st′ eq eq′
       with sstep-inv₂ n₁ n₂ {b = b} st | sstep-inv₂ n₁ n₂ {b = b} st′
     ... | _ , st₂ , _ | _ , st₂′ , _ =
-      W₂.step-sort-deterministic st₂ st₂′
-    seqWB .WellBehaved.step-sort-deterministic {nend} st st′ =
+      W₂.step-sort-det st₂ st₂′ eq eq′
+    seqWB .WellBehaved.step-sort-det {nend} st st′ eq eq′ =
       ⊥-elim (nstep-nend-⊥ n⨾ st)
 
-    seqWB .WellBehaved.step-arity-deterministic {live (inj₂ a)} st st′
+    seqWB .WellBehaved.step-arity-det {live (inj₂ a)} st st′ eq eq′
       with sstep-inv₁ n₁ n₂ {a = a} st | sstep-inv₁ n₁ n₂ {a = a} st′
     ... | _ , st₁ , _ | _ , st₁′ , _ =
-      W₁.step-arity-deterministic st₁ st₁′
-    seqWB .WellBehaved.step-arity-deterministic {live (inj₁ b)} st st′
+      W₁.step-arity-det st₁ st₁′ eq eq′
+    seqWB .WellBehaved.step-arity-det {live (inj₁ b)} st st′ eq eq′
       with sstep-inv₂ n₁ n₂ {b = b} st | sstep-inv₂ n₁ n₂ {b = b} st′
     ... | _ , st₂ , _ | _ , st₂′ , _ =
-      W₂.step-arity-deterministic st₂ st₂′
-    seqWB .WellBehaved.step-arity-deterministic {nend} st st′ =
+      W₂.step-arity-det st₂ st₂′ eq eq′
+    seqWB .WellBehaved.step-arity-det {nend} st st′ eq eq′ =
       ⊥-elim (nstep-nend-⊥ n⨾ st)
 
     seqWB .WellBehaved.step-is-prop st st′ =
       cong nstep (T-irrelevant (un st) (un st′))
 
-    seqWB .WellBehaved.no-new-branch/step {live (inj₂ a)} st r∉ stᵢ stⱼ′
+    seqWB .WellBehaved.no-new-branch/step
+      {live (inj₂ a)} st idle stᵢ stⱼ′ ceq
       with sstep-inv₁ n₁ n₂ {a = a} st | sstep-inv₁ n₁ n₂ {a = a} stᵢ
-    seqWB .WellBehaved.no-new-branch/step {live (inj₂ a)} st r∉ stᵢ stⱼ′
+    seqWB .WellBehaved.no-new-branch/step
+      {live (inj₂ a)} st idle stᵢ stⱼ′ ceq
       | live a′ , st₁ , refl | _ , stᵢ₁ , _
       with sstep-inv₁ n₁ n₂ {a = a′} stⱼ′
     ... | _ , stⱼ₁ , _ =
-      let tⱼ , grⱼ = W₁.no-new-branch/step st₁ r∉ stᵢ₁ stⱼ₁
+      let tⱼ , grⱼ = W₁.no-new-branch/step st₁ idle stᵢ₁ stⱼ₁ ceq
       in seamTo n₁ n₂ tⱼ , stepSeq₁ grⱼ
-    seqWB .WellBehaved.no-new-branch/step {live (inj₂ a)} st r∉ stᵢ stⱼ′
+    seqWB .WellBehaved.no-new-branch/step
+      {live (inj₂ a)} st idle stᵢ stⱼ′ ceq
       | nend , st₁ , refl | _ , stᵢ₁ , _
       with ninit n₂ in eqI
     ... | nend = ⊥-elim (nstep-nend-⊥ n⨾ stⱼ′)
@@ -370,60 +355,27 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
     ...   | _ , stⱼ₂ , _ =
       let tⱼ , mⱼ =
             sbr (nix n₁ (live a))
-              (at₁ a (nstep⇒listed n₁ {s = live a} st₁))
-              (at₁ a (nstep⇒listed n₁ {s = live a} stᵢ₁))
-              refl r∉
+              (at₁ n₁ a (nstep⇒listed n₁ {s = live a} st₁))
+              (at₁ n₁ a (nstep⇒listed n₁ {s = live a} stᵢ₁))
+              ceq idle
               (nstep⇒listed n₂ {s = live c₀} stⱼ₂)
       in seamTo n₁ n₂ tⱼ
-       , stepSeq₁ (nlisted⇒step n₁ {s = live a} (from₁ a mⱼ))
-    seqWB .WellBehaved.no-new-branch/step {live (inj₁ b)} st r∉ stᵢ stⱼ′
+       , stepSeq₁ (nlisted⇒step n₁ {s = live a} (from₁ n₁ a mⱼ))
+    seqWB .WellBehaved.no-new-branch/step
+      {live (inj₁ b)} st idle stᵢ stⱼ′ ceq
       with sstep-inv₂ n₁ n₂ {b = b} st | sstep-inv₂ n₁ n₂ {b = b} stᵢ
-    seqWB .WellBehaved.no-new-branch/step {live (inj₁ b)} st r∉ stᵢ stⱼ′
+    seqWB .WellBehaved.no-new-branch/step
+      {live (inj₁ b)} st idle stᵢ stⱼ′ ceq
       | live b₁ , st₂ , refl | _ , stᵢ₂ , _
       with sstep-inv₂ n₁ n₂ {b = b₁} stⱼ′
     ... | _ , stⱼ₂ , _ =
-      let uⱼ , grⱼ = W₂.no-new-branch/step st₂ r∉ stᵢ₂ stⱼ₂
+      let uⱼ , grⱼ = W₂.no-new-branch/step st₂ idle stᵢ₂ stⱼ₂ ceq
       in injR uⱼ , stepSeq₂ grⱼ
-    seqWB .WellBehaved.no-new-branch/step {live (inj₁ b)} st r∉ stᵢ stⱼ′
+    seqWB .WellBehaved.no-new-branch/step
+      {live (inj₁ b)} st idle stᵢ stⱼ′ ceq
       | nend , st₂ , refl | _ , stᵢ₂ , _ =
       ⊥-elim (nstep-nend-⊥ n⨾ stⱼ′)
-    seqWB .WellBehaved.no-new-branch/step {nend} st r∉ stᵢ stⱼ′ =
-      ⊥-elim (nstep-nend-⊥ n⨾ st)
-
-    seqWB .WellBehaved.no-new-comm/step {live (inj₂ a)} st s∉ r∉ stγ
-      with sstep-inv₁ n₁ n₂ {a = a} st
-    seqWB .WellBehaved.no-new-comm/step {live (inj₂ a)} st s∉ r∉ stγ
-      | live a′ , st₁ , refl
-      with sstep-inv₁ n₁ n₂ {a = a′} stγ
-    ... | _ , stγ₁ , _ =
-      let tγ , grγ = W₁.no-new-comm/step st₁ s∉ r∉ stγ₁
-      in seamTo n₁ n₂ tγ , stepSeq₁ grγ
-    seqWB .WellBehaved.no-new-comm/step {live (inj₂ a)} st s∉ r∉ stγ
-      | nend , st₁ , refl
-      with ninit n₂ in eqI
-    ... | nend = ⊥-elim (nstep-nend-⊥ n⨾ stγ)
-    ... | live c₀
-      with sstep-inv₂ n₁ n₂ {b = c₀} stγ
-    ...   | _ , stγ₂ , _ =
-      let tγ , mγ =
-            scm (nix n₁ (live a))
-              (at₁ a (nstep⇒listed n₁ {s = live a} st₁))
-              (nstep⇒listed n₂ {s = live c₀} stγ₂)
-              s∉ r∉
-      in seamTo n₁ n₂ tγ
-       , stepSeq₁ (nlisted⇒step n₁ {s = live a} (from₁ a mγ))
-    seqWB .WellBehaved.no-new-comm/step {live (inj₁ b)} st s∉ r∉ stγ
-      with sstep-inv₂ n₁ n₂ {b = b} st
-    seqWB .WellBehaved.no-new-comm/step {live (inj₁ b)} st s∉ r∉ stγ
-      | live b₁ , st₂ , refl
-      with sstep-inv₂ n₁ n₂ {b = b₁} stγ
-    ... | _ , stγ₂ , _ =
-      let uγ , grγ = W₂.no-new-comm/step st₂ s∉ r∉ stγ₂
-      in injR uγ , stepSeq₂ grγ
-    seqWB .WellBehaved.no-new-comm/step {live (inj₁ b)} st s∉ r∉ stγ
-      | nend , st₂ , refl =
-      ⊥-elim (nstep-nend-⊥ n⨾ stγ)
-    seqWB .WellBehaved.no-new-comm/step {nend} st s∉ r∉ stγ =
+    seqWB .WellBehaved.no-new-branch/step {nend} st idle stᵢ stⱼ′ ceq =
       ⊥-elim (nstep-nend-⊥ n⨾ st)
 
     seqWB .WellBehaved.stepback/~ rel st =
@@ -472,4 +424,70 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
         with W₂.step-diamond st₁ st₂ ind′
       ... | v , d₁ , d₂ = ⊥-elim (nstep-nend-⊥ n₂ d₂)
     seqWB .WellBehaved.step-diamond {nend} st st′ ind =
+      ⊥-elim (nstep-nend-⊥ n⨾ st)
+
+  -- ── the synchronous facts ──
+  --
+  -- `balanced` by inversion (the action of a `⨾` step is a component's);
+  -- `no-new-comm/step` is local except at the seam, where `SeamComm`
+  -- discharges it.
+
+  module SeqSync
+    (n₁ n₂ : Net)
+    (sy₁ : Synchronous (netTheory n₁))
+    (sy₂ : Synchronous (netTheory n₂))
+    (scm : SeamComm n₁ n₂)
+    where
+
+    private
+      module S₁ = Synchronous sy₁
+      module S₂ = Synchronous sy₂
+
+      n⨾ : Net
+      n⨾ = n₁ ⨾ n₂
+
+    seqSync : Synchronous (netTheory n⨾)
+    seqSync .Synchronous.balanced {live (inj₂ a)} st
+      with sstep-inv₁ n₁ n₂ {a = a} st
+    ... | _ , st₁ , _ = S₁.balanced st₁
+    seqSync .Synchronous.balanced {live (inj₁ b)} st
+      with sstep-inv₂ n₁ n₂ {b = b} st
+    ... | _ , st₂ , _ = S₂.balanced st₂
+    seqSync .Synchronous.balanced {nend} st =
+      ⊥-elim (nstep-nend-⊥ n⨾ st)
+
+    seqSync .Synchronous.no-new-comm/step {live (inj₂ a)} st idle stγ
+      with sstep-inv₁ n₁ n₂ {a = a} st
+    seqSync .Synchronous.no-new-comm/step {live (inj₂ a)} st idle stγ
+      | live a′ , st₁ , refl
+      with sstep-inv₁ n₁ n₂ {a = a′} stγ
+    ... | _ , stγ₁ , _ =
+      let tγ , grγ = S₁.no-new-comm/step st₁ idle stγ₁
+      in seamTo n₁ n₂ tγ , stepSeq₁ grγ
+    seqSync .Synchronous.no-new-comm/step {live (inj₂ a)} st idle stγ
+      | nend , st₁ , refl
+      with ninit n₂ in eqI
+    ... | nend = ⊥-elim (nstep-nend-⊥ n⨾ stγ)
+    ... | live c₀
+      with sstep-inv₂ n₁ n₂ {b = c₀} stγ
+    ...   | _ , stγ₂ , _ =
+      let tγ , mγ =
+            scm (nix n₁ (live a))
+              (at₁ n₁ a (nstep⇒listed n₁ {s = live a} st₁))
+              (nstep⇒listed n₂ {s = live c₀} stγ₂)
+              idle
+      in seamTo n₁ n₂ tγ
+       , stepSeq₁ (nlisted⇒step n₁ {s = live a} (from₁ n₁ a mγ))
+    seqSync .Synchronous.no-new-comm/step {live (inj₁ b)} st idle stγ
+      with sstep-inv₂ n₁ n₂ {b = b} st
+    seqSync .Synchronous.no-new-comm/step {live (inj₁ b)} st idle stγ
+      | live b₁ , st₂ , refl
+      with sstep-inv₂ n₁ n₂ {b = b₁} stγ
+    ... | _ , stγ₂ , _ =
+      let uγ , grγ = S₂.no-new-comm/step st₂ idle stγ₂
+      in injR uγ , stepSeq₂ grγ
+    seqSync .Synchronous.no-new-comm/step {live (inj₁ b)} st idle stγ
+      | nend , st₂ , refl =
+      ⊥-elim (nstep-nend-⊥ n⨾ stγ)
+    seqSync .Synchronous.no-new-comm/step {nend} st idle stγ =
       ⊥-elim (nstep-nend-⊥ n⨾ st)

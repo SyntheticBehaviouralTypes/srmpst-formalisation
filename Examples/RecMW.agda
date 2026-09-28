@@ -29,7 +29,8 @@ open import Check hiding (base; _∥_; _⨾_)
 import Definitions.Typing as Typing
 
 open import Definitions.Graph.Algebra 4 renaming (var to gvar)
-open import Definitions.Actions 4 renaming (_<_> to mkChoice) hiding (_,_)
+open import Data.Fin.Subset using (⁅_⁆)
+open import Definitions.Actions 4 renaming (_<_> to mkChoice)
 open import Definitions.Proc 4
 
 M R W1 W2 : Fin 4
@@ -52,14 +53,14 @@ lbl1 = suc zero
 -- to loop or to stop (`M` stopping both workers, ended).
 recmw : OpenGraph 0
 recmw =
-  μ ( (M ⟶ W1 # mkChoice lbl0 s/nat) ∙
-      (   ((M ⟶ W2 # mkChoice lbl0 s/nat) ∙ end)
-        ∥ ((W1 ⟶ R # mkChoice here s/nat) ∙ end)
-      ⨾ (W2 ⟶ R # mkChoice here s/nat) ∙
-        choice ((R ⟶ M # mkChoice lbl0 s/nat) ⇒ gvar zero)
-               ( ((R ⟶ M # mkChoice lbl1 s/bool) ⇒
-                   ((M ⟶ W1 # mkChoice lbl1 s/bool) ∙
-                    (M ⟶ W2 # mkChoice lbl1 s/bool) ∙ end))
+  μ ( (M ⟶ ⁅ W1 ⁆ # mkChoice lbl0 s/nat) ∙
+      (   ((M ⟶ ⁅ W2 ⁆ # mkChoice lbl0 s/nat) ∙ end)
+        ∥ ((W1 ⟶ ⁅ R ⁆ # mkChoice here s/nat) ∙ end)
+      ⨾ (W2 ⟶ ⁅ R ⁆ # mkChoice here s/nat) ∙
+        choice ((R ⟶ ⁅ M ⁆ # mkChoice lbl0 s/nat) ⇒ gvar zero)
+               ( ((R ⟶ ⁅ M ⁆ # mkChoice lbl1 s/bool) ⇒
+                   ((M ⟶ ⁅ W1 ⁆ # mkChoice lbl1 s/bool) ∙
+                    (M ⟶ ⁅ W2 ⁆ # mkChoice lbl1 s/bool) ∙ end))
                ∷ []) ) )
 
 wbg : WBGraph {N = 4}
@@ -68,20 +69,20 @@ wbg = buildG recmw {p = tt}
 open Typing.MPST (wb-of wbg) using (⊢s_∶_)
 
 p/M : Proc 0 0
-p/M = rec (W1 ! lbl0 < val (v/nat 0) >∙
-          (W2 ! lbl0 < val (v/nat 1) >∙
+p/M = rec (⁅ W1 ⁆ ! lbl0 < val (v/nat 0) >∙
+          (⁅ W2 ⁆ ! lbl0 < val (v/nat 1) >∙
           (Σ R ？·
             (  v zero
-            v∷ (W1 ! lbl1 < val (v/bool false) >∙
-                (W2 ! lbl1 < val (v/bool false) >∙ ∅))
+            v∷ (⁅ W1 ⁆ ! lbl1 < val (v/bool false) >∙
+                (⁅ W2 ⁆ ! lbl1 < val (v/bool false) >∙ ∅))
             v∷ v[]))))
 
 p/R : Proc 0 0
 p/R = rec (Σ W1 ？·
             (  (Σ W2 ？·
                  (  (ifp is-zero (var zero)
-                     then (M ! lbl1 < val (v/bool true) >∙ ∅)
-                     else (M ! lbl0 < var (suc zero) >∙ v zero))
+                     then (⁅ M ⁆ ! lbl1 < val (v/bool true) >∙ ∅)
+                     else (⁅ M ⁆ ! lbl0 < var (suc zero) >∙ v zero))
                  v∷ v[]))
             v∷ v[]))
 
@@ -89,7 +90,7 @@ p/R = rec (Σ W1 ？·
 -- `R` until `M` says stop
 p/W : Proc 0 0
 p/W = Σ M ？·
-        (  (rec (R ! here < val (v/nat 0) >∙
+        (  (rec (⁅ R ⁆ ! here < val (v/nat 0) >∙
                  (Σ M ？·
                    (v zero v∷ ∅ v∷ v[]))))
         v∷ ∅

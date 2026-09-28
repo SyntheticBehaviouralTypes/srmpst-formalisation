@@ -13,6 +13,8 @@ open import Data.Nat using (ℕ; suc)
 open import Data.Product using (_×_; _,_; Σ-syntax)
 open import Function using (_∘_)
 open import Data.Bool using (T)
+open import Data.Maybe using (just; nothing)
+open import Data.Unit using (tt)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl; subst)
 open import Relation.Nullary using (Dec; yes; no)
 open import Relation.Nullary.Decidable
@@ -21,7 +23,7 @@ open import Relation.Nullary.Decidable
 module Definitions.Graph.Decision (N : ℕ) where
 
   open import Definitions.Actions N
-  open import Definitions.Behav using (WellBehaved)
+  open import Definitions.Behav using (WellBehaved; Synchronous)
   open import Definitions.Graph.Bisimulation N
   open import Definitions.Graph.Core N
   open import Definitions.Graph.WellBehaved N
@@ -144,15 +146,6 @@ module Definitions.Graph.Decision (N : ℕ) where
   listed⇒available (Any.there member) =
     Any.there (listed⇒available member)
 
-  proper/complete :
-    ∀ {G}
-    → WellBehaved (graphTheory G)
-    → ∀ s → All Proper (edges G s)
-  proper/complete {G} well-behaved s =
-    All.tabulate λ member →
-      WellBehaved.sender≢receiver well-behaved
-        (listed⇒step {G = G} member)
-
   deterministic/complete :
     ∀ {G}
     → WellBehaved (graphTheory G)
@@ -183,8 +176,10 @@ module Definitions.Graph.Decision (N : ℕ) where
         → (α′ , t′) ∈ edges G s
         → BothRecvCoherent (α , t) (α′ , t′)
       recv-pair left right =
-        WellBehaved.recv-overlap⇒same-comm well-behaved gr gr′
-        , WellBehaved.recv-overlap⇒same-comm well-behaved gr′ gr
+        (λ Q rQ inc →
+          WellBehaved.recv-overlap well-behaved {Q = Q} gr gr′ rQ inc)
+        , (λ Q rQ inc →
+          WellBehaved.recv-overlap well-behaved {Q = Q} gr′ gr rQ inc)
         where
           gr = listed⇒step {G = G} left
           gr′ = listed⇒step {G = G} right
@@ -194,79 +189,45 @@ module Definitions.Graph.Decision (N : ℕ) where
     → WellBehaved (graphTheory G)
     → ∀ s → AllPairs BothSameArity (edges G s)
   arity/complete {G} well-behaved s =
-    allPairs/tabulate arity-pair
+    allPairs/tabulate λ left right →
+      agree (listed⇒step {G = G} left) (listed⇒step {G = G} right)
+      , agree (listed⇒step {G = G} right) (listed⇒step {G = G} left)
     where
-      arity-pair :
-        ∀ {γ γ′ I J S T t t′}
-          {i : Fin (suc I)}
-          {j : Fin (suc J)}
-        → ((γ # (i < S >)) , t) ∈ edges G s
-        → ((γ′ # (j < T >)) , t′) ∈ edges G s
-        → BothSameArity
-            ((γ # (i < S >)) , t)
-            ((γ′ # (j < T >)) , t′)
-      arity-pair left right =
-        (λ { refl →
-          WellBehaved.step-arity-deterministic well-behaved gr gr′ })
-        , (λ { refl →
-          WellBehaved.step-arity-deterministic well-behaved gr′ gr })
-        where
-          gr = listed⇒step {G = G} left
-          gr′ = listed⇒step {G = G} right
+      agree :
+        ∀ {α α′ t t′}
+        → _-<_>->_ {G} s α t
+        → _-<_>->_ {G} s α′ t′
+        → ∀ Q → AgreeArity (ev α Q) (ev α′ Q)
+      agree {α} {α′} gr gr′ Q with ev α Q in eq | ev α′ Q in eq′
+      ... | just ((？ _) # (_ < _ >)) | just ((？ _) # (_ < _ >)) =
+        λ { refl → WellBehaved.step-arity-det well-behaved gr gr′ eq eq′ }
+      ... | nothing            | _                  = tt
+      ... | just ((! _) # _)   | _                  = tt
+      ... | just ((？ _) # _)   | nothing            = tt
+      ... | just ((？ _) # _)   | just ((! _) # _)   = tt
 
   sort/complete :
     ∀ {G}
     → WellBehaved (graphTheory G)
     → ∀ s → AllPairs BothSameSort (edges G s)
   sort/complete {G} well-behaved s =
-    allPairs/tabulate sort-pair
+    allPairs/tabulate λ left right →
+      agree (listed⇒step {G = G} left) (listed⇒step {G = G} right)
+      , agree (listed⇒step {G = G} right) (listed⇒step {G = G} left)
     where
-      sort-pair :
-        ∀ {γ γ′ I J S T t t′}
-          {i : Fin (suc I)}
-          {j : Fin (suc J)}
-        → ((γ # (i < S >)) , t) ∈ edges G s
-        → ((γ′ # (j < T >)) , t′) ∈ edges G s
-        → BothSameSort
-            ((γ # (i < S >)) , t)
-            ((γ′ # (j < T >)) , t′)
-      sort-pair left right =
-        (λ { refl refl →
-          WellBehaved.step-sort-deterministic well-behaved gr gr′ })
-        , (λ { refl refl →
-          WellBehaved.step-sort-deterministic well-behaved gr′ gr })
-        where
-          gr = listed⇒step {G = G} left
-          gr′ = listed⇒step {G = G} right
-
-  noNewComm/complete :
-    ∀ {G}
-    → WellBehaved (graphTheory G)
-    → ∀ s → All (NoNewAfter G s) (edges G s)
-  noNewComm/complete {G} well-behaved s =
-    All.tabulate no-new-edge
-    where
-      no-new-target :
-        ∀ {β t γ u}
-        → (β , t) ∈ edges G s
-        → (γ , u) ∈ edges G t
-        → sender γ ∉α β × receiver γ ∉α β
-        → Available γ (edges G s)
-      no-new-target β∈ γ∈ (sender∉ , receiver∉) =
-        let _ , grγ =
-              WellBehaved.no-new-comm/step well-behaved
-                (listed⇒step {G = G} β∈)
-                sender∉
-                receiver∉
-                (listed⇒step {G = G} γ∈)
-        in listed⇒available (step⇒listed {G = G} grγ)
-
-      no-new-edge :
-        ∀ {β t}
-        → (β , t) ∈ edges G s
-        → NoNewAfter G s (β , t)
-      no-new-edge β∈ =
-        All.tabulate (no-new-target β∈)
+      agree :
+        ∀ {α α′ t t′}
+        → _-<_>->_ {G} s α t
+        → _-<_>->_ {G} s α′ t′
+        → ∀ Q → AgreeSort (ev α Q) (ev α′ Q)
+      agree {α} {α′} gr gr′ Q with ev α Q in eq | ev α′ Q in eq′
+      ... | just ((？ _) # (_ < _ >)) | just ((？ _) # (_ < _ >)) =
+        λ { refl refl →
+            WellBehaved.step-sort-det well-behaved gr gr′ eq eq′ }
+      ... | nothing            | _                  = tt
+      ... | just ((! _) # _)   | _                  = tt
+      ... | just ((？ _) # _)   | nothing            = tt
+      ... | just ((？ _) # _)   | just ((! _) # _)   = tt
 
   noNewBranch/complete :
     ∀ {G}
@@ -276,36 +237,37 @@ module Definitions.Graph.Decision (N : ℕ) where
     All.tabulate no-new-edge
     where
       no-new-target :
-        ∀ {β t γ γ′ cᵢ cⱼ u v}
+        ∀ {β t γ γ′ u v}
         → (β , t) ∈ edges G s
-        → ((γ # cᵢ) , u) ∈ edges G s
-        → Comm.receiver γ ∉α β
-        → ((γ′ # cⱼ) , v) ∈ edges G t
-        → γ ≡ γ′
-        → Available (γ′ # cⱼ) (edges G s)
-      no-new-target β∈ source∈ receiver∉ target∈ refl =
+        → (γ , u) ∈ edges G s
+        → (∀ Q → Recv γ Q → Q ∉α β)
+        → (γ′ , v) ∈ edges G t
+        → comm γ′ ≡ comm γ
+        → Available γ′ (edges G s)
+      no-new-target β∈ source∈ idle target∈ ceq =
         let _ , grⱼ =
               WellBehaved.no-new-branch/step well-behaved
                 (listed⇒step {G = G} β∈)
-                receiver∉
+                idle
                 (listed⇒step {G = G} source∈)
                 (listed⇒step {G = G} target∈)
+                ceq
         in listed⇒available (step⇒listed {G = G} grⱼ)
 
       no-new-source :
-        ∀ {β t γ cᵢ u}
+        ∀ {β t γ u}
         → (β , t) ∈ edges G s
-        → ((γ # cᵢ) , u) ∈ edges G s
-        → Comm.receiver γ ∉α β
+        → (γ , u) ∈ edges G s
+        → (∀ Q → Recv γ Q → Q ∉α β)
         → All
             (λ where
               (α′ , _) →
-                γ ≡ Action.comm α′
+                comm α′ ≡ comm γ
                   → Available α′ (edges G s))
             (edges G t)
-      no-new-source β∈ source∈ receiver∉ =
+      no-new-source β∈ source∈ idle =
         All.tabulate
-          (no-new-target β∈ source∈ receiver∉)
+          (no-new-target β∈ source∈ idle)
 
       no-new-edge :
         ∀ {β t}
@@ -339,12 +301,10 @@ module Definitions.Graph.Decision (N : ℕ) where
     → LocalConditions G
   localConditions/complete {G} well-behaved =
     record
-      { proper = proper/complete {G = G} well-behaved
-      ; deterministic = deterministic/complete {G = G} well-behaved
+      { deterministic = deterministic/complete {G = G} well-behaved
       ; recv-coherent = recv/complete {G = G} well-behaved
       ; same-arity = arity/complete {G = G} well-behaved
       ; same-sort = sort/complete {G = G} well-behaved
-      ; no-new-comm = noNewComm/complete {G = G} well-behaved
       ; no-new-branch = noNewBranch/complete {G = G} well-behaved
       ; diamond = diamond/complete {G = G} well-behaved
       }
@@ -388,3 +348,67 @@ module Definitions.Graph.Decision (N : ℕ) where
     (G : Graph) → Dec (WellBehaved (graphTheory G))
   wellBehaved? G =
     wellBehavedWith? G (bisimulationCorrect G)
+
+  -- ══════════════════════════════════════════════════════════════════
+  --  The synchronous instance
+  -- ══════════════════════════════════════════════════════════════════
+
+  balanced/complete :
+    ∀ {G}
+    → Synchronous (graphTheory G)
+    → ∀ s → All Balanced (edges G s)
+  balanced/complete {G} sync s =
+    All.tabulate balanced-edge
+    where
+      balanced-edge :
+        ∀ {α t}
+        → (α , t) ∈ edges G s
+        → Balanced (α , t)
+      balanced-edge member
+        with Synchronous.balanced sync (listed⇒step {G = G} member)
+      ... | P , Qs , c , P∉ , ne , refl =
+        P , Qs , c , ev-sender {P} {Qs} {c} , P∉ , ne , refl
+
+  noNewComm/complete :
+    ∀ {G}
+    → Synchronous (graphTheory G)
+    → ∀ s → All (NoNewAfter G s) (edges G s)
+  noNewComm/complete {G} sync s =
+    All.tabulate no-new-edge
+    where
+      no-new-target :
+        ∀ {β t γ u}
+        → (β , t) ∈ edges G s
+        → (γ , u) ∈ edges G t
+        → (∀ X → X ∈α γ → X ∉α β)
+        → Available γ (edges G s)
+      no-new-target β∈ γ∈ idle =
+        let _ , grγ =
+              Synchronous.no-new-comm/step sync
+                (listed⇒step {G = G} β∈)
+                idle
+                (listed⇒step {G = G} γ∈)
+        in listed⇒available (step⇒listed {G = G} grγ)
+
+      no-new-edge :
+        ∀ {β t}
+        → (β , t) ∈ edges G s
+        → NoNewAfter G s (β , t)
+      no-new-edge β∈ =
+        All.tabulate (no-new-target β∈)
+
+  syncConditions/complete :
+    ∀ {G}
+    → Synchronous (graphTheory G)
+    → SyncConditions G
+  syncConditions/complete {G} sync =
+    record
+      { balanced = balanced/complete {G = G} sync
+      ; no-new-comm = noNewComm/complete {G = G} sync
+      }
+
+  -- `map′`-based for the same reason as `wellBehavedWith?`.
+  synchronous? :
+    (G : Graph) → Dec (Synchronous (graphTheory G))
+  synchronous? G =
+    map′ (synchronous G) (syncConditions/complete {G = G}) (syncConditions? G)

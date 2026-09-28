@@ -35,7 +35,8 @@ import Definitions.Typing as Typing
 
 open import Definitions.Graph.Algebra 7 using (OpenGraph; end; _∙_; μ; var; underlying; initial)
 open import Definitions.Graph.Network 7 using (Net; base; _∥_; _⨾_; present)
-open import Definitions.Actions 7 renaming (_<_> to mkChoice) hiding (_,_)
+open import Data.Fin.Subset using (⁅_⁆)
+open import Definitions.Actions 7 renaming (_<_> to mkChoice)
 open import Definitions.Proc 7
 
 S A1 B1 C1 A2 B2 C2 : Fin 7
@@ -52,7 +53,7 @@ here = zero
 
 private
   itm : Fin 7 → Fin 7 → _
-  itm P Q = P ⟶ Q # mkChoice here s/unit
+  itm P Q = P ⟶ ⁅ Q ⁆ # mkChoice here s/unit
 
 -- one worker pipeline loop: `Ai` feeds `Bi`, which feeds `Ci`, forever
 pipeTail : Fin 7 → Fin 7 → Fin 7 → OpenGraph 0
@@ -76,18 +77,18 @@ wnet = base ⨾ (base ∥ (base ⨾ base))
 open Typing.MPST (wb-net wnet) using (⊢s_∶_)
 
 p/S : Proc 0 0
-p/S = A1 ! here < val v/unit >∙ (A2 ! here < val v/unit >∙ ∅)
+p/S = ⁅ A1 ⁆ ! here < val v/unit >∙ (⁅ A2 ⁆ ! here < val v/unit >∙ ∅)
 
 -- generic pipeline stages, as on `main`
 p/A : Fin 7 → Proc 0 0
 p/A B = Σ S ？·
-          (  (B ! here < val v/unit >∙
-              (rec (B ! here < val v/unit >∙ v zero)))
+          (  (⁅ B ⁆ ! here < val v/unit >∙
+              (rec (⁅ B ⁆ ! here < val v/unit >∙ v zero)))
           v∷ v[])
 
 p/B : Fin 7 → Fin 7 → Proc 0 0
 p/B A C = rec (Σ A ？·
-                ((C ! here < val v/unit >∙ v zero) v∷ v[]))
+                ((⁅ C ⁆ ! here < val v/unit >∙ v zero) v∷ v[]))
 
 p/C : Fin 7 → Proc 0 0
 p/C B = rec (Σ B ？· (v zero v∷ v[]))
