@@ -375,7 +375,7 @@ module Definitions.Graph.Network (N : ℕ) where
     → NStep n s α t
     → GStep {underlying (present n)} (nix n s) α (nix n t)
   step⇒pres n {s} {α} {t} st =
-    listed⇒step {G = underlying (present n)} {s = nix n s}
+    listed⇒step
       (subst ((α , nix n t) ∈_) (sym (row-eq n (nix n s)))
         (MemP.∈-map⁺ (λ e → proj₁ e , nix n (proj₂ e))
           (subst (λ z → (α , t) ∈ nedges n z) (sym (nst-nix n s))
@@ -388,7 +388,7 @@ module Definitions.Graph.Network (N : ℕ) where
   pres⇒step n {i} {α} {j} st
     with MemP.∈-map⁻ (λ e → proj₁ e , nix n (proj₂ e))
            (subst ((α , j) ∈_) (row-eq n i)
-             (step⇒listed {G = underlying (present n)} {s = i} st))
+             (step⇒listed st))
   ... | (α₀ , t₀) , m₀ , refl =
     subst (NStep n (nst n i) α₀) (sym (nst-nix n t₀))
       (nlisted⇒step n {s = nst n i} m₀)

@@ -8,11 +8,11 @@
 -- `Stale/PushRecDerivations.agda.stale` that proved the OLD `⊢a`
 -- incomplete for `⊢p`: `rec (B ! 0 ∙ v 0)` types at `G` declaratively, by
 -- anchoring the `rec` at `M` — a state *before* `G`'s tree root — while
--- the old `a/rec` forced one common anchor for the whole tree.  The fix
--- was `blocked/rec`, which parks the anchor inside each leaf.  TODO.md
--- listed "does `Ex6` now go through?" as unverified; it does, and the
--- checker finds it by itself (`ex6-typed` below), which also exercises the
--- backward anchor search that is the only real search in the procedure.
+-- the old `a/rec` forced one common anchor for the whole tree.  Today's
+-- `a/rec` takes its anchor SET `𝒜` and a `Wait` into `Unskip P 𝒜`, so each
+-- leaf has its own anchor; the checker finds this one by itself
+-- (`ex6-typed` below), which also exercises the backward anchor search
+-- (`Past`) that is the only real search in the procedure.
 
 module Tests.AlgCheck where
 
@@ -68,11 +68,13 @@ module Ex6 where
 
   Gr = underlying (compile g)
 
-  wb : Typing.WellBehaved (graphTheory Gr)
-  wb = toWitness {a? = wellBehaved? Gr} tt
+  -- `opaque`: see `Tests/SkipBeforeVar.agda`.
+  opaque
+    wb : Typing.WellBehaved (graphTheory Gr)
+    wb = toWitness {a? = wellBehaved? Gr} tt
 
-  sync : Typing.Synchronous (graphTheory Gr)
-  sync = toWitness {a? = synchronous? Gr} tt
+    sync : Typing.Synchronous (graphTheory Gr)
+    sync = toWitness {a? = synchronous? Gr} tt
 
   open module M₆ = Typing.MPST wb hiding (Action; _⟶_#_; _<_>)
   open module K₆ = Check.Alg.AlgCheck 4 Gr wb using (alg?)
@@ -93,8 +95,8 @@ module Ex6 where
   ex6-typed : T ⌊ alg? v[] A prog (at (v[] , G)) (at? (v[] , G)) ⌋
   ex6-typed = tt
 
-  -- …and the same through `⊢p`, i.e. `alg/typing`/`norm` really do close
-  -- the loop (TODO.md Step 4).
+  -- …and the same through `⊢p`, i.e. `alg⇒typing`/`typing⇒alg` really do
+  -- close the loop.
   ex6-typed/p : T ⌊ tc? v[] v[] A prog G ⌋
   ex6-typed/p = tt
 
@@ -141,11 +143,12 @@ module SkipVar where
 
   Gr = underlying (compile g)
 
-  wb : Typing.WellBehaved (graphTheory Gr)
-  wb = toWitness {a? = wellBehaved? Gr} tt
+  opaque
+    wb : Typing.WellBehaved (graphTheory Gr)
+    wb = toWitness {a? = wellBehaved? Gr} tt
 
-  sync : Typing.Synchronous (graphTheory Gr)
-  sync = toWitness {a? = synchronous? Gr} tt
+    sync : Typing.Synchronous (graphTheory Gr)
+    sync = toWitness {a? = synchronous? Gr} tt
 
   open module M₃ = Typing.MPST wb hiding (Action; _⟶_#_; _<_>)
   open module K₃ = Check.TypeCheck.TypeCheck 3 Gr wb sync using (tc?)
@@ -162,7 +165,7 @@ module SkipVar where
 
   -- `B`, by contrast, is active at `s` itself, so the tree cannot even
   -- take its first `skip/step` (`na` fails), `skip/cycle` has an empty
-  -- `Ξ`, and `blocked/var` would need `K ~ s` — which is false, since `K`
-  -- steps once and `s` steps twice.
+  -- `Ξ`, and `t/var` at `s` itself would need `K ~ s` — which is false,
+  -- since `K` steps once and `s` steps twice.
   no-var-for-B : T (not ⌊ tc? v[] (K v∷ v[]) B (v zero) s ⌋)
   no-var-for-B = tt

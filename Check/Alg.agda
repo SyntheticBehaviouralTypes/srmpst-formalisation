@@ -53,7 +53,7 @@ open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.Empty using (⊥; ⊥-elim)
 open import Data.Unit using (tt)
 open import Data.Bool using (Bool; true; false; T)
-open import Data.Maybe using (just)
+open import Data.Maybe using (just; nothing)
 
 open import Function using (_∘_)
 
@@ -84,9 +84,7 @@ module Check.Alg (N : ℕ) where
     using (Matrix; approximation; bisimulationCorrect; sound; complete)
   open import Definitions.Graph.Action N
     using (eqFin; eqFin-sound; eqFin-refl
-          ; eqAction; eqAction-sound; eqAction-refl
           ; eqMaybeEvent; eqMaybeEvent-sound; eqMaybeEvent-refl)
-    renaming (_≟Actionᵇ_ to _≟A_)
   open import Definitions.Graph.Reachability N
     using (Step; PathVia; path/nil; path/cons; reachVia; reachFix; reachFix≡; reachVia-sound
           ; reachVia-complete; T→≡true; ≡true→T; reach→∈T; ∈T→reach; active?
@@ -246,24 +244,6 @@ module Check.Alg (N : ℕ) where
     --  Steps, participation
     -- ══════════════════════════════════════════════════════════════════
 
-    -- Action equality is decided by a BIT (`eqAction`, `Graph/Action.agda`).
-
-    -- Is `(α , t)` an edge out of `s`?  A scan of `s`'s edges by bits.
-    step? : ∀ s α t → Dec (s -< α >-> t)
-    step? s α t =
-      map′ (λ x → listed⇒step {G = G}
-                    (Any.map (λ { {α′ , t′} px →
-                                  let a , b = Equivalence.to T-∧ px
-                                  in sym (cong₂ _,_ (eqAction-sound α′ α a) (eqFin-sound b)) })
-                             (any⁻ hit (edges G s) x)))
-           (λ gr → any⁺ hit
-                     (Any.map (λ { refl → Equivalence.from T-∧ (eqAction-refl α , eqFin-refl t) })
-                              (step⇒listed {G = G} gr)))
-           (T? (Data.List.any hit (edges G s)))
-      where
-        hit : Edge n → Bool
-        hit (α′ , t′) = eqAction α′ α ∧ eqFin t′ t
-
     -- Is `P`'s event in `α` exactly `e`?  One bit.
     matchEv : Part → Event → Action → Bool
     matchEv P e α = eqMaybeEvent (ev α P) (just e)
@@ -276,8 +256,8 @@ module Check.Alg (N : ℕ) where
       subst (λ x → T (eqMaybeEvent x (just e))) (sym eq)
         (eqMaybeEvent-refl (just e))
 
-    -- Is there a step `s → t` whose event at `P` is `e`?  Same scan as
-    -- `step?`, testing the event bit instead of the whole action.
+    -- Is there a step `s → t` whose event at `P` is `e`?  A scan of `s`'s
+    -- edges by bits: the event bit and the target.
     evstep? : ∀ s P e t → Dec (s -<[ P ↦ e ]>-> t)
     evstep? s P e t =
       map′ (λ x →
@@ -285,10 +265,10 @@ module Check.Alg (N : ℕ) where
                  a , b = Equivalence.to T-∧ px
              in α′ , matchEv-sound P e α′ a
               , subst (λ z → s -< α′ >-> z) (eqFin-sound b)
-                  (listed⇒step {G = G} mem))
+                  (listed⇒step mem))
            (λ { (α′ , eq , gr) →
                 any⁺ hit
-                  (lose (step⇒listed {G = G} gr)
+                  (lose (step⇒listed gr)
                     (Equivalence.from T-∧
                       (matchEv-refl P e α′ eq , eqFin-refl t))) })
            (T? (Data.List.any hit (edges G s)))
@@ -300,7 +280,7 @@ module Check.Alg (N : ℕ) where
     Steps s = ∃[ β ] ∃[ u ] s -< β >-> u
 
     steps? : ∀ s → Dec (Steps s)
-    steps? s = from (edges G s) (listed⇒step {G = G}) (step⇒listed {G = G})
+    steps? s = from (edges G s) listed⇒step step⇒listed
       where
         from : (es : List (Edge n))
              → (∀ {α u} → (α , u) ∈L es → s -< α >-> u)
@@ -328,8 +308,8 @@ module Check.Alg (N : ℕ) where
       ∀ u {B : Action → Behav → Set} → (∀ α t → Dec (B α t))
       → Dec (∀ α t → u -< α >-> t → B α t)
     all-out? u B? =
-      map′ (λ all α t gr → all (step⇒listed {G = G} gr))
-           (λ all {e} mem → all (proj₁ e) (proj₂ e) (listed⇒step {G = G} mem))
+      map′ (λ all α t gr → all (step⇒listed gr))
+           (λ all {e} mem → all (proj₁ e) (proj₂ e) (listed⇒step mem))
            (all-edges? (edges G u) λ {e} _ → B? (proj₁ e) (proj₂ e))
 
     Active : Part → Behav → Set
@@ -339,9 +319,9 @@ module Check.Alg (N : ℕ) where
     active⇒? P s with active? G P s
     ... | yes any =
       let (α , u) , mem , px = anyActive→∈ G (edges G s) any
-      in yes (α , u , listed⇒step {G = G} mem , px)
+      in yes (α , u , listed⇒step mem , px)
     ... | no ¬any =
-      no λ { (_ , _ , gr , px) → ¬any (∈α-lift G (step⇒listed {G = G} gr) px) }
+      no λ { (_ , _ , gr , px) → ¬any (∈α-lift G (step⇒listed gr) px) }
 
     idle : ∀ {P s} → ¬ Active P s → P not-active-in s
     idle {P} ¬act {α} gr = ¬∈α→∉α {P} {α} (λ px → ¬act (_ , _ , gr , px))
@@ -362,7 +342,7 @@ module Check.Alg (N : ℕ) where
     path⇒walk {P} ok≡ (path/cons oks gr rest) =
       (idle (λ { (_ , _ , gr′ , px) →
                  toWitness (subst T (ok≡ _) oks)
-                   (∈α-lift G (step⇒listed {G = G} gr′) px) })
+                   (∈α-lift G (step⇒listed gr′) px) })
       , _ , gr) ◅ path⇒walk ok≡ rest
 
     walk⇒path :
@@ -375,7 +355,7 @@ module Check.Alg (N : ℕ) where
          path/cons
            (subst T (sym (ok≡ _)) (fromWitness λ any →
               let (α , u) , mem , px = anyActive→∈ G _ any
-              in ∉α→¬∈α {P} {α} (na (listed⇒step {G = G} mem)) px))
+              in ∉α→¬∈α {P} {α} (na (listed⇒step mem)) px))
            gr p
 
     -- `¬P`-labelled runs: plain reachability in the graph without `P`'s edges.
@@ -387,15 +367,15 @@ module Check.Alg (N : ℕ) where
     edge¬⇒ {P} {s} gr
       with ∈-filter⁻ (λ e → P ∉α? proj₁ e)
              (subst (_ ∈L_) (VecP.lookup-map s _ (outgoing G))
-                (step⇒listed {G = G¬ P} gr))
-    ... | mem , P∉α = listed⇒step {G = G} mem , P∉α
+                (step⇒listed gr))
+    ... | mem , P∉α = listed⇒step mem , P∉α
 
     ⇒edge¬ :
       ∀ {P s α t} → s -< α >-> t → P ∉α α → Step (G¬ P) s α t
     ⇒edge¬ {P} {s} gr P∉α =
-      listed⇒step {G = G¬ P}
+      listed⇒step
         (subst (_ ∈L_) (sym (VecP.lookup-map s _ (outgoing G)))
-          (∈-filter⁺ (λ e → P ∉α? proj₁ e) (step⇒listed {G = G} gr) P∉α))
+          (∈-filter⁺ (λ e → P ∉α? proj₁ e) (step⇒listed gr) P∉α))
 
     path⇒run : ∀ {P s t k} → PathVia (G¬ P) (λ _ → true) s t k → s -[¬ P ]->* t
     path⇒run path/nil = skip/refl
@@ -706,14 +686,14 @@ module Check.Alg (N : ℕ) where
         ...         | no ¬vs
           with all-edges? (edges G s)
                  (λ mem → wait-go (mark V s) _
-                            (inv/step {V} inv (¬l , idle ¬act , _ , listed⇒step {G = G} mem))
+                            (inv/step {V} inv (¬l , idle ¬act , _ , listed⇒step mem))
                             (rs (shrink V s ¬vs)))
         ...           | yes all =
           yes (wv/step (idle ¬act) gr₀ λ gr →
-                waitV/mono (vis/mark→ V s) (all (step⇒listed {G = G} gr)))
+                waitV/mono (vis/mark→ V s) (all (step⇒listed gr)))
         ...           | no ¬all =
           no λ w → let _ , _ , _ , _ , k = stuck {V} ¬l ¬cyc w
-                   in ¬all λ mem → waitV/mono (vis/mark← V s) (k (listed⇒step {G = G} mem))
+                   in ¬all λ mem → waitV/mono (vis/mark← V s) (k (listed⇒step mem))
 
         wait? : ∀ s → Dec (WaitV P L (λ _ → ⊥) s)
         wait? s =
@@ -765,13 +745,41 @@ module Check.Alg (N : ℕ) where
         map′ (λ (a , r) → r , a) (λ (r , a) → a , r)
           (act? u ×-dec FinP.any? (λ s → X? (ws , s) ×-dec walk? s u))
 
+      -- One scan of `s`'s edges for an action with the event bit.
       Dom? : ∀ e → Decidable (Dom {δ = δ} P e)
-      Dom? e (_ , s) = FinP.any? (evstep? s P e)
+      Dom? e (_ , s) =
+        map′ (λ x →
+               let (α , t) , mem , b = find (any⁻ bit (edges G s) x)
+               in t , α , matchEv-sound P e α b , listed⇒step mem)
+             (λ { (t , α , eq , gr) →
+                  any⁺ bit (lose (step⇒listed gr) (matchEv-refl P e α eq)) })
+             (T? (Data.List.any bit (edges G s)))
+        where
+          bit : Edge n → Bool
+          bit (α , _) = matchEv P e α
 
+      -- `α` is a receive by `P` from `Q`, of arity `suc I`.
+      OffersAct : Part → ℕ → Action → Set
+      OffersAct Q I α = Σ[ j ∈ Fin (suc I) ] ∃[ U ] ev α P ≡ just ((？ Q) # j < U >)
+
+      offersAct? : ∀ Q I α → Dec (OffersAct Q I α)
+      offersAct? Q I α with ev α P
+      ... | nothing          = no λ { (_ , _ , ()) }
+      ... | just ((! _) # _) = no λ { (_ , _ , ()) }
+      ... | just ((？ Q′) # (_<_> {I′} j U)) with Q′ ≟Fin Q | I′ Nat.≟ I
+      ...   | yes refl | yes refl = yes (j , U , refl)
+      ...   | no Q′≢Q  | _        = no λ { (_ , _ , refl) → Q′≢Q refl }
+      ...   | _        | no I′≢I  = no λ { (_ , _ , refl) → I′≢I refl }
+
+      -- One scan of `s`'s edges, not one per label, sort and target.
       Offers? : ∀ Q I → Decidable (Offers {δ = δ} Q P I)
       Offers? Q I (_ , s) =
-        FinP.any? λ j → any-sort? λ U →
-          FinP.any? (evstep? s P ((？ Q) # j < U >))
+        map′ (λ (x : Any.Any (λ e → OffersAct Q I (proj₁ e)) (edges G s)) →
+               let (α , t) , mem , (j , U , eq) = find x
+               in j , U , t , α , eq , listed⇒step mem)
+             (λ { (j , U , t , α , eq , gr) →
+                  lose (step⇒listed gr) (j , U , eq) })
+             (Any.any? (λ e → offersAct? Q I (proj₁ e)) (edges G s))
 
       Ended? : Decidable (Ended {δ = δ} P)
       Ended? (_ , s) = ¬? (inT? s)

@@ -1,7 +1,7 @@
 {-# OPTIONS --guardedness #-}
 
 open import Data.Bool
-  using (Bool; T; false; true; _∧_; _∨_)
+  using (Bool; T; false; true; _∧_)
 import Data.Bool.Properties as Bool
 open import Data.Empty using (⊥; ⊥-elim)
 open import Data.Fin using (Fin)
@@ -131,8 +131,8 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
   Bisimilar : (G : Graph) → State G → State G → Set
   Bisimilar G s t = T (bisim? G s t)
 
-  -- Boolean connectives and list quantifiers, read through the standard
-  -- library's `T-∧`/`T-∨` and `all⁺/all⁻`/`any⁺/any⁻`.
+  -- Boolean conjunction and list quantifiers, read through the standard
+  -- library's `T-∧` and `all⁺/all⁻`/`any⁺/any⁻`.
   T∧-left : ∀ {a b} → T (a ∧ b) → T a
   T∧-left p = proj₁ (Equivalence.to Bool.T-∧ p)
 
@@ -141,12 +141,6 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
 
   T∧-intro : ∀ {a b} → T a → T b → T (a ∧ b)
   T∧-intro l r = Equivalence.from Bool.T-∧ (l , r)
-
-  T∨-cases : ∀ {a b} → T (a ∨ b) → T a ⊎ T b
-  T∨-cases = Equivalence.to Bool.T-∨
-
-  T∨-intro : ∀ {a b} → T a ⊎ T b → T (a ∨ b)
-  T∨-intro = Equivalence.from Bool.T-∨
 
   all/intro :
     ∀ {A : Set}
@@ -491,11 +485,11 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
       (α , u) member →
         let v , gr , later =
               Semantic.forth G equivalent
-                (listed⇒step {G = G} member)
+                (listed⇒step member)
         in
         any/intro
           {p = edgeMatches {G} relation (α , u)}
-          (step⇒listed {G = G} gr)
+          (step⇒listed gr)
           (T∧-intro
             (actionMatches/refl α)
             (contained later))
@@ -579,7 +573,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
       find
         (any/witness
           (all/member forward
-            (step⇒listed {G = G} gr)))
+            (step⇒listed gr)))
       where
         refined =
           stable⇒refined
@@ -612,7 +606,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
                 BTheory._-<_>->_
                   (graphTheory G) t action v)
               (sym equal)
-              (listed⇒step {G = G} member)
+              (listed⇒step member)
           , T∧-right matches
 
     mutual

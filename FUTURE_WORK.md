@@ -12,8 +12,9 @@ exists; git history has it.*
 | [D](#d--what-was-tried-and-reverted) | the `Presentation` refactor | **reverted, do not rebuild** |
 | [E](#e--smaller-loose-ends) | smaller loose ends | recorded |
 
-**Where things stand.** The metatheory, the equivalence `⊢a ⟺ ⊢p` (for
-every well-behaved theory) and the decision procedure are complete and
+**Where things stand.** The metatheory, the equivalence `⊢a ⟺ ⊢p` (`→` for
+every well-behaved theory, `←` for synchronous ones) and the decision
+procedure are complete and
 hole-free, and `PLAN.md` has no open items. What is left is net-specific:
 nets are still type-checked by **flattening** (`typecheckNet` runs the graph
 checker on `underlying (present n)`, whose size is the product). §A is the

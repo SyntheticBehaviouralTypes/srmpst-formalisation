@@ -25,7 +25,8 @@ decision.
 - [x] **`Check/Core.agda` `GraphChecker`**: the dead part was deleted
       (`messageGuarded?`, `MatchRecv`/`matchRecv?`,
       `ActionAt`/`findAction`/`findStep`, `RecvWitness`/`findRecv`).
-      `InactiveAt`, `na?` and `bisim?~` stay, because tests use them.
+      `InactiveAt`, `na?` and `bisim?~` stayed, on the belief that tests
+      used them. They did not; they went on 2026-09-28 (`IMPROVEMENTS.md`).
 - [x] **Expression checking is defined once.** `checkExpression` in
       `Check/Core.agda` is now Alg's direct recursion, and `Check/Alg.agda`
       has `exp? = checkExpression`. `_≟Sort_` moved to `Definitions/Expr.agda`,

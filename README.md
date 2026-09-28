@@ -32,7 +32,6 @@ No file contains holes or postulates, and every `.agda` file outside `Stale/` ty
 - `Definitions/Actions.agda` - Events, actions (one event per participant), the multicast `P ⟶ Qs # c`, and independence
 - `Definitions/Expr.agda` - Expression language, evaluation and typing
 - `Definitions/Proc.agda` - Process language syntax and operational semantics
-- `Definitions/Guard.agda` - The guardedness lattice
 - `Definitions/Behav.agda` - Behavioural theories (`BTheory`), bisimilarity, the `WellBehaved` axioms, and `Synchronous`
 
 ### Typing
@@ -94,7 +93,7 @@ data Proc (γ δ : ℕ) : Set where
 
 An action has **one event per participant**: `Action = Vec (Maybe Event) N`, where an event is a send `(! Qs) # c` or a receive `(？ P) # c` (`c` a label and sort). The theory, not the action type, says which events happen together. `P ⟶ Qs # c` is the multicast: `P` sends `c` to `Qs`, and every `Q ∈ Qs` receives `c` from `P`.
 
-`WellBehaved` asks: a receiver of one step that takes part in another means they are the same communication (`recv-overlap`); determinism (`step-deterministic`, `step-is-prop`); receives agree on sort and arity (`step-sort-det`, `step-arity-det`); no branch appears out of nowhere (`no-new-branch/step`); bisimulation step-back (`stepback/~`); and independent steps commute (`step-diamond`; `α ⋄ β` means the actions differ and no receiver of either takes part in the other). `Synchronous` adds that every step is one multicast to a nonempty `Qs` with `P ∉ Qs` (`balanced`) and that no communication appears out of nowhere (`no-new-comm/step`); `Safety/` and `⊢p → ⊢a` use it.
+`WellBehaved` asks: a receiver of one step that takes part in another means they are the same communication (`recv-overlap`); determinism (`step-deterministic`); receives agree on sort and arity (`step-sort-det`, `step-arity-det`); no branch appears out of nowhere (`no-new-branch/step`); bisimulation step-back (`stepback/~`); and independent steps commute (`step-diamond`; `α ⋄ β` means the actions differ and no receiver of either takes part in the other). `Synchronous` adds that every step is one multicast to a nonempty `Qs` with `P ∉ Qs` (`balanced`) and that no communication appears out of nowhere (`no-new-comm/step`); `Safety/` and `⊢p → ⊢a` use it.
 
 ## Type System
 

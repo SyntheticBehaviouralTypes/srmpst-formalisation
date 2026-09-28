@@ -84,7 +84,7 @@ module Definitions.Graph.Action (N : ℕ) where
       (choiceCode c ≟ChoiceCode choiceCode c′)
 
   -- Structural on purpose: `Bisimulation.agda`'s `actionMatches` is
-  -- `⌊ _≟Action_ ⌋`, and defining this through the bit `eqAction` below
+  -- `⌊ _≟Action_ ⌋`, and defining this through a bit equality (as below)
   -- made that module 10× slower to check (10 s → 110 s, 0.6 → 14 GB,
   -- measured 2026-09-25).
   _≟Event_ : DecidableEquality Event
@@ -103,11 +103,11 @@ module Definitions.Graph.Action (N : ℕ) where
     ×-dec FinP.all? (λ Q → Recv? α Q →-dec Q ∉α? β)
     ×-dec FinP.all? (λ Q → Recv? β Q →-dec Q ∉α? α)
 
-  -- Action equality as a BIT, for the checker.  `_≟Action_` matches
-  -- `yes refl`, so even its yes/no tag forces the equality PROOFS (through
-  -- `ℕ`, `Fin`, `Σ`); in the checker's hot loops that was most of the
-  -- running time.  Here the tag is the bit, and the proof is only built if
-  -- asked for (`_≟Actionᵇ_`).
+  -- Equalities as BITS, for the checker (`Check/Alg.agda`'s `matchEv`,
+  -- `evstep?`).  A `Dec` equality matches `yes refl`, so even its yes/no
+  -- tag forces the equality PROOFS (through `ℕ`, `Fin`, `Σ`); in the
+  -- checker's hot loops that was most of the running time.  Here the tag
+  -- is the bit, and the proof is only built if asked for (`-sound`).
   eqFin : ∀ {m} → Fin m → Fin m → Bool
   eqFin i j = toℕ i ≡ᵇ toℕ j
 
@@ -235,16 +235,3 @@ module Definitions.Graph.Action (N : ℕ) where
 
   eqMaybeEvent-refl : ∀ x → T (eqMaybeEvent x x)
   eqMaybeEvent-refl = eqMaybe-refl eqEvent eqEvent-refl
-
-  eqAction : Action → Action → Bool
-  eqAction = eqVec eqMaybeEvent
-
-  eqAction-sound : ∀ α β → T (eqAction α β) → α ≡ β
-  eqAction-sound = eqVec-sound eqMaybeEvent eqMaybeEvent-sound
-
-  eqAction-refl : ∀ α → T (eqAction α α)
-  eqAction-refl = eqVec-refl eqMaybeEvent eqMaybeEvent-refl
-
-  _≟Actionᵇ_ : DecidableEquality Action
-  α ≟Actionᵇ β =
-    map′ (eqAction-sound α β) (λ { refl → eqAction-refl α }) (T? (eqAction α β))

@@ -1,7 +1,7 @@
 {-# OPTIONS --guardedness #-}
 
 -- Can ONE label carry DIFFERENT sorts at two states that a single receive
--- has to cover?  Yes — `step-sort-deterministic` compares two steps out of
+-- has to cover?  Yes — `step-sort-det` compares two steps out of
 -- *one* state, so it says nothing across states.
 --
 --        A⟶C # 0<unit>          A⟶B # 0<nat>
@@ -19,9 +19,11 @@
 -- `B`, and here it involves `A`.  `no-new-branch/step` never fires, since
 -- `s₀` offers no `A⟶B` comm at all.
 --
--- `B` is inactive at `s₀`, so its derivation is `a/skip` with a `skip/step`
--- branching over BOTH edges, landing on two `blocked/recv` leaves that type
--- the one branch under `s/nat ∷ []` and under `s/bool ∷ []` respectively.
+-- `B` is inactive at `s₀`, so its derivation is a `t/skip` with a
+-- `skip/step` branching over BOTH edges, landing on two `t/recv` leaves
+-- that type the one branch under `s/nat ∷ []` and under `s/bool ∷ []`
+-- respectively (in `⊢a`: one `a/recv` whose `conts` are indexed by
+-- `(j , U)`).
 --
 -- Consequence for any set-based reformulation of the judgment: the set at
 -- which branch `j` types must be indexed by `(j , U)`, not by `j` alone.

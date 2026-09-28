@@ -29,7 +29,7 @@ module _ {N : ℕ} where
   open Core.Processes N public
     using (ProcessTyping; SessionTyping)
   open Gph N public
-    using (WBGraph; buildG; wb-of; typecheck; typecheckSession)
+    using (WBGraph; buildG; wb-of; sync-of; typecheck; typecheckSession)
   open Net N public
     using ( WBNet; base; _∥_; _⨾_
-          ; netWB; wb-net; typecheckNet; typecheckSessionNet )
+          ; netWB; netSync; wb-net; sync-net; typecheckNet; typecheckSessionNet )

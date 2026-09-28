@@ -45,8 +45,9 @@ module ∈T?-sanity where
 
   Gr = underlying (compile g)
 
-  wb : WellBehaved (graphTheory Gr)
-  wb = toWitness {a? = wellBehaved? Gr} tt
+  opaque
+    wb : WellBehaved (graphTheory Gr)
+    wb = toWitness {a? = wellBehaved? Gr} tt
 
   open Check.Alg.AlgCheck 3 Gr wb using (env; module Env)
 
@@ -105,8 +106,9 @@ module unskip?-sanity where
 
   Gr = underlying (compile g)
 
-  wb : WellBehaved (graphTheory Gr)
-  wb = toWitness {a? = wellBehaved? Gr} tt
+  opaque
+    wb : WellBehaved (graphTheory Gr)
+    wb = toWitness {a? = wellBehaved? Gr} tt
 
   open Check.Alg.AlgCheck 3 Gr wb using (env; module Env)
 
@@ -158,8 +160,9 @@ module Wait?-sanity where
 
   Gr = underlying (compile g)
 
-  wb : WellBehaved (graphTheory Gr)
-  wb = toWitness {a? = wellBehaved? Gr} tt
+  opaque
+    wb : WellBehaved (graphTheory Gr)
+    wb = toWitness {a? = wellBehaved? Gr} tt
 
   open Check.Alg.AlgCheck 3 Gr wb using (env; module Probing)
 

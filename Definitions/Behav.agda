@@ -132,7 +132,8 @@ module Definitions.Behav where
     -- "membership witness only depends on the labels" character: the
     -- prefix's trace is prepended via `tr/trans`, and `Q`'s membership
     -- witness in the suffix is lifted across the append via `Any`'s own
-    -- append lemma, untouched otherwise.
+    -- append lemma, untouched otherwise.  Unused today; kept for
+    -- `FUTURE_WORK.md` §A.
     skip/∈T-back :
       ∀ {G G′ P Q}
       → G -[¬ P ]->* G′
@@ -351,16 +352,6 @@ module Definitions.Behav where
         → ev α Q ≡ just ((？ P) # i < S >)
         → ev α′ Q ≡ just ((？ P) # j < T >)
         → I ≡ J
-
-      -- There should be at most one proof term per transition in your LTS
-      -- This is not fundamental, just an artifact of having G -< α >-> G' as
-      -- argument of lemmas. The best would be to make such proof terms
-      -- irrelevant, but I'm concerned that agda will not allow me to pattern
-      -- match on it
-      step-is-prop :
-        ∀ {G β G′}
-        → (gr₁ gr₂ : G -< β >-> G′)
-        → gr₁ ≡ gr₂
 
       no-new-branch/step :
         ∀ {G G′ Gᵢ Gⱼ′ β γ γ′}

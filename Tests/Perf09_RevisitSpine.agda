@@ -11,8 +11,8 @@
 -- close t → u as a nonprod cycle and wrongly reject this process — the
 -- graph is well-behaved (the two u-actions share the comm A→B, so no
 -- diamond forces the ℓ-branch to exist at `t`; the reply B→A overlaps A→B
--- in both participants, silencing no-new-comm/branch).  The semantic skip
--- clause (`SemSkipP`) accepts it, as it must.
+-- in both participants, silencing no-new-comm/branch).  `Wait`'s walk
+-- (`Check/Alg.agda`, `WaitDec`) accepts it, as it must.
 
 module Tests.Perf09_RevisitSpine where
 

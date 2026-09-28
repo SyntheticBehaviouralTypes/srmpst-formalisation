@@ -26,8 +26,8 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
   open M
   open M.Subst
   open import Definitions.Typing.Properties wb using (td/bisim)
-  -- For `a/rec/unfold` at the bottom of this file.  `Norm.agda` does not
-  -- import this module, so there is no cycle.
+  -- For the `⊢a` faces at the bottom of this file.  None of these three
+  -- modules imports this one, so there is no cycle.
   open import Definitions.Typing.Alg wb using (_⊢at_∶_)
   open import Definitions.Typing.AlgNorm wb using (td⇒at)
   open import Definitions.Typing.AlgDeclarative wb using (at⇒typing)

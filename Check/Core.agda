@@ -1,23 +1,13 @@
 {-# OPTIONS --guardedness #-}
 
-open import Data.Fin using (Fin)
-  renaming (_≟_ to _≟Fin_)
-open import Data.List using (List; []; _∷_)
-open import Data.List.Membership.Propositional using (_∈_)
-import Data.List.Relation.Unary.All as All
-import Data.List.Relation.Unary.Any as Any
-open import Data.Nat using (ℕ; suc)
-import Data.Nat.Properties as Nat
-open import Data.Product
-  using (Σ-syntax; _,_; proj₁; proj₂)
-open import Data.Vec using (Vec; []; _∷_; lookup)
-open import Relation.Binary.PropositionalEquality
-  using (_≡_; refl; sym; cong; ≢-sym)
-open import Relation.Nullary using (Dec; yes; no; ¬_)
-open import Relation.Nullary.Decidable
-  using (T?; map′)
+open import Data.Nat using (ℕ)
+open import Data.Product using (Σ-syntax; _,_)
+open import Data.Vec using (Vec; []; lookup)
+open import Relation.Binary.PropositionalEquality using (refl)
+open import Relation.Nullary using (Dec; yes; no)
+open import Relation.Nullary.Decidable using (map′)
 
-open import Definitions.Behav using (BTheory; WellBehaved)
+open import Definitions.Behav using (WellBehaved)
 open import Definitions.Expr
 import Definitions.Common
 import Definitions.Proc
@@ -93,47 +83,7 @@ module Check.Core where
     module Common = Definitions.Common N
     module Syntax = Definitions.Proc N
 
-    open import Definitions.Graph.Algebra N
-      using (RootedGraph; underlying; initial)
-    open import Definitions.Graph.Action N
-    open import Definitions.Graph.Bisimulation N
-    open import Definitions.Graph.Core N
-    open import Definitions.Graph.Decision N using (wellBehaved?)
-
-    module GraphChecker
-      (G : Graph)
-      (wb : WellBehaved (graphTheory G))
-      where
-
-      private
-        module T = Typing.MPST wb
-
-      open T
-
-      InactiveAt : Part → State G → Set
-      InactiveAt P s =
-        All.All (λ edge → P ∉α proj₁ edge) (edges G s)
-
-      inactiveAt? :
-        (P : Part) (s : State G) → Dec (InactiveAt P s)
-      inactiveAt? P s =
-        All.all?
-          (λ edge → _∉α?_ P (proj₁ edge))
-          (edges G s)
-
-      -- `P not-active-in t` (abstract form) decided through `InactiveAt`.
-      na? : ∀ P t → Dec (P not-active-in t)
-      na? P t with inactiveAt? P t
-      ... | yes inact =
-        yes λ gr → All.lookup inact (step⇒listed {G = G} gr)
-      ... | no ¬inact =
-        no λ na → ¬inact (All.tabulate λ mem → na (listed⇒step {G = G} mem))
-
-      -- decide `~` on states via the bisimulation checker
-      bisim?~ : ∀ x y → Dec (BTheory._~_ (graphTheory G) x y)
-      bisim?~ x y with T? (bisim? G x y)
-      ... | yes b = yes (sound (bisimulationCorrect G) b)
-      ... | no ¬b = no λ r → ¬b (complete (bisimulationCorrect G) r)
+    open import Definitions.Graph.Core N using (Graph; State; graphTheory)
 
     ProcessTyping :
       (G : Graph)

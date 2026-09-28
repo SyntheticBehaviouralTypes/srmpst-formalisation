@@ -117,11 +117,7 @@ module Safety.Termination
     rewrite τ-depth/unfold guarded =
     ≤-refl
 
-  -- WAS ~65 lines of `head/rec/guarded*` over `⊢head`, then one line over
-  -- the old, deleted two-tier `⊢a` that still needed `a/rec/guarded`'s
-  -- `P ∈T` chase for all-cycle trees.  Over this judgment it is a
-  -- projection: `a/rec` carries `MessageGuarded Pr` as a field and there is
-  -- no tree to chase.
+  -- A projection: `a/rec` carries `MessageGuarded Pr` as a field.
   rec/guarded :
     ∀ {G P Pr}
     → [] ⊢at P ◂ rec Pr ∶ ([] , G)

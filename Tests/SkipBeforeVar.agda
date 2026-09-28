@@ -1,14 +1,14 @@
 {-# OPTIONS --guardedness #-}
 
 -- Is `t/skip` in front of `t/var` essential, or can it always be
--- normalised to `t/unskip tr (t/var eq)` (i.e. an `h/var` carrying only a
--- trace)?  It is essential.
+-- normalised to `t/unskip tr (t/var eq)` (a variable reached by a trace
+-- alone)?  It is essential.
 --
 --   s --β--> K --β--> ended        (β = B ⟶ C, so `A` is never active)
 --
 -- With `Δ = K ∷ []`, `v zero` types at `s` by walking forward:
 -- `t/skip (skip/step …)` whose single leaf is `t/var (K ~ K)` at `K`.
--- An `h/var` would need `H` with `K ~ H` and `H -[¬ A]->* s`; but nothing
+-- The trace-only form would need `H` with `K ~ H` and `H -[¬ A]->* s`; but nothing
 -- at all reaches `s` (it has no incoming edges), so the only candidate is
 -- `H = s`, and `K ≁ s`.
 
@@ -29,7 +29,7 @@ open import Definitions.Expr using (s/unit)
 import Definitions.Typing as Typing
 
 open import Definitions.Graph.Algebra 3
-open import Definitions.Graph.Core 3 using (State; graphTheory; step⇒listed)
+open import Definitions.Graph.Core 3 using (State; graphTheory; step⇒listed; gstep)
 open import Definitions.Graph.Decision 3 using (wellBehaved?)
 open import Definitions.Graph.Bisimulation 3
   using (Bisimilar; bisimulationCorrect; complete)
@@ -82,7 +82,7 @@ A∉β : A ∉α β
 A∉β = refl
 
 na : A not-active-in s
-na {α} {G′} gr with step⇒listed {G = G} {s = s} {α = α} {t = G′} gr
+na gr with step⇒listed gr
 ... | here refl = A∉β
 ... | there ()
 
@@ -90,7 +90,7 @@ na {α} {G′} gr with step⇒listed {G = G} {s = s} {α = α} {t = G′} gr
 ktd :
   ∀ {G″ β′} → (gr : s -< β′ >-> G″)
   → (v[] & (K v∷ v[]) ⊢p_∶_) & (s v∷ v[]) ⊢skip A ◂ (v zero) ∶ G″
-ktd gr with step⇒listed {G = G} {s = s} gr
+ktd gr with step⇒listed gr
 ... | here refl = skip/main (t/var ~refl)
 ... | there ()
 
@@ -98,21 +98,19 @@ ktd gr with step⇒listed {G = G} {s = s} gr
 -- be given: with `wb` opaque the target is no longer recoverable by
 -- computing `tt`'s type.
 typed-via-skip : v[] & (K v∷ v[]) ⊢p A ◂ (v zero) ∶ s
-typed-via-skip = t/skip (skip/step {α = β} {G' = K} tt na ktd)
+typed-via-skip = t/skip (skip/step {α = β} {G' = K} (gstep tt) na ktd)
 
 -- (2) … but no `t/unskip tr (t/var eq)` can: nothing reaches `s`.
 no-edge-into-s : ∀ {H α} → ¬ (H -< α >-> s)
-no-edge-into-s {zero} {α} gr with step⇒listed {G = G} {s = zero} {α = α} {t = s} gr
+no-edge-into-s {zero} gr with step⇒listed gr
 ... | here ()
 ... | there ()
-no-edge-into-s {suc zero} {α} gr
-  with step⇒listed {G = G} {s = suc zero} {α = α} {t = s} gr
+no-edge-into-s {suc zero} gr with step⇒listed gr
 ... | here ()
 ... | there ()
 -- `suc (suc zero)` is the `ended` state, whose edge list is literally
 -- `[]`, so there is no `here` clause to write.
-no-edge-into-s {suc (suc zero)} {α} gr
-  with step⇒listed {G = G} {s = suc (suc zero)} {α = α} {t = s} gr
+no-edge-into-s {suc (suc zero)} gr with step⇒listed gr
 ... | ()
 
 reaches-s→≡ : ∀ {H} → H -[¬ A ]->* s → H ≡ s

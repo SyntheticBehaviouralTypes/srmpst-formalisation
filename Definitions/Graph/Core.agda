@@ -1,7 +1,6 @@
 {-# OPTIONS --guardedness #-}
 
 open import Data.Bool using (Bool; T)
-open import Data.Bool.Properties using (T-irrelevant)
 open import Data.Fin using (Fin)
   renaming (_≟_ to _≟Fin_)
 open import Data.List using (List)
@@ -10,12 +9,12 @@ import Data.List.Membership.DecPropositional as Membership
 open import Data.Nat using (ℕ)
 open import Data.Product using (_×_; _,_)
 import Data.Product.Properties as Product
-open import Data.Vec using (Vec; lookup; tabulate)
+open import Data.Vec using (Vec; lookup)
 open import Relation.Binary.Definitions using (DecidableEquality)
 open import Relation.Binary.PropositionalEquality using (_≡_)
 open import Relation.Nullary using (Dec)
 open import Relation.Nullary.Decidable
-  using (⌊_⌋; T?; fromWitness; toWitness)
+  using (⌊_⌋; T?; map′; fromWitness; toWitness)
 
 open import Definitions.Behav using (BTheory)
 
@@ -42,9 +41,6 @@ module Definitions.Graph.Core (N : ℕ) where
   State : Graph → Set
   State G = Fin (size G)
 
-  states : (G : Graph) → Vec (State G) (size G)
-  states G = tabulate (λ s → s)
-
   edges : (G : Graph) → State G → List (Edge (size G))
   edges G s = lookup (outgoing G) s
 
@@ -54,31 +50,32 @@ module Definitions.Graph.Core (N : ℕ) where
 
   infix 4 _-<_>->_
 
-  _-<_>->_ : {G : Graph} → State G → Action → State G → Set
-  _-<_>->_ {G} s α t = T (edge? G s α t)
+  -- A step is Boolean edge membership, so it is propositional.  It is
+  -- wrapped in a record, like `Network.agda`'s `NStep`, because a record
+  -- type is a rigid head: the graph and both endpoints are then inferred
+  -- from a step's type, where a bare `T (edge? …)` hides them.
+  record _-<_>->_ {G : Graph} (s : State G) (α : Action) (t : State G) : Set where
+    constructor gstep
+    field is-edge : T (edge? G s α t)
+
+  open _-<_>->_ public
 
   step? :
     (G : Graph) (s : State G) (α : Action) (t : State G)
     → Dec (_-<_>->_ {G} s α t)
-  step? G s α t = T? (edge? G s α t)
+  step? G s α t = map′ gstep is-edge (T? (edge? G s α t))
 
   listed⇒step :
     ∀ {G s α t}
     → (α , t) ∈ edges G s
     → _-<_>->_ {G} s α t
-  listed⇒step = fromWitness
+  listed⇒step m = gstep (fromWitness m)
 
   step⇒listed :
     ∀ {G s α t}
     → _-<_>->_ {G} s α t
     → (α , t) ∈ edges G s
-  step⇒listed = toWitness
-
-  step-is-prop :
-    ∀ {G s α t}
-    → (gr gr′ : _-<_>->_ {G} s α t)
-    → gr ≡ gr′
-  step-is-prop = T-irrelevant
+  step⇒listed gr = toWitness (is-edge gr)
 
   graphTheory : Graph → BTheory N
   graphTheory G .BTheory.Behav = State G

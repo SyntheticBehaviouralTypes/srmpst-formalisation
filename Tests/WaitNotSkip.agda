@@ -182,7 +182,6 @@ module Tests.WaitNotSkip where
     ; step-deterministic     = det
     ; step-sort-det          = sortDet
     ; step-arity-det         = arityDet
-    ; step-is-prop           = isProp
     ; no-new-branch/step     = nnb
     ; stepback/~             = sback
     ; step-diamond           = diam
@@ -254,11 +253,6 @@ module Tests.WaitNotSkip where
       arityDet {X = zero}             (sB _) (sA _) () _
       arityDet {X = suc zero}         (sB _) (sA _) () _
       arityDet {X = suc (suc zero)}   (sB _) (sA _) refl refl = refl
-
-      isProp : ∀ {G β G′} → (gr₁ gr₂ : G ⇒ β ⇒ G′) → gr₁ ≡ gr₂
-      isProp (sA _) (sA _) = refl
-      isProp (sB _) (sB _) = refl
-      isProp sP     sP     = refl
 
       -- Vacuous: `R` receives in every step out of `g i`, so the premise
       -- "`γ`'s receivers are idle in `β`" fails; and `z` has no steps.

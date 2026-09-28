@@ -16,7 +16,6 @@ open import Relation.Binary.PropositionalEquality using (_≡_)
 module Definitions.Typing.Declarative where
 
 open import Definitions.Expr public
-open import Definitions.Guard public
 open import Definitions.Behav public
 
 -- Processes

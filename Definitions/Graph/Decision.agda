@@ -83,7 +83,7 @@ module Definitions.Graph.Decision (N : ℕ) where
     → Stepback G
   stepback/sound {G} correct finite {s = s} equivalent gr =
     let at =
-          All.lookup finiteStep (step⇒listed {G = G} gr)
+          All.lookup finiteStep (step⇒listed gr)
         s′ , s~s′ , gr′ =
           at _ (complete correct equivalent)
     in s′ , sound correct s~s′ , gr′
@@ -160,74 +160,68 @@ module Definitions.Graph.Decision (N : ℕ) where
         → SameTarget (α , t) (α′ , t′)
       deterministic-pair left right refl =
         WellBehaved.step-deterministic well-behaved
-          (listed⇒step {G = G} left)
-          (listed⇒step {G = G} right)
+          (listed⇒step left)
+          (listed⇒step right)
+
+  -- Every pair of steps out of `s` satisfies `R` (both ways round), given
+  -- that every pair of STEPS does.
+  pairs/complete :
+    ∀ {G}{R : Edge (size G) → Edge (size G) → Set} s
+    → (∀ {α α′ t t′} → _-<_>->_ {G} s α t → _-<_>->_ {G} s α′ t′
+       → R (α , t) (α′ , t′))
+    → AllPairs (Both R) (edges G s)
+  pairs/complete {G} s r =
+    allPairs/tabulate λ left right →
+      r (listed⇒step left) (listed⇒step right)
+      , r (listed⇒step right) (listed⇒step left)
 
   recv/complete :
     ∀ {G}
     → WellBehaved (graphTheory G)
-    → ∀ s → AllPairs BothRecvCoherent (edges G s)
+    → ∀ s → AllPairs (Both RecvCoherent) (edges G s)
   recv/complete {G} well-behaved s =
-    allPairs/tabulate recv-pair
+    pairs/complete {G = G} s λ gr gr′ Q rQ inc →
+      WellBehaved.recv-overlap well-behaved {Q = Q} gr gr′ rQ inc
+
+  -- `AgreeOn F` for two steps out of `s`, from `F` on each pair of
+  -- same-sender receives.
+  agreeOn/complete :
+    ∀ {G}{F : Choice → Choice → Set} s
+    → (∀ {α α′ t t′ Q P} c c′
+       → _-<_>->_ {G} s α t → _-<_>->_ {G} s α′ t′
+       → ev α Q ≡ just ((？ P) # c) → ev α′ Q ≡ just ((？ P) # c′)
+       → F c c′)
+    → AllPairs (Both (SameOn F)) (edges G s)
+  agreeOn/complete {G} {F} s f = pairs/complete {G = G} s agree
     where
-      recv-pair :
+      agree :
         ∀ {α α′ t t′}
-        → (α , t) ∈ edges G s
-        → (α′ , t′) ∈ edges G s
-        → BothRecvCoherent (α , t) (α′ , t′)
-      recv-pair left right =
-        (λ Q rQ inc →
-          WellBehaved.recv-overlap well-behaved {Q = Q} gr gr′ rQ inc)
-        , (λ Q rQ inc →
-          WellBehaved.recv-overlap well-behaved {Q = Q} gr′ gr rQ inc)
-        where
-          gr = listed⇒step {G = G} left
-          gr′ = listed⇒step {G = G} right
+        → _-<_>->_ {G} s α t
+        → _-<_>->_ {G} s α′ t′
+        → ∀ Q → AgreeOn F (ev α Q) (ev α′ Q)
+      agree {α} {α′} gr gr′ Q with ev α Q in eq | ev α′ Q in eq′
+      ... | just ((？ _) # c) | just ((？ _) # c′) =
+        λ { refl → f c c′ gr gr′ eq eq′ }
+      ... | nothing            | _                  = tt
+      ... | just ((! _) # _)   | _                  = tt
+      ... | just ((？ _) # _)   | nothing            = tt
+      ... | just ((？ _) # _)   | just ((! _) # _)   = tt
 
   arity/complete :
     ∀ {G}
     → WellBehaved (graphTheory G)
-    → ∀ s → AllPairs BothSameArity (edges G s)
+    → ∀ s → AllPairs (Both SameArity) (edges G s)
   arity/complete {G} well-behaved s =
-    allPairs/tabulate λ left right →
-      agree (listed⇒step {G = G} left) (listed⇒step {G = G} right)
-      , agree (listed⇒step {G = G} right) (listed⇒step {G = G} left)
-    where
-      agree :
-        ∀ {α α′ t t′}
-        → _-<_>->_ {G} s α t
-        → _-<_>->_ {G} s α′ t′
-        → ∀ Q → AgreeArity (ev α Q) (ev α′ Q)
-      agree {α} {α′} gr gr′ Q with ev α Q in eq | ev α′ Q in eq′
-      ... | just ((？ _) # (_ < _ >)) | just ((？ _) # (_ < _ >)) =
-        λ { refl → WellBehaved.step-arity-det well-behaved gr gr′ eq eq′ }
-      ... | nothing            | _                  = tt
-      ... | just ((! _) # _)   | _                  = tt
-      ... | just ((？ _) # _)   | nothing            = tt
-      ... | just ((？ _) # _)   | just ((! _) # _)   = tt
+    agreeOn/complete {G = G} s λ { (_ < _ >) (_ < _ >) gr gr′ eq eq′ →
+      WellBehaved.step-arity-det well-behaved gr gr′ eq eq′ }
 
   sort/complete :
     ∀ {G}
     → WellBehaved (graphTheory G)
-    → ∀ s → AllPairs BothSameSort (edges G s)
+    → ∀ s → AllPairs (Both SameSort) (edges G s)
   sort/complete {G} well-behaved s =
-    allPairs/tabulate λ left right →
-      agree (listed⇒step {G = G} left) (listed⇒step {G = G} right)
-      , agree (listed⇒step {G = G} right) (listed⇒step {G = G} left)
-    where
-      agree :
-        ∀ {α α′ t t′}
-        → _-<_>->_ {G} s α t
-        → _-<_>->_ {G} s α′ t′
-        → ∀ Q → AgreeSort (ev α Q) (ev α′ Q)
-      agree {α} {α′} gr gr′ Q with ev α Q in eq | ev α′ Q in eq′
-      ... | just ((？ _) # (_ < _ >)) | just ((？ _) # (_ < _ >)) =
-        λ { refl refl →
-            WellBehaved.step-sort-det well-behaved gr gr′ eq eq′ }
-      ... | nothing            | _                  = tt
-      ... | just ((! _) # _)   | _                  = tt
-      ... | just ((？ _) # _)   | nothing            = tt
-      ... | just ((？ _) # _)   | just ((! _) # _)   = tt
+    agreeOn/complete {G = G} s λ { (_ < _ >) (_ < _ >) gr gr′ eq eq′ refl →
+      WellBehaved.step-sort-det well-behaved gr gr′ eq eq′ }
 
   noNewBranch/complete :
     ∀ {G}
@@ -247,12 +241,12 @@ module Definitions.Graph.Decision (N : ℕ) where
       no-new-target β∈ source∈ idle target∈ ceq =
         let _ , grⱼ =
               WellBehaved.no-new-branch/step well-behaved
-                (listed⇒step {G = G} β∈)
+                (listed⇒step β∈)
                 idle
-                (listed⇒step {G = G} source∈)
-                (listed⇒step {G = G} target∈)
+                (listed⇒step source∈)
+                (listed⇒step target∈)
                 ceq
-        in listed⇒available (step⇒listed {G = G} grⱼ)
+        in listed⇒available (step⇒listed grⱼ)
 
       no-new-source :
         ∀ {β t γ u}
@@ -279,21 +273,9 @@ module Definitions.Graph.Decision (N : ℕ) where
   diamond/complete :
     ∀ {G}
     → WellBehaved (graphTheory G)
-    → ∀ s → AllPairs (BothCommute G) (edges G s)
+    → ∀ s → AllPairs (Both (Commutes G)) (edges G s)
   diamond/complete {G} well-behaved s =
-    allPairs/tabulate diamond-pair
-    where
-      diamond-pair :
-        ∀ {α β t u}
-        → (α , t) ∈ edges G s
-        → (β , u) ∈ edges G s
-        → BothCommute G (α , t) (β , u)
-      diamond-pair α∈ β∈ =
-        WellBehaved.step-diamond well-behaved grα grβ
-        , WellBehaved.step-diamond well-behaved grβ grα
-        where
-          grα = listed⇒step {G = G} α∈
-          grβ = listed⇒step {G = G} β∈
+    pairs/complete {G = G} s (WellBehaved.step-diamond well-behaved)
 
   localConditions/complete :
     ∀ {G}
@@ -319,7 +301,7 @@ module Definitions.Graph.Decision (N : ℕ) where
       let s′ , s~s′ , gr′ =
             WellBehaved.stepback/~ well-behaved
               (sound correct equivalent)
-              (listed⇒step {G = G} member)
+              (listed⇒step member)
       in s′ , complete correct s~s′ , gr′
 
   conditions/complete :
@@ -358,16 +340,8 @@ module Definitions.Graph.Decision (N : ℕ) where
     → Synchronous (graphTheory G)
     → ∀ s → All Balanced (edges G s)
   balanced/complete {G} sync s =
-    All.tabulate balanced-edge
-    where
-      balanced-edge :
-        ∀ {α t}
-        → (α , t) ∈ edges G s
-        → Balanced (α , t)
-      balanced-edge member
-        with Synchronous.balanced sync (listed⇒step {G = G} member)
-      ... | P , Qs , c , P∉ , ne , refl =
-        P , Qs , c , ev-sender {P} {Qs} {c} , P∉ , ne , refl
+    All.tabulate λ member →
+      Synchronous.balanced sync (listed⇒step member)
 
   noNewComm/complete :
     ∀ {G}
@@ -385,10 +359,10 @@ module Definitions.Graph.Decision (N : ℕ) where
       no-new-target β∈ γ∈ idle =
         let _ , grγ =
               Synchronous.no-new-comm/step sync
-                (listed⇒step {G = G} β∈)
+                (listed⇒step β∈)
                 idle
-                (listed⇒step {G = G} γ∈)
-        in listed⇒available (step⇒listed {G = G} grγ)
+                (listed⇒step γ∈)
+        in listed⇒available (step⇒listed grγ)
 
       no-new-edge :
         ∀ {β t}

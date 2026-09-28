@@ -17,7 +17,6 @@
 
 open import Data.Bool using (T)
 open import Data.Empty using (⊥; ⊥-elim)
-open import Data.Bool.Properties using (T-irrelevant)
 open import Data.Fin using (Fin)
 import Data.Fin.Properties as FinP
 open import Data.List using (List)
@@ -69,6 +68,7 @@ module Definitions.Graph.NetworkWB (N : ℕ) where
   -- condition the `∥` projection needs — "every edge of `n` is a `¬P`
   -- step" — and it is checked per participant, so a net degrades to the
   -- flattened checker only for the participants that actually straddle.
+  -- Nothing uses it yet: it is kept for `FUTURE_WORK.md` §A.
 
   PFree : Part → Net → Set
   PFree P n = EdgePred n (λ α → P ∉α α)
@@ -286,8 +286,6 @@ module Definitions.Graph.NetworkWB (N : ℕ) where
       ⊥-elim (dis-recv₂ dis st₁′ st₂ (_ , _ , eq) (_ , eq′))
     ... | inj₂ (_ , st₂ , _) | inj₂ (_ , st₂′ , _) =
       W₂.step-arity-det st₂ st₂′ eq eq′
-    parWB .WellBehaved.step-is-prop st st′ =
-      cong nstep (T-irrelevant (un st) (un st′))
     parWB .WellBehaved.no-new-branch/step {G} {G′} st idle stᵢ stⱼ′ ceq
       with pairView n₁ n₂ G
     ... | is-pair a b

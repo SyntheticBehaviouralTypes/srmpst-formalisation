@@ -107,20 +107,11 @@ module Definitions.Actions (N : ℕ) where
   Recv : Action → Part → Set
   Recv α Q = ∃[ P ] ∃[ c ] ev α Q ≡ just ((？ P) # c)
 
-  Send : Action → Part → Set
-  Send α P = ∃[ Qs ] ∃[ c ] ev α P ≡ just ((! Qs) # c)
-
   Recv? : (α : Action) → (Q : Part) → Dec (Recv α Q)
   Recv? α Q with ev α Q
   ... | nothing           = no λ { (_ , _ , ()) }
   ... | just ((？ P) # c)  = yes (P , c , refl)
   ... | just ((! Qs) # c) = no λ { (_ , _ , ()) }
-
-  Send? : (α : Action) → (P : Part) → Dec (Send α P)
-  Send? α P with ev α P
-  ... | nothing           = no λ { (_ , _ , ()) }
-  ... | just ((! Qs) # c) = yes (Qs , c , refl)
-  ... | just ((？ R) # c)  = no λ { (_ , _ , ()) }
 
   Recv→∈α : ∀ {α Q} → Recv α Q → Q ∈α α
   Recv→∈α (_ , _ , eq) = _ , eq
@@ -176,15 +167,6 @@ module Definitions.Actions (N : ℕ) where
     ...   | yes R∈ = inj₂ (R≢P , R∈ , sym (just-injective eq))
     ...   | no _   = ⊥-elim (nothing≢just eq)
 
-    at-comm : ∀ {P Qs c c′} R
-            → mapᵐ Event.shape (⟶-at P Qs c R)
-            ≡ mapᵐ Event.shape (⟶-at P Qs c′ R)
-    at-comm {P} {Qs} R with R ≟f P
-    ... | yes _ = refl
-    ... | no _ with R ∈? Qs
-    ...   | yes _ = refl
-    ...   | no _  = refl
-
     ev-⟶ : ∀ {P Qs c} R → ev (P ⟶ Qs # c) R ≡ ⟶-at P Qs c R
     ev-⟶ {P} {Qs} {c} R = VecP.lookup∘tabulate (⟶-at P Qs c) R
 
@@ -218,9 +200,3 @@ module Definitions.Actions (N : ℕ) where
   comm-∈α : ∀ {α α′ Q} → comm α ≡ comm α′ → Q ∈α α → Q ∈α α′
   comm-∈α ceq ((sh # c) , eq) with comm-ev ceq eq
   ... | c′ , eq′ = (sh # c′) , eq′
-
-  comm-⟶ : ∀ {P Qs c c′} → comm (P ⟶ Qs # c) ≡ comm (P ⟶ Qs # c′)
-  comm-⟶ {P} {Qs} {c} {c′} =
-    trans (sym (VecP.tabulate-∘ (mapᵐ Event.shape) (⟶-at P Qs c)))
-    (trans (VecP.tabulate-cong at-comm)
-           (VecP.tabulate-∘ (mapᵐ Event.shape) (⟶-at P Qs c′)))

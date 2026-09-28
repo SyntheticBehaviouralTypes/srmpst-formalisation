@@ -107,7 +107,7 @@ module Definitions.Graph.Reachability (N : ℕ) where
     ... | no ¬os | _   =
       ⊥-elim (¬os
         (s , ≡true→T ms , oks
-           , Any.map (λ px → sym (cong proj₂ px)) (step⇒listed {G = G} gr)))
+           , Any.map (λ px → sym (cong proj₂ px)) (step⇒listed gr)))
 
     -- extract a graph edge witnessing the one-step successor
     findEdge :
@@ -126,7 +126,7 @@ module Definitions.Graph.Reachability (N : ℕ) where
     expand-sound ok m {t} p with oneStep? m ok t | expand-lookup ok m t
     ... | yes (s , Tms , oks , anyWit) | _ =
       let (α , mem) = findEdge (edges G s) anyWit
-      in inj₂ (s , T→≡true Tms , oks , α , listed⇒step {G = G} mem)
+      in inj₂ (s , T→≡true Tms , oks , α , listed⇒step mem)
     ... | no _ | eqL =
       inj₁ (trans (sym (trans eqL (Bool.∨-identityʳ (lookup m t)))) p)
 
@@ -147,57 +147,6 @@ module Definitions.Graph.Reachability (N : ℕ) where
     pathVia-snoc path/nil oku gr = path/cons oku gr path/nil
     pathVia-snoc (path/cons oks gr′ rest) oku gr =
       path/cons oks gr′ (pathVia-snoc rest oku gr)
-
-    -- ── Predicate-filtered paths ──
-    --
-    -- Same as `PathVia`, but the filter is a `Set`-valued predicate `Q` on the
-    -- states strictly before the target.  Needed to phrase the semantic skip
-    -- predicate over a *bare* predicate `L` (its filter is `λ u → ¬ L u`),
-    -- without appealing to the decidability of `L` — which is essential when
-    -- `L` is the algorithmic judgment `Alg k` itself (§4).
-
-    data PathViaP (Q : State G → Set)
-      : State G → State G → Set where
-      pathP/nil  : ∀ {s} → PathViaP Q s s
-      pathP/cons :
-        ∀ {s α u t}
-        → Q s → Step s α u → PathViaP Q u t
-        → PathViaP Q s t
-
-    pathViaP-snoc :
-      ∀ {Q s u t α}
-      → PathViaP Q s u → Q u → Step u α t
-      → PathViaP Q s t
-    pathViaP-snoc pathP/nil qu gr = pathP/cons qu gr pathP/nil
-    pathViaP-snoc (pathP/cons qs gr′ rest) qu gr =
-      pathP/cons qs gr′ (pathViaP-snoc rest qu gr)
-
-    -- covariance in the filter predicate
-    pathViaP-map :
-      ∀ {Q Q′ s t}
-      → (∀ u → Q u → Q′ u)
-      → PathViaP Q s t → PathViaP Q′ s t
-    pathViaP-map f pathP/nil = pathP/nil
-    pathViaP-map f (pathP/cons qs gr rest) =
-      pathP/cons (f _ qs) gr (pathViaP-map f rest)
-
-    -- bridges between the two filter representations
-    pathViaP→pathVia :
-      ∀ {Q ok s t}
-      → (∀ u → Q u → T (ok u))
-      → PathViaP Q s t → ∃[ n ] PathVia ok s t n
-    pathViaP→pathVia f pathP/nil = zero , path/nil
-    pathViaP→pathVia f (pathP/cons qs gr rest)
-      with pathViaP→pathVia f rest
-    ... | n , p = suc n , path/cons (f _ qs) gr p
-
-    pathVia→pathViaP :
-      ∀ {Q ok s t n}
-      → (∀ u → T (ok u) → Q u)
-      → PathVia ok s t n → PathViaP Q s t
-    pathVia→pathViaP g path/nil = pathP/nil
-    pathVia→pathViaP g (path/cons oks gr rest) =
-      pathP/cons (g _ oks) gr (pathVia→pathViaP g rest)
 
     -- ── Completeness: every path is captured ──
 
@@ -384,7 +333,7 @@ module Definitions.Graph.Reachability (N : ℕ) where
     activeToStep :
       ∀ {P s} → Any (λ e → P ∈α proj₁ e) (edges G s) → P ∈T s
     activeToStep {P} {s} a with anyActive→∈ (edges G s) a
-    ... | (α , u) , mem , px = in/α (listed⇒step {G = G} mem) px
+    ... | (α , u) , mem , px = in/α (listed⇒step mem) px
 
     reach→∈T :
       ∀ {P s t n}
@@ -405,41 +354,10 @@ module Definitions.Graph.Reachability (N : ℕ) where
       → ∃[ t ] (∃[ n ] PathVia (λ _ → true) s t n
                 × Any (λ e → P ∈α proj₁ e) (edges G t))
     ∈T→reach {P} {s} (_ , _ , tr/step gr _ , here px) =
-      s , zero , path/nil , ∈α-lift (step⇒listed {G = G} gr) px
+      s , zero , path/nil , ∈α-lift (step⇒listed gr) px
     ∈T→reach {P} {s} (_ , t , tr/step gr tr , there mem)
       with ∈T→reach (_ , t , tr , mem)
     ... | t′ , n , path , active = t′ , suc n , path/cons tt gr path , active
 
     active? : ∀ P t → Dec (Any (λ e → P ∈α proj₁ e) (edges G t))
     active? P t = Any.any? (λ e → P ∈α? proj₁ e) (edges G t)
-
-    reachActiveAt? :
-      ∀ P s t
-      → Dec (T (lookup (reachVia (λ _ → true) s) t)
-             × Any (λ e → P ∈α proj₁ e) (edges G t))
-    reachActiveAt? P s t
-      with T? (lookup (reachVia (λ _ → true) s) t) | active? P t
-    ... | yes r | yes a = yes (r , a)
-    ... | no ¬r | _     = no λ { (r , _) → ¬r r }
-    ... | _     | no ¬a = no λ { (_ , a) → ¬a a }
-
-    reachActive? :
-      ∀ P s
-      → Dec (∃[ t ] (T (lookup (reachVia (λ _ → true) s) t)
-                     × Any (λ e → P ∈α proj₁ e) (edges G t)))
-    reachActive? P s = FinP.any? (reachActiveAt? P s)
-
-    ∈T? : ∀ (P : Part) (s : State G) → Dec (P ∈T s)
-    ∈T? P s with reachActive? P s
-    ... | yes (t , Tr , active) =
-      yes (reach→∈T
-             (proj₂ (reachVia-sound (λ _ → true) s (T→≡true Tr))) active)
-    ... | no ¬ra = no λ P∈T → ¬ra (build P∈T)
-      where
-        build :
-          P ∈T s
-          → ∃[ t ] (T (lookup (reachVia (λ _ → true) s) t)
-                    × Any (λ e → P ∈α proj₁ e) (edges G t))
-        build P∈T with ∈T→reach P∈T
-        ... | t , n , path , active =
-          t , ≡true→T (reachVia-complete (λ _ → true) s path) , active

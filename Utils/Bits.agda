@@ -149,14 +149,6 @@ wt-pos {v = b V.∷ v} {F.zero}  p rewrite p = s≤s z≤n
 wt-pos {v = b V.∷ v} {F.suc i} p =
   Nat.≤-trans (wt-pos {v = v} {i = i} p) (Nat.m≤n+m (wt v) (bitv b))
 
--- A vector at maximal weight has every bit set.
-wt-full : ∀ {n} {v : Vec Bool n} → wt v ≡ n → ∀ i → lookup v i ≡ true
-wt-full {v = true V.∷ v} eq F.zero    = refl
-wt-full {v = true V.∷ v} eq (F.suc i) =
-  wt-full {v = v} (Nat.suc-injective eq) i
-wt-full {n = suc n} {v = false V.∷ v} eq i =
-  ⊥-elim (Nat.<-irrefl refl (subst (_≤ n) eq (wt-bound v)))
-
 -- The all-true vector has full weight.
 wt/true : ∀ n → wt (V.replicate n true) ≡ n
 wt/true zero    = refl

@@ -22,7 +22,6 @@
 -- flattened into an open graph.
 
 open import Data.Bool using (T)
-open import Data.Bool.Properties using (T-irrelevant)
 open import Data.Empty using (⊥; ⊥-elim)
 open import Data.Fin using (Fin)
 import Data.Fin.Properties as FinP
@@ -140,24 +139,10 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
               (nedges n₂ (ninit n₂)))
           (nedges n₁ (nst n₁ i)))
     where
-    from :
-      (∀ i →
-        All.All
-          (λ e₁ →
-            proj₂ e₁ ≡ nend →
-            All.All
-              (λ e₂ →
-                (∀ X → X ∈α proj₁ e₂ → X ∉α proj₁ e₁) →
-                ∃[ t₀ ] (proj₁ e₂ , t₀) ∈ nedges n₁ (nst n₁ i))
-              (nedges n₂ (ninit n₂)))
-          (nedges n₁ (nst n₁ i)))
-      → SeamComm n₁ n₂
-    from as i mβ mγ idle =
-      All.lookup (All.lookup (as i) mβ refl) mγ idle
-
-    to :
-      SeamComm n₁ n₂
-      → ∀ i →
+    -- `SeamComm`, as the nest of `All`s decided above.
+    Nest : Set
+    Nest =
+      ∀ i →
         All.All
           (λ e₁ →
             proj₂ e₁ ≡ nend →
@@ -167,6 +152,12 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
                 ∃[ t₀ ] (proj₁ e₂ , t₀) ∈ nedges n₁ (nst n₁ i))
               (nedges n₂ (ninit n₂)))
           (nedges n₁ (nst n₁ i))
+
+    from : Nest → SeamComm n₁ n₂
+    from as i mβ mγ idle =
+      All.lookup (All.lookup (as i) mβ refl) mγ idle
+
+    to : SeamComm n₁ n₂ → Nest
     to sc i =
       All.tabulate λ {e₁} m₁ eq →
         All.tabulate λ {e₂} m₂ idle →
@@ -209,28 +200,10 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
               (nedges n₁ (nst n₁ i)))
           (nedges n₁ (nst n₁ i)))
     where
-    from :
-      (∀ i →
-        All.All
-          (λ e₁ →
-            proj₂ e₁ ≡ nend →
-            All.All
-              (λ eᵢ →
-                All.All
-                  (λ e₂ →
-                    comm (proj₁ e₂) ≡ comm (proj₁ eᵢ) →
-                    (∀ Q → Recv (proj₁ eᵢ) Q → Q ∉α proj₁ e₁) →
-                    ∃[ tⱼ ] (proj₁ e₂ , tⱼ) ∈ nedges n₁ (nst n₁ i))
-                  (nedges n₂ (ninit n₂)))
-              (nedges n₁ (nst n₁ i)))
-          (nedges n₁ (nst n₁ i)))
-      → SeamBranch n₁ n₂
-    from as i mβ mᵢ ceq idle m₂ =
-      All.lookup (All.lookup (All.lookup (as i) mβ refl) mᵢ) m₂ ceq idle
-
-    to :
-      SeamBranch n₁ n₂
-      → ∀ i →
+    -- `SeamBranch`, as the nest of `All`s decided above.
+    Nest : Set
+    Nest =
+      ∀ i →
         All.All
           (λ e₁ →
             proj₂ e₁ ≡ nend →
@@ -244,6 +217,12 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
                   (nedges n₂ (ninit n₂)))
               (nedges n₁ (nst n₁ i)))
           (nedges n₁ (nst n₁ i))
+
+    from : Nest → SeamBranch n₁ n₂
+    from as i mβ mᵢ ceq idle m₂ =
+      All.lookup (All.lookup (All.lookup (as i) mβ refl) mᵢ) m₂ ceq idle
+
+    to : SeamBranch n₁ n₂ → Nest
     to sb i =
       All.tabulate λ {e₁} m₁ eq →
         All.tabulate λ {eᵢ} mᵢ →
@@ -331,9 +310,6 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
       W₂.step-arity-det st₂ st₂′ eq eq′
     seqWB .WellBehaved.step-arity-det {nend} st st′ eq eq′ =
       ⊥-elim (nstep-nend-⊥ n⨾ st)
-
-    seqWB .WellBehaved.step-is-prop st st′ =
-      cong nstep (T-irrelevant (un st) (un st′))
 
     seqWB .WellBehaved.no-new-branch/step
       {live (inj₂ a)} st idle stᵢ stⱼ′ ceq

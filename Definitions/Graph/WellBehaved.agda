@@ -3,7 +3,7 @@
 open import Data.Fin using (Fin)
   renaming (_≟_ to _≟Fin_)
 import Data.Fin.Properties as Fin
-open import Data.Empty using (⊥-elim)
+open import Data.Empty using (⊥; ⊥-elim)
 open import Data.List using (List; []; _∷_)
 open import Data.List.Membership.Propositional using (_∈_)
 import Data.List.Relation.Unary.All as All
@@ -21,9 +21,9 @@ open import Data.Maybe using (Maybe; just; nothing)
 open import Data.Unit using (⊤; tt)
 open import Function using (_∘_)
 open import Relation.Binary.PropositionalEquality
-  using (_≡_; _≢_; refl; sym; subst₂)
+  using (_≡_; _≢_; refl; sym; trans; subst₂)
 open import Relation.Nullary using (Dec; yes; no; ¬?)
-open import Relation.Nullary.Decidable using (_×-dec_; _→-dec_)
+open import Relation.Nullary.Decidable using (map′; _×-dec_; _→-dec_)
 
 open import Definitions.Behav using (BTheory; WellBehaved; Synchronous)
 open import Definitions.Expr using (_≟Sort_)
@@ -59,6 +59,19 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     → SameTarget right left
   sameTarget/sym same eq = sym (same (sym eq))
 
+  -- A relation, both ways round.  Every pairwise condition below is checked
+  -- as `AllPairs (Both R)`, since `AllPairs` sees each pair once.
+  Both : {A : Set} → (A → A → Set) → A → A → Set
+  Both R x y = R x y × R y x
+
+  both? :
+    ∀ {A : Set}{R : A → A → Set}
+    → (∀ x y → Dec (R x y)) → ∀ x y → Dec (Both R x y)
+  both? R? x y = R? x y ×-dec R? y x
+
+  both/refl : ∀ {A : Set}{R : A → A → Set} → (∀ x → R x x) → ∀ x → Both R x x
+  both/refl r x = r x , r x
+
   RecvCoherent : Edge n → Edge n → Set
   RecvCoherent (α , _) (α′ , _) =
     ∀ Q → Recv α Q → Q ∈α α′ → comm α ≡ comm α′
@@ -69,119 +82,60 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     Fin.all? λ Q →
       Recv? α Q →-dec (Q ∈α? α′) →-dec (comm α ≟Comm comm α′)
 
-  BothRecvCoherent : Edge n → Edge n → Set
-  BothRecvCoherent left right =
-    RecvCoherent left right × RecvCoherent right left
+  recvCoherent/refl : ∀ {n} (edge : Edge n) → RecvCoherent edge edge
+  recvCoherent/refl _ _ _ _ = refl
 
-  bothRecvCoherent? :
-    (left right : Edge n) → Dec (BothRecvCoherent left right)
-  bothRecvCoherent? left right =
-    recvCoherent? left right ×-dec recvCoherent? right left
+  -- Two receive events at one participant, from the same sender, agree on
+  -- their choices as `F` says; any other pair of events is unconstrained.
+  AgreeOn : (Choice → Choice → Set) → Maybe Event → Maybe Event → Set
+  AgreeOn F (just ((？ P) # c)) (just ((？ P′) # c′)) = P ≡ P′ → F c c′
+  AgreeOn F _ _ = ⊤
 
-  recvCoherent/refl :
-    ∀ {n} (edge : Edge n) → BothRecvCoherent edge edge
-  recvCoherent/refl _ = (λ _ _ _ → refl) , (λ _ _ _ → refl)
+  agreeOn? :
+    ∀ {F} → (∀ c c′ → Dec (F c c′)) → ∀ x y → Dec (AgreeOn F x y)
+  agreeOn? F? (just ((？ P) # c)) (just ((？ P′) # c′)) =
+    (P ≟Fin P′) →-dec F? c c′
+  agreeOn? F? nothing            _                   = yes tt
+  agreeOn? F? (just ((! _) # _)) _                   = yes tt
+  agreeOn? F? (just ((？ _) # _)) nothing             = yes tt
+  agreeOn? F? (just ((？ _) # _)) (just ((! _) # _))  = yes tt
 
-  recvCoherent/sym :
-    ∀ {n} {left right : Edge n}
-    → BothRecvCoherent left right
-    → BothRecvCoherent right left
-  recvCoherent/sym (left , right) = right , left
+  agreeOn/refl : ∀ {F} → (∀ c → F c c) → ∀ x → AgreeOn F x x
+  agreeOn/refl r nothing            = tt
+  agreeOn/refl r (just ((! _) # _)) = tt
+  agreeOn/refl r (just ((？ _) # c)) = λ _ → r c
 
-  -- Two receive events from the same sender agree on the arity.
-  AgreeArity : Maybe Event → Maybe Event → Set
-  AgreeArity (just ((？ P) # c)) (just ((？ P′) # c′)) =
-    P ≡ P′ → Choice.nchoices c ≡ Choice.nchoices c′
-  AgreeArity _ _ = ⊤
+  SameOn : (Choice → Choice → Set) → Edge n → Edge n → Set
+  SameOn F (α , _) (α′ , _) = ∀ Q → AgreeOn F (ev α Q) (ev α′ Q)
 
-  agreeArity? : ∀ x y → Dec (AgreeArity x y)
-  agreeArity? (just ((？ P) # c)) (just ((？ P′) # c′)) =
-    (P ≟Fin P′) →-dec (Choice.nchoices c Nat.≟ Choice.nchoices c′)
-  agreeArity? nothing            _                   = yes tt
-  agreeArity? (just ((! _) # _)) _                   = yes tt
-  agreeArity? (just ((？ _) # _)) nothing             = yes tt
-  agreeArity? (just ((？ _) # _)) (just ((! _) # _))  = yes tt
+  sameOn? :
+    ∀ {F} → (∀ c c′ → Dec (F c c′))
+    → (left right : Edge n) → Dec (SameOn F left right)
+  sameOn? F? (α , _) (α′ , _) =
+    Fin.all? λ Q → agreeOn? F? (ev α Q) (ev α′ Q)
 
-  agreeArity/refl : ∀ x → AgreeArity x x
-  agreeArity/refl nothing            = tt
-  agreeArity/refl (just ((! _) # _)) = tt
-  agreeArity/refl (just ((？ _) # _)) = λ _ → refl
+  sameOn/refl : ∀ {F} → (∀ c → F c c) → ∀ {n} (edge : Edge n) → SameOn F edge edge
+  sameOn/refl r (α , _) Q = agreeOn/refl r (ev α Q)
 
-  SameArity : Edge n → Edge n → Set
-  SameArity (α , _) (α′ , _) = ∀ Q → AgreeArity (ev α Q) (ev α′ Q)
+  -- Same sender: same arity.
+  ArityF : Choice → Choice → Set
+  ArityF c c′ = Choice.nchoices c ≡ Choice.nchoices c′
 
-  sameArity? : (left right : Edge n) → Dec (SameArity left right)
-  sameArity? (α , _) (α′ , _) =
-    Fin.all? λ Q → agreeArity? (ev α Q) (ev α′ Q)
+  -- Same sender and label: same sort.
+  SortF : Choice → Choice → Set
+  SortF c c′ = choiceKey c ≡ choiceKey c′ → Choice.sort c ≡ Choice.sort c′
 
-  BothSameArity : Edge n → Edge n → Set
-  BothSameArity left right =
-    SameArity left right × SameArity right left
+  arityF? : ∀ c c′ → Dec (ArityF c c′)
+  arityF? c c′ = Choice.nchoices c Nat.≟ Choice.nchoices c′
 
-  bothSameArity? :
-    (left right : Edge n) → Dec (BothSameArity left right)
-  bothSameArity? left right =
-    sameArity? left right ×-dec sameArity? right left
+  sortF? : ∀ c c′ → Dec (SortF c c′)
+  sortF? c c′ =
+    (choiceKey c ≟ChoiceKey choiceKey c′) →-dec
+      (Choice.sort c ≟Sort Choice.sort c′)
 
-  sameArity/refl :
-    ∀ {n} (edge : Edge n) → BothSameArity edge edge
-  sameArity/refl (α , _) =
-    (λ Q → agreeArity/refl (ev α Q)) , (λ Q → agreeArity/refl (ev α Q))
-
-  sameArity/sym :
-    ∀ {n} {left right : Edge n}
-    → BothSameArity left right
-    → BothSameArity right left
-  sameArity/sym (left , right) = right , left
-
-  -- Two receive events from the same sender with the same label agree on
-  -- the sort.
-  AgreeSort : Maybe Event → Maybe Event → Set
-  AgreeSort (just ((？ P) # c)) (just ((？ P′) # c′)) =
-    P ≡ P′ → choiceKey c ≡ choiceKey c′ → Choice.sort c ≡ Choice.sort c′
-  AgreeSort _ _ = ⊤
-
-  agreeSort? : ∀ x y → Dec (AgreeSort x y)
-  agreeSort? (just ((？ P) # c)) (just ((？ P′) # c′)) =
-    (P ≟Fin P′) →-dec
-      ((choiceKey c ≟ChoiceKey choiceKey c′) →-dec
-        (Choice.sort c ≟Sort Choice.sort c′))
-  agreeSort? nothing            _                   = yes tt
-  agreeSort? (just ((! _) # _)) _                   = yes tt
-  agreeSort? (just ((？ _) # _)) nothing             = yes tt
-  agreeSort? (just ((？ _) # _)) (just ((! _) # _))  = yes tt
-
-  agreeSort/refl : ∀ x → AgreeSort x x
-  agreeSort/refl nothing            = tt
-  agreeSort/refl (just ((! _) # _)) = tt
-  agreeSort/refl (just ((？ _) # _)) = λ _ _ → refl
-
-  SameSort : Edge n → Edge n → Set
-  SameSort (α , _) (α′ , _) = ∀ Q → AgreeSort (ev α Q) (ev α′ Q)
-
-  sameSort? : (left right : Edge n) → Dec (SameSort left right)
-  sameSort? (α , _) (α′ , _) =
-    Fin.all? λ Q → agreeSort? (ev α Q) (ev α′ Q)
-
-  BothSameSort : Edge n → Edge n → Set
-  BothSameSort left right =
-    SameSort left right × SameSort right left
-
-  bothSameSort? :
-    (left right : Edge n) → Dec (BothSameSort left right)
-  bothSameSort? left right =
-    sameSort? left right ×-dec sameSort? right left
-
-  sameSort/refl :
-    ∀ {n} (edge : Edge n) → BothSameSort edge edge
-  sameSort/refl (α , _) =
-    (λ Q → agreeSort/refl (ev α Q)) , (λ Q → agreeSort/refl (ev α Q))
-
-  sameSort/sym :
-    ∀ {n} {left right : Edge n}
-    → BothSameSort left right
-    → BothSameSort right left
-  sameSort/sym (left , right) = right , left
+  SameArity SameSort : Edge n → Edge n → Set
+  SameArity = SameOn ArityF
+  SameSort  = SameOn SortF
 
   Available : ∀ {n} → Action → List (Edge n) → Set
   Available α = Any.Any (λ edge → EdgeAction edge ≡ α)
@@ -281,30 +235,9 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
   commutes? G left@(α , _) right@(β , _) =
     (α ⋄? β) →-dec completion? G left right
 
-  BothCommute :
-    (G : Graph) → Edge (size G) → Edge (size G) → Set
-  BothCommute G left right =
-    Commutes G left right × Commutes G right left
-
-  bothCommute? :
-    (G : Graph) (left right : Edge (size G))
-    → Dec (BothCommute G left right)
-  bothCommute? G left right =
-    commutes? G left right ×-dec commutes? G right left
-
-  commutes/refl :
-    ∀ {G} (edge : Edge (size G)) → BothCommute G edge edge
-  commutes/refl {G} edge@(α , _) = impossible , impossible
-    where
-      impossible : Commutes G edge edge
-      impossible (α≢α , _) = ⊥-elim (α≢α refl)
-
-  commutes/sym :
-    ∀ {G} {left right : Edge (size G)}
-    → BothCommute G left right
-    → BothCommute G right left
-  commutes/sym {G} {left} {right} (forward , backward) =
-    backward , forward
+  -- Vacuous: `⋄` includes `≢`.
+  commutes/refl : ∀ {G} (edge : Edge (size G)) → Commutes G edge edge
+  commutes/refl _ (α≢α , _) = ⊥-elim (α≢α refl)
 
   allPairs/member :
     ∀ {A : Set}
@@ -339,25 +272,34 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     (Any.there y∈) =
     allPairs/member reflexive symmetric pairs x∈ y∈
 
+  -- `allPairs/member` at `Both R`, whose symmetry is free.
+  allPairs/both :
+    ∀ {A : Set}{R : A → A → Set}{xs : List A}{x y : A}
+    → (∀ z → R z z) → AllPairs (Both R) xs → x ∈ xs → y ∈ xs → R x y
+  allPairs/both {R = R} r pairs x∈ y∈ =
+    proj₁
+      (allPairs/member {_R_ = Both R} (both/refl {R = R} r) (λ (a , b) → b , a)
+        pairs x∈ y∈)
+
   record LocalConditions (G : Graph) : Set where
     field
       deterministic :
         ∀ s → AllPairs SameTarget (edges G s)
 
       recv-coherent :
-        ∀ s → AllPairs BothRecvCoherent (edges G s)
+        ∀ s → AllPairs (Both RecvCoherent) (edges G s)
 
       same-arity :
-        ∀ s → AllPairs BothSameArity (edges G s)
+        ∀ s → AllPairs (Both SameArity) (edges G s)
 
       same-sort :
-        ∀ s → AllPairs BothSameSort (edges G s)
+        ∀ s → AllPairs (Both SameSort) (edges G s)
 
       no-new-branch :
         ∀ s → All (NoNewBranchAfter G s) (edges G s)
 
       diamond :
-        ∀ s → AllPairs (BothCommute G) (edges G s)
+        ∀ s → AllPairs (Both (Commutes G)) (edges G s)
 
   open LocalConditions
 
@@ -368,22 +310,22 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
 
   recvConditions? :
     (G : Graph)
-    → Dec (∀ s → AllPairs BothRecvCoherent (edges G s))
+    → Dec (∀ s → AllPairs (Both RecvCoherent) (edges G s))
   recvConditions? G =
     Fin.all?
-      (λ s → Pairs.allPairs? bothRecvCoherent? (edges G s))
+      (λ s → Pairs.allPairs? (both? recvCoherent?) (edges G s))
 
   arityConditions? :
-    (G : Graph) → Dec (∀ s → AllPairs BothSameArity (edges G s))
+    (G : Graph) → Dec (∀ s → AllPairs (Both SameArity) (edges G s))
   arityConditions? G =
     Fin.all?
-      (λ s → Pairs.allPairs? bothSameArity? (edges G s))
+      (λ s → Pairs.allPairs? (both? (sameOn? arityF?)) (edges G s))
 
   sortConditions? :
-    (G : Graph) → Dec (∀ s → AllPairs BothSameSort (edges G s))
+    (G : Graph) → Dec (∀ s → AllPairs (Both SameSort) (edges G s))
   sortConditions? G =
     Fin.all?
-      (λ s → Pairs.allPairs? bothSameSort? (edges G s))
+      (λ s → Pairs.allPairs? (both? (sameOn? sortF?)) (edges G s))
 
   noNewCommConditions? :
     (G : Graph) → Dec (∀ s → All (NoNewAfter G s) (edges G s))
@@ -400,10 +342,10 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
 
   diamondConditions? :
     (G : Graph)
-    → Dec (∀ s → AllPairs (BothCommute G) (edges G s))
+    → Dec (∀ s → AllPairs (Both (Commutes G)) (edges G s))
   diamondConditions? G =
     Fin.all?
-      (λ s → Pairs.allPairs? (bothCommute? G) (edges G s))
+      (λ s → Pairs.allPairs? (both? (commutes? G)) (edges G s))
 
   localConditions? : (G : Graph) → Dec (LocalConditions G)
   localConditions? G
@@ -447,8 +389,8 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
       sameTarget/refl
       sameTarget/sym
       (deterministic conditions s)
-      (step⇒listed {G = G} gr)
-      (step⇒listed {G = G} gr′)
+      (step⇒listed gr)
+      (step⇒listed gr′)
       refl
 
   recv-coherent/sound :
@@ -460,17 +402,9 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     → comm α ≡ comm α′
   recv-coherent/sound
     {G = G} {s = s} conditions gr gr′ {Q} rQ included =
-    proj₁
-      (allPairs/member
-        {A = Edge (size G)}
-        {_R_ = BothRecvCoherent}
-        recvCoherent/refl
-        (λ {u} {v} coherent →
-          recvCoherent/sym
-            {n = size G} {left = u} {right = v} coherent)
-        (recv-coherent conditions s)
-        (step⇒listed {G = G} gr)
-        (step⇒listed {G = G} gr′))
+    allPairs/both {R = RecvCoherent} recvCoherent/refl
+      (recv-coherent conditions s)
+      (step⇒listed gr) (step⇒listed gr′)
       Q rQ included
 
   same-arity/sound :
@@ -478,40 +412,22 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     → (conditions : LocalConditions G)
     → _-<_>->_ {G} s α t
     → _-<_>->_ {G} s α′ t′
-    → ∀ Q → AgreeArity (ev α Q) (ev α′ Q)
-  same-arity/sound
-    {G = G} {s = s} conditions gr gr′ =
-    proj₁
-      (allPairs/member
-        {A = Edge (size G)}
-        {_R_ = BothSameArity}
-        sameArity/refl
-        (λ {u} {v} coherent →
-          sameArity/sym
-            {n = size G} {left = u} {right = v} coherent)
-        (same-arity conditions s)
-        (step⇒listed {G = G} gr)
-        (step⇒listed {G = G} gr′))
+    → ∀ Q → AgreeOn ArityF (ev α Q) (ev α′ Q)
+  same-arity/sound {G = G} {s = s} conditions gr gr′ =
+    allPairs/both {R = SameArity} (sameOn/refl λ _ → refl)
+      (same-arity conditions s)
+      (step⇒listed gr) (step⇒listed gr′)
 
   same-sort/sound :
     ∀ {G s α α′ t t′}
     → (conditions : LocalConditions G)
     → _-<_>->_ {G} s α t
     → _-<_>->_ {G} s α′ t′
-    → ∀ Q → AgreeSort (ev α Q) (ev α′ Q)
-  same-sort/sound
-    {G = G} {s = s} conditions gr gr′ =
-    proj₁
-      (allPairs/member
-        {A = Edge (size G)}
-        {_R_ = BothSameSort}
-        sameSort/refl
-        (λ {u} {v} coherent →
-          sameSort/sym
-            {n = size G} {left = u} {right = v} coherent)
-        (same-sort conditions s)
-        (step⇒listed {G = G} gr)
-        (step⇒listed {G = G} gr′))
+    → ∀ Q → AgreeOn SortF (ev α Q) (ev α′ Q)
+  same-sort/sound {G = G} {s = s} conditions gr gr′ =
+    allPairs/both {R = SameSort} (sameOn/refl λ _ _ → refl)
+      (same-sort conditions s)
+      (step⇒listed gr) (step⇒listed gr′)
 
   step-sort-det/sound :
     ∀ {G s t t′ α α′ P Q I S T}
@@ -523,7 +439,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     → ev α′ Q ≡ just ((？ P) # i < T >)
     → S ≡ T
   step-sort-det/sound {Q = Q} conditions gr gr′ eq eq′ =
-    subst₂ AgreeSort eq eq′ (same-sort/sound conditions gr gr′ Q) refl refl
+    subst₂ (AgreeOn SortF) eq eq′ (same-sort/sound conditions gr gr′ Q) refl refl
 
   step-arity-det/sound :
     ∀ {G s t t′ α α′ P Q I J S T}
@@ -536,7 +452,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     → ev α′ Q ≡ just ((？ P) # j < T >)
     → I ≡ J
   step-arity-det/sound {Q = Q} conditions gr gr′ eq eq′ =
-    subst₂ AgreeArity eq eq′ (same-arity/sound conditions gr gr′ Q) refl
+    subst₂ (AgreeOn ArityF) eq eq′ (same-arity/sound conditions gr gr′ Q) refl
 
   no-new-branch/sound :
     ∀ {G s t u v β γ γ′}
@@ -552,13 +468,13 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     let after =
           All.lookup
             (no-new-branch conditions s)
-            (step⇒listed {G = G} grβ)
+            (step⇒listed grβ)
         branches =
-          All.lookup after (step⇒listed {G = G} grᵢ) idle
+          All.lookup after (step⇒listed grᵢ) idle
         available =
-          All.lookup branches (step⇒listed {G = G} grⱼ) ceq
+          All.lookup branches (step⇒listed grⱼ) ceq
         target , member = available/target available
-    in target , listed⇒step {G = G} member
+    in target , listed⇒step member
 
   step-diamond/sound :
     ∀ {G s t u α β}
@@ -569,15 +485,9 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     → Σ[ v ∈ State G ]
         _-<_>->_ {G} t β v × _-<_>->_ {G} u α v
   step-diamond/sound {G = G} {s = s} conditions grα grβ independent =
-    proj₁
-      (allPairs/member
-        {A = Edge (size G)}
-        {_R_ = BothCommute G}
-        (commutes/refl {G = G})
-        (commutes/sym {G = G})
-        (diamond conditions s)
-        (step⇒listed {G = G} grα)
-        (step⇒listed {G = G} grβ))
+    allPairs/both {R = Commutes G} (commutes/refl {G = G})
+      (diamond conditions s)
+      (step⇒listed grα) (step⇒listed grβ)
       independent
 
   Stepback : Graph → Set
@@ -598,8 +508,6 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
       ; step-deterministic = step-deterministic/sound conditions
       ; step-sort-det = step-sort-det/sound conditions
       ; step-arity-det = step-arity-det/sound conditions
-      ; step-is-prop = λ gr gr′ →
-          step-is-prop {G = G} gr gr′
       ; no-new-branch/step = no-new-branch/sound conditions
       ; stepback/~ = stepback
       ; step-diamond = step-diamond/sound conditions
@@ -609,24 +517,34 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
   --  The synchronous instance
   -- ══════════════════════════════════════════════════════════════════
 
-  -- `α` is `P`'s multicast to a nonempty set not containing `P`.  The `ev`
-  -- equation is redundant (it follows from the last one) but is what the
-  -- decision reads.
+  -- `α` is `P`'s multicast to a nonempty set not containing `P`.
   SendsAt : Action → Fin N → Set
   SendsAt α P =
     Σ[ Qs ∈ PartSet ] Σ[ c ∈ Choice ]
-      ev α P ≡ just ((! Qs) # c)
-      × P ∉ Qs × Nonempty Qs × α ≡ P ⟶ Qs # c
+      P ∉ Qs × Nonempty Qs × α ≡ P ⟶ Qs # c
 
+  -- Decided by reading `P`'s event: `P`'s multicast has `P`'s event
+  -- `(! Qs) # c` (`ev-sender`), so that event fixes `Qs` and `c`.
   sendsAt? : ∀ α P → Dec (SendsAt α P)
-  sendsAt? α P with ev α P
-  ... | nothing            = no λ { (_ , _ , () , _) }
-  ... | just ((？ _) # _)   = no λ { (_ , _ , () , _) }
-  ... | just ((! Qs) # c)
-    with ¬? (P ∈? Qs) ×-dec nonempty? Qs ×-dec (α ≟Action (P ⟶ Qs # c))
-  ...   | yes b = yes (Qs , c , refl , b)
-  ...   | no ¬b = no λ { (_ , _ , refl , b) → ¬b b }
+  sendsAt? α P with ev α P in eq
+  ... | nothing =
+    no λ { (Qs , c , _ , _ , refl) → bad (trans (sym eq) (ev-sender {P} {Qs} {c})) }
+    where bad : ∀ {e} → nothing ≡ just e → ⊥
+          bad ()
+  ... | just ((？ _) # _) =
+    no λ { (Qs , c , _ , _ , refl) → bad (trans (sym eq) (ev-sender {P} {Qs} {c})) }
+    where bad : ∀ {R c Qs c′} → just ((？ R) # c) ≡ just ((! Qs) # c′) → ⊥
+          bad ()
+  ... | just ((! Qs) # c) =
+    map′ (λ b → Qs , c , b) from
+      (¬? (P ∈? Qs) ×-dec nonempty? Qs ×-dec (α ≟Action (P ⟶ Qs # c)))
+    where
+      from : SendsAt α P → P ∉ Qs × Nonempty Qs × α ≡ P ⟶ Qs # c
+      from (Qs′ , c′ , b@(_ , _ , refl))
+        with trans (sym eq) (ev-sender {P} {Qs′} {c′})
+      ... | refl = b
 
+  -- Literally `Synchronous.balanced`'s conclusion.
   Balanced : Edge n → Set
   Balanced (α , _) = Σ[ P ∈ Fin N ] SendsAt α P
 
@@ -660,9 +578,8 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     → _-<_>->_ {G} s α t
     → Σ[ P ∈ Fin N ] Σ[ Qs ∈ PartSet ] Σ[ c ∈ Choice ]
         P ∉ Qs × Nonempty Qs × α ≡ P ⟶ Qs # c
-  balanced/sound {G = G} {s = s} conditions gr
-    with All.lookup (balanced conditions s) (step⇒listed {G = G} gr)
-  ... | P , Qs , c , _ , rest = P , Qs , c , rest
+  balanced/sound {G = G} {s = s} conditions gr =
+    All.lookup (balanced conditions s) (step⇒listed gr)
 
   no-new-comm/sound :
     ∀ {G s t u β γ}
@@ -676,11 +593,11 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     let after =
           All.lookup
             (no-new-comm conditions s)
-            (step⇒listed {G = G} grβ)
+            (step⇒listed grβ)
         available =
-          All.lookup after (step⇒listed {G = G} grγ) idle
+          All.lookup after (step⇒listed grγ) idle
         target , member = available/target available
-    in target , listed⇒step {G = G} member
+    in target , listed⇒step member
 
   synchronous :
     (G : Graph) → SyncConditions G → Synchronous (graphTheory G)

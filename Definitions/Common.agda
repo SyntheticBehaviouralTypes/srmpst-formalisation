@@ -1,7 +1,6 @@
 open import Data.Fin using (Fin)
 open import Data.Fin.Subset using (Subset)
-open import Data.Nat using (ℕ ; suc)
-open import Data.Product using (Σ-syntax)
+open import Data.Nat using (ℕ)
 
 module Definitions.Common (N : ℕ) where
 
@@ -11,6 +10,3 @@ module Definitions.Common (N : ℕ) where
   -- A set of participants (e.g. the receivers of a multicast).
   PartSet : Set
   PartSet = Subset N
-
-  Label : Set
-  Label = Σ[ I ∈ ℕ ] Fin (suc I)
