@@ -3,7 +3,10 @@
 *Written 2026-09-28 on `set-typing`, after the multicast rework (`1b7f892`, `770b67f`).
 Revised 2026-09-29: hidden internal communication (§5), corrected counterexample (§4.1(a)),
 what `Focus` costs (§4.4), and the compatibility layer for tests (§3.3, §13).
-Nothing below is implemented yet.*
+Reviewed 2026-10-01 against `Alg.agda`, `AlgNorm.agda`, `Preservation.agda`,
+`Progress.agda` and `Check/Alg.agda`: `Internal` is now by *mentioned* roles (D10),
+`hidden/first` has a proof (§9.2), progress no longer normalises (§9.3), and §16 lists what
+is still dubious and the alternative for each. Nothing below is implemented yet.*
 
 **Ground rule.** Only three things are redesigned: the **process syntax**, minimally (an
 optional acting role on sends and receives, §3.1), the **reduction semantics of sessions**
@@ -25,7 +28,10 @@ Every statement keeps its form **except preservation's**: a session step now mat
 
 > **⚠ Proof risk — read §9.2.** Hiding internal communication (§5) needs one new lemma,
 > `hidden/first`: a session step can always be matched by hidden steps followed by the
-> action. It is sketched but unproved. §5.6 gives the fallback if it fails.
+> action. It is today's `comm/ready` with one extra case (`pull/β`, an induction on the
+> hidden run using `no-new-comm/step` and `step-diamond`); the proof is written out in
+> §9.2 but not mechanised. §5.6 gives the fallback if it fails, and step 3 of §11 tests it
+> before anything else is ported.
 
 ## 0. The change
 
@@ -81,12 +87,15 @@ writes only its send to `R`. The one session step matches the graph run
 | D7 | The checker is keyed by role set (`Env Ps`, `Probing Ps`). It decides `Acts`, `Focus`, the syntactic premises, and `Partition Ρ`. | It decides the new rules and nothing else. `WBGraph`, `buildG` and `WBNet` are unchanged. |
 | D8 | **Internal communication is hidden** (§5). A step all of whose participants belong to one process is *silent* for that process, like a step of others: `skip`, `t/unskip`, `Wait` and `Focus`'s runs all go through it. Preservation matches a session step with a weak step `G =< α >=> G′`. | A process `{P,Q}` implementing `P ⟶ Q . Q ⟶ R` writes only its send to `R`. The typing quantifies over all internal branches, like `skip`, so it stays syntax-directed. |
 | D9 | **A compatibility layer** keeps the single-role API (§3.3): `_◂_` becomes a function `P ◂ Pr = ⁅ P ⁆ ◃ Pr`, the top-level `Session`/`⊢s_∶_` are the `singletons` instance, and `tc?`/`typecheck`/`typecheckSession` keep their types. | Examples and API-level tests compile unedited. Tests that build derivations or call checker internals by hand get mechanical `P ↦ ⁅ P ⁆` edits (§13). |
+| D10 | **`Internal` is by *mentioned* roles**, not participants: a step is internal to `Ps` when every role that takes part in it *or is named in one of its events* (the `Qs` of a send, the `Q` of a receive) is in `Ps`. | `AlgNorm`/`AlgEquiv` run with `wb` only, and need the send and receive leaf steps to be `Ext` (for `waitLeaf`, §6.4). With participants alone that needs `balanced`, i.e. `sync`. With mentions, `Outward Ps Qs` and `Q ∉ Ps` give `Ext` syntactically (`send/ext`, `recv/ext`, §2). Under `sync` the two notions coincide. |
+| D11 | **Progress does not normalise hidden steps.** It reads a `Ps ∈T* G` run off a non-done process, takes the hidden prefix up to the first non-hidden step, and runs today's argument there (§9.3). | A non-hidden step out of a hidden-reachable state is what today's `step/progress` needs. No measure, no search. |
 
-**Names.** The new operators are `_◃_`, `_∈αs_`/`_∉αs_`, `_idle-in_`, `_∈T*_`,
-`_-[¬*_]->*_` and `_=<_>=>_`. The starred ones are starred because the role-level
+**Names.** The new operators are `_◃_`, `_∈αs_`/`_∉αs_`, `_∈α⁺_`, `_idle-in_`, `_∈T*_`,
+`_-[¬*_]->*_`, `_==>*_` and `_=<_>=>_`. The starred ones are starred because the role-level
 `_∈T_`/`_-[¬_]->*_` stay in scope through `MPST`. The new identifiers are `Acts`, `Focus`,
-`Internal`, `Silent`, `Ext`, `Outward`, `Hidden`, `Roles`, `Partition`, `owner`, `Meets` and
-`singletons`. The syntax adds `send`, `recv`, `_▹_!_<_>∙_` and `_▹Σ_？·_`; `▹` and `◃` are
+`Internal`, `Silent`, `Ext`, `Outward`, `Hidden`, `Roles`, `Partition`, `owner`, `Meets`,
+`singletons`, and the lemmas `send/ext`, `recv/ext`, `ext-silent/⋄`, `disjoint/⋄`,
+`pull/β` and `hidden/first`. The syntax adds `send`, `recv`, `_▹_!_<_>∙_` and `_▹Σ_？·_`; `▹` and `◃` are
 used nowhere today. Throughout, `Ps` is a process's role set, `Qs` a multicast's receiver
 set, `Ρ` the assignment, `r` an annotation, and `j`/`j₀` process indices.
 
@@ -101,13 +110,23 @@ module Definitions.Typing.Roles {N}{B : BTheory N}(wb : WellBehaved B) where
   _∉αs_ : PartSet → Action → Set ; Ps ∉αs α = ∀ R → R ∈ Ps → R ∉α α
   ∉αs→¬∈αs ¬∈αs→∉αs _∈αs?_ _∉αs?_ ∉αs→∉α ∈α→∈αs       -- pin `{Ps}{α}` at call sites
 
-  -- Every participant of `β` is one of `Ps`: a communication inside the process.
-  Internal : PartSet → Action → Set ; Internal Ps β = ∀ X → X ∈α β → X ∈ Ps
+  -- `X` is mentioned by `β`: it takes part, or an event of `β` names it (D10).
+  infix 4 _∈α⁺_
+  _∈α⁺_ : Part → Action → Set
+  X ∈α⁺ β = X ∈α β
+          ⊎ ∃[ Y ] ∃[ Qs ] ∃[ c ] ev β Y ≡ just ((! Qs) # c) × X ∈ Qs
+          ⊎ ∃[ Y ] ∃[ c ] ev β Y ≡ just ((？ X) # c)
+  -- Every role `β` mentions is one of `Ps`: a communication inside the process.
+  Internal : PartSet → Action → Set ; Internal Ps β = ∀ X → X ∈α⁺ β → X ∈ Ps
   -- `Ps` takes no part in `β`, or `β` is internal to `Ps`: the process does nothing.
   Silent   : PartSet → Action → Set ; Silent Ps β = Ps ∉αs β ⊎ Internal Ps β
-  -- The complement: `Ps` takes part, together with someone outside.
+  -- The complement: `Ps` takes part, and `β` reaches outside `Ps`.
   Ext      : PartSet → Action → Set ; Ext Ps β = Ps ∈αs β × ¬ Internal Ps β
   internal? silent? ext? ¬silent→ext ext→¬silent                -- decidable: `N` is finite
+  -- `Ext` from the rules' syntactic premises alone (no `sync`): the point of D10.
+  send/ext : P ∈ Ps → Outward Ps Qs → ev β P ≡ just ((! Qs) # c) → Ext Ps β
+  recv/ext : R ∈ Ps → Q ∉ Ps        → ev β R ≡ just ((？ Q) # c) → Ext Ps β
+  mentions/balanced : Synchronous B → G -< β >-> G′ → X ∈α⁺ β → X ∈α β   -- the two coincide
 
   _idle-in_   : PartSet → Behav → Set ; Ps idle-in G = ∀ {α G′} → G -< α >-> G′ → Silent Ps α
   _∈T*_       : PartSet → Behav → Set
@@ -134,9 +153,13 @@ module Definitions.Typing.Roles {N}{B : BTheory N}(wb : WellBehaved B) where
 
   -- The assignment-level notions.
   module Sessions {k} (Ρ : Roles k) where
-    Hidden : Action → Set ; Hidden β = ∃[ j ] Internal (lookup Ρ j) β
+    Hidden : Action → Set ; Hidden β = ∃[ j ] Internal (lookup Ρ j) β ; hidden?
 
-    infix 4 _=<_>=>_
+    -- A run of hidden steps, and a hidden run followed by one step (the weak step).
+    infix 4 _==>*_ _=<_>=>_
+    data _==>*_ : Behav → Behav → Set where
+      h/refl : G ==>* G
+      h/step : G -< β >-> G′ → Hidden β → G′ ==>* G″  → G ==>* G″
     data _=<_>=>_ : Behav → Action → Behav → Set where
       w/step : G -< α >-> G′                              → G =< α >=> G′
       w/hide : G -< β >-> G′ → Hidden β → G′ =< α >=> G″  → G =< α >=> G″
@@ -147,30 +170,39 @@ role-level lemma, and mapping `All`. The silent step case splits on `Silent` (§
 
 ```agda
 in/αs* in/later* skip/refl* tr¬/step* skip/one* skip/cat* ∈~* idle/bisim skip/bisim*
-¬*⇒¬  : R ∈ Ps → G -[¬* Ps ]->* G′ → (no internal step of the run involves R) → G -[¬ R ]->* G′
-                                                                  -- weaken to one role; §6.4 discharges the side condition
-ext/comm : comm α ≡ comm β → Ext Ps α → Ext Ps β                    -- `comm-∈α` both ways
-ext-silent/⋄   : G -< α >-> Gα → G -< β >-> Gβ → Ext Ps α → Internal Ps β → α ⋄ β
+idle/⁅⁆  : P not-active-in G → ⁅ P ⁆ idle-in G                    -- for §13's tests
+ext/comm : comm α ≡ comm β → Ext Ps α → Ext Ps β                    -- shapes carry the mentions
+ext-silent/⋄ : G -< α >-> Gα → G -< β >-> Gβ → Ext Ps α → Internal Ps β → α ⋄ β
+disjoint/⋄   : (∀ X → X ∈α ι → X ∉α β) → X₀ ∈α ι → ι ⋄ β            -- for `pull/β`, §9.2
 skip/advance*  : G -[¬* Ps ]->* G′ → G -< α >-> Gα → Ext Ps α → ∃[ G′α ] G′ -< α >-> G′α × Gα -[¬* Ps ]->* G′α
 branch/before* : G -[¬* Ps ]->* G′ → R ∈ Ps → Recv γ R → Ext Ps γ → G -< γ >-> Gᵢ → G′ -< γ′ >-> Gⱼ′
                → comm γ′ ≡ comm γ → ∃[ Gⱼ ] G -< γ′ >-> Gⱼ × Gⱼ -[¬* Ps ]->* Gⱼ′
+recv/same-comm* : G -[¬* Ps ]->* G′ → G -< γ >-> Gγ → Recv γ R → R ∈ Ps → Ext Ps γ
+                → G′ -< γ′ >-> Gγ′ → Recv γ′ R → comm γ′ ≡ comm γ
 focus/cat : Focus Ps P G → G -[¬* Ps ]->* G′ → Focus Ps P G′      -- stability under `t/unskip`
 focus/~   : G ~ G′ → Focus Ps P G → Focus Ps P G′                 -- runs by `skip/bisim*`, steps by `~L`
 focus/⁅⁆  : Focus ⁅ P ⁆ P G                                      -- `x∈⁅y⁆⇒x≡y`
 
 -- in `Sessions Ρ`
 weak/step  : G -< α >-> G′ → G =< α >=> G′
+hidden/weak : G ==>* G₁ → G₁ -< α >-> G′ → G =< α >=> G′
 weak⇒run   : G =< α >=> G′ → ∃[ ιs ] G -[ ιs ++ α ∷ [] ]-> G′ × All Hidden ιs
 weak/singletons : Synchronous B → G =< α >=> G′ ⇔ G -< α >-> G′  -- under `singletons`
 ```
 
 `skip/advance*` and `branch/before*` are `-aux` recursions on the run, exactly like
-`Behav.agda`'s: the run is a curried argument and is never repacked. An idle step uses
-`active-inactive/⋄`, `no-new-branch/step`, `recv-idle/all` at the witness role, with
-`∉αs→∉α`. An internal step uses `ext-silent/⋄` (§5.3).
+`Behav.agda`'s: the run is a curried argument and is never repacked. They are proved
+**directly**, not by weakening the silent run to a `¬ R` run and calling `Behav.agda`'s
+versions: an internal step may well involve `R` in general, and what rules it out at each
+state of the run is `recv-overlap` against the external step, which `skip/advance*` keeps
+enabled along the way. So at each step: an idle step uses `active-inactive/⋄`,
+`no-new-branch/step` and `recv-idle/all` at the witness role, with `∉αs→∉α`; an internal
+step uses `ext-silent/⋄` for the diamond and `ext/comm` for "no receiver of the external
+step is in it" (§5.3). The `-aux` versions carry `All (Silent Ps) αs` and produce a run
+over the **same labels**, which is what makes the output `-[¬* Ps ]->*`.
 
 `weak/singletons` holds because `Hidden` is empty under `singletons`: `Internal ⁅ P ⁆ β`
-needs every participant of `β` to be `P`, and `balanced` gives `β` a nonempty receiver set
+needs every role `β` mentions to be `P`, and `balanced` gives `β` a nonempty receiver set
 without `P`. This is the only place the conservativity argument needs `Synchronous`.
 
 ## 3. `Definitions/Proc.agda` — syntax and reduction semantics
@@ -424,8 +456,8 @@ does the rest, as today:
 | premise | used by |
 |---|---|
 | `Acts` | everywhere a role is needed. `acts-unique` identifies the semantics' role with the typed one (`Preservation`, `Progress`). |
-| `Outward Ps Qs` (send) | the step is external, so it is not also skipped (§5); `Focus` and `Dom` apply to it. |
-| `Q ∉ Ps` (receive) | `Progress.sender/head-progress`: the sender's process, at a receive of one of its own roles targeted by its own role's multicast, is absurd. Also: the received step is external. |
+| `Outward Ps Qs` (send) | `send/ext`: the send step is `Ext Ps` with no `sync`, so `waitLeaf` finds the leaf (`AlgNorm.sendAt`, `Progress`), and the step is never also skipped. |
+| `Q ∉ Ps` (receive) | `recv/ext`, likewise (`AlgNorm.recvAt`). And `Progress.sender/head-progress`: the sender's process, at a receive of one of its own roles targeted by its own role's multicast, is absurd. |
 | `Focus` | `Progress` only: `sender/head-progress` and `recv-head` (§9.3). `AlgNorm` carries it (`focus/cat`, `focus/~`) and never inspects it. |
 | `Partition` (in `⊢s`) | `Preservation.⊢s-comm-update` (uninvolved processes), `⊢s/hidden` (§9.1), and `Progress` (`owner`). |
 
@@ -505,14 +537,21 @@ internal steps may remain.
 `β` this is today's argument at a witness role. For an internal `β`, `ext-silent/⋄` shows
 `α ⋄ β` from `recv-overlap` alone:
 
-- `α ≢ β`: `α` has a participant outside `Ps`, and `β` has none.
-- A receiver `Y` of `α` is not in `β`: else `recv-overlap` gives `comm α ≡ comm β`, and
-  `ext/comm` makes `β` external, which is absurd. Symmetrically for receivers of `β`.
+- `α ≢ β`: `α` mentions a role outside `Ps`, and `β` mentions none.
+- A receiver `Y` of `α` is not in `β`: else `recv-overlap` gives `comm α ≡ comm β`. Equal
+  comms have equal shapes at every role, so they mention the same roles (`ext/comm`), and
+  `β` would be external, which is absurd. Symmetrically for receivers of `β`.
 
 Then `step-diamond` commutes them. `branch/before*` works the same way: a receiving role `R`
-of an external `γ` is not in an internal `β` (by `recv-overlap` and `ext/comm`), so
-`recv-idle/all` and `no-new-branch/step` apply. No axiom is added, and `Behav.agda` is
-untouched.
+of an external `γ` is not in an internal `β` at the same state (by `recv-overlap` and
+`ext/comm`), so `recv-idle/all` and `no-new-branch/step` apply. No axiom is added, and
+`Behav.agda` is untouched.
+
+Note what is **not** claimed: an internal step of `Ps` may involve `R` in general (`Ps =
+{R,R′}`, `β = R′ ⟶ {R}`). It cannot at a state where `R` also has an external receive
+enabled, and `skip/advance*` keeps that receive enabled along the whole run. That is why
+the set-level lemmas are proved directly on the silent run (§2), rather than by weakening
+it to a `¬ R` run first.
 
 ### 5.4 The weak step
 
@@ -525,6 +564,16 @@ It is inductive, not a list with an `All`, so lemmas that walk hidden steps recu
 `w/hide` directly (the curried-run pattern). There are no hidden steps after `α`: processes
 skip those themselves. Under `singletons` there are no hidden steps at all
 (`weak/singletons`).
+
+The relation allows any hidden steps before `α`. The weak step that `preservation`
+actually produces is narrower: every hidden step in it is internal to the sender's process
+or to a receiver's (§9.2). Hidden steps of uninvolved processes are never needed, because
+`no-new-comm/step` says `α` was already enabled before them. The statement keeps the wider
+relation, since nothing downstream needs the narrower one.
+
+**When the session is `done`, the graph may still have hidden steps.** Every process has
+`t/end`, so no `Ext` step is reachable for any of them, so every reachable step is hidden.
+`finished`, `done` and the termination statements are about the session and do not change.
 
 ### 5.5 Interaction with `Focus`
 
@@ -628,12 +677,15 @@ The families change as follows:
   fixed by `acts` and `acts-unique`, since the process is fixed. `sendL/adv` uses
   `skip/advance*` (the step is external by `out`), and `focus/cat` along the silent step.
   `sendAt` is today's proof: `send-det` at `P`, then `step-deterministic`.
-- **`RecvL`** adds `Focus Ps R`. `recvL/adv` is today's proof at role `R`: `recv/same-comm`
-  and `branch/before` on the idle part of the run (weakened by `¬*⇒¬`), with
-  `branch/before*` for the whole silent run that `t/unskip` needs, and `focus/cat`.
-  Today's proof uses role-level `branch/before` on a `¬ R` run. A silent run is one: `R`
-  receives externally, and by §5.3 no internal step involves such an `R`. So `¬*⇒¬`
-  extends to silent runs under that hypothesis.
+- **`RecvL`** adds `Focus Ps R`. `recvL/adv` is today's proof with the starred lemmas:
+  `recv/same-comm*` and `branch/before*` on the one-step silent run, then `t/unskip` on the
+  run they return, and `focus/cat`. The leaf step is `Ext Ps` by `recv/ext` from the
+  family's `Q ∉ Ps`, which the family therefore carries (it is state-free, like `Focus`'s
+  role).
+- **`sendAt`/`recvAt`** call `waitLeaf` on the step out of `Post P e (Front Ps 𝒮)`. That
+  step is `Ext Ps` by `send/ext`/`recv/ext` from the rule's `out`/`ext` (D10). This is
+  where a participants-based `Internal` would have needed `sync` in `recvAt`, which has
+  none.
 - **`typing⇒alg`**, send and receive: `a/send`'s `rdy` maps the `SendE` leaf to
   `Dom P e ∩ Foc Ps P`; `acts`/`out`/`ext` come from any leaf via `waitFind` (they are
   state-free).
@@ -703,59 +755,97 @@ form; `preservation`'s `Step` is the weak step (§5.4). Each file opens `Proc.Se
     Its leaf is found by `waitLeaf`, since `j` takes part in `α` externally. `acts-unique`
     makes the leaf's role `R`. Its `conts` take the step at `R`, obtained from `ev-recv`
     with `R ≢ P` (by partition). This is `recv/cont` at role `R`, as today.
-- `comm/ready` keeps today's shape: one sender tree, and one receiver tree per role
-  `R ∈ Qs` outside the sender's process, taken from `owner R`'s process.
-  - In `receiver-step`, the leaf's step has `P ∈α β` by `recv-sender`, which makes the
-    silent sender process take part; that is the contradiction.
-  - In `multicast-idle`, a role in `γ` is `P` or some `R ∈ Qs`, both in silent processes.
+- `comm/ready` keeps today's shape, but is indexed by receiver **processes** rather than
+  roles: one sender tree, and one tree per process `j ≢ j₀` meeting `Qs`, with leaf family
+  `Offers P R_j I` at that process's listening role `R_j` (from `recvs`). Two roles of `Qs`
+  in one process share one tree.
+  - In `receiver-step`, a receiver leaf at `H` is a step with `P ∈α β` (`recv-sender`) and
+    receiver `R_j ∉ Ps₀` (partition). So it is neither idle for `Ps₀` nor internal to it,
+    against the sender's `na`; that is the contradiction.
+  - `multicast-idle` becomes part of `pull/β` (§9.2).
 
-  **Caution:** the receiver tree for `R` is `owner R`'s process's tree, and its leaf family
-  is at that process's listening role, which need not be `R`. `recv-sender` at the
-  listening role still gives `P ∈α β`, and that is all `receiver-step` uses.
-
-### 9.2 `hidden/first` — the new lemma (proof risk)
+### 9.2 `hidden/first` — the new lemma
 
 ```agda
 hidden/first : ⊢s M ∶ G → M [ just α ]⇒ M′
-             → ∃[ G₁ ] (G -[ ιs ]-> G₁ with All Hidden ιs) × ⊢s M ∶ G₁ × ∃[ G′ ] G₁ -< α >-> G′
+             → ∃[ G₁ ] G ==>* G₁ × ⊢s M ∶ G₁ × ∃[ G′ ] G₁ -< α >-> G′
 ```
-
-(stated with an inductive hidden-run relation, like `_=<_>=>_` without the final step).
 
 **Why it is needed.** The sender's `Wait` leaf is reached from `G` by a run silent for its
 own process. That run may contain its own internal steps, which must be kept (`Q⟶R` really
 comes after `P⟶Q`), and steps among other processes, which the semantics has not
 performed.
 
-**Sketch.** Induction on the sender's `WaitV` derivation, keeping `⊢s M ∶ H` at the current
-state `H` (by `⊢s/hidden`):
+**Shape.** It is today's `comm/ready` (`comm/ready-or-∈T` on the sender's tree, falling
+back to `comm/ready-from-∈T` on the `Ps₀ ∈T* G` run when a cycle is hit), with the
+receivers' trees advanced in lockstep by `receiver-step`/`waitV/unfold-top` exactly as
+now. Call `j₀` and the processes meeting `Qs` the **involved** processes. The invariant on
+the result: every step of the hidden run is internal to an involved process. The only new
+case is at a `wv/step` whose witness step is `β`, after the recursive call has produced
+`t ==>* G₁` and `G₁ -<[ P ↦ e ]>-> G′` from the child `t`:
 
-1. *Leaf at `H`:* the send is enabled at `H`; `send-action` makes it `α`.
-2. *Skip at `H` with a hidden successor on the way to a leaf:* take it, keep typing by
-   `⊢s/hidden`, recurse on the sub-derivation.
-3. *Skip at `H` where the leaf lies only behind a step `β` among other processes:* show that
-   `β` shares no role with `α`, then pull `α` back before `β` with `no-new-comm/step`. If `β`
-   shared a role with `α`, it would be a receiver's role `Z ∈ Qs` (the sender's process is
-   silent in `β`). `Z`'s process is at its receive as `R ∈ Qs` with `Focus`, and `β` is
-   external for it (else it would be hidden), so `R ∈α β`; `recv-overlap` at `R` against its
-   `Offers` step makes `β`'s sender `P`, contradicting that the sender is silent in `β`.
+1. **`β` is internal to an involved process:** prepend it (`h/step`). It is hidden.
+2. **Otherwise `β` is idle for every involved process.** Every involved tree is at a
+   `wv/step` here (the sender's by assumption, the receivers' by `receiver-step`), so `β`
+   is silent for each, and not internal to any, so idle for each. Commute `β` forward
+   through the hidden run and then past `γ`, by `pull/β`:
 
-**Open points.** (i) Case 2 must pick a successor from which a real leaf is reachable; a
-`WaitV` branch can instead end at a cycle (`skip/cycle`), for example an internal loop. The
-existence of a leaf-reaching branch is part of the lemma. (ii) Case 3 pulls `α` back over
-one step; over several, the receivers' typing at intermediate states needs the same
-argument inductively. If either fails, use §5.6.
+   ```agda
+   pull/β : (∀ j → involved j → lookup Ρ j ∉αs β)        -- β idle for the involved
+          → G -< β >-> t → t ==>* G₁                      -- every step internal to an involved process
+          → G₁ -<[ P ↦ e ]>-> G′
+          → ∃[ G₁′ ] G ==>* G₁′ × ∃[ G″ ] G₁′ -<[ P ↦ e ]>-> G″
+   ```
+
+   Induction on the hidden run.
+   - *Empty:* `γ` at `t` after `β`. Every role in `γ` is `P` or in `Qs`, hence in an
+     involved process (`owner`), hence not in `β`. `no-new-comm/step` gives `γ` at `G`.
+     This is today's `multicast-idle` with "idle process" in place of "idle role".
+   - *`ι` then the rest:* `ι` is internal to an involved process, so `ι` and `β` have
+     disjoint participants. `no-new-comm/step` gives `ι` at `G` (to some `u`);
+     `disjoint/⋄` gives `ι ⋄ β`; `step-diamond` gives `u -< β >-> t′` with
+     `t -< ι >-> t′`, and `step-deterministic` identifies `t′` with the run's next state.
+     Recurse at `u` with the rest of the run, and prepend `ι`.
+
+   Neither case uses `Focus`, the sender's typing, or anything about uninvolved processes.
+
+**Why uninvolved processes' internal steps never need to be kept.** Such a step `ι` has no
+role in common with `γ`, so `no-new-comm/step` enables `γ` before it. Case 2 applies to
+any `β` internal to an uninvolved process, since `β` is then idle for every involved one.
+
+**Why the result is `⊢s M ∶ G₁`.** `⊢s/hidden` along the hidden run. Then at `G₁` the
+sender's and receivers' typings are `t/unskip`s of those at `G`; `td⇒at` gives trees at
+`G₁`, which are leaves by `waitLeaf` (the step is `Ext` for each involved process:
+`send/ext` for the sender, and for a receiver `R_j ∈α γ` with `P ∉ Ps_j`). From there
+`preservation/comm` is today's.
+
+**What was wrong in the 2026-09-29 sketch.** It inducted on the sender's tree alone and
+chose "a successor on the way to a leaf"; the choice does not exist in general (cycles),
+and is not needed: `comm/ready` already walks every branch and handles cycles through the
+`∈T` run. And it tried to pull `γ` back over a non-hidden `β` by an argument about the
+receivers' `Focus`; `β`'s idleness for every involved process is already in the trees'
+`na`, and the pull-back is `no-new-comm/step` as today. The remaining risk is mechanical:
+`pull/β`'s diamond step must produce the *same* next state as the run (`step-deterministic`
+does it), and the `∈T`-run fallback must thread the hidden-run result through
+`waitV/unfold-top` as today's threads the step. If this fails, use §5.6.
 
 ### 9.3 Progress
 
 - `session/status` recurses over `tabulate id : Vec (Fin k) k`.
   `ss/end : ∀ i → ¬ lookup Ρ (lookup js i) ∈T* G`, and `inactive/done` needs only that.
-- **Hidden steps first.** If the only steps enabled at `G` are hidden, the session state
-  moves along them by `⊢s/hidden` to a state where an external step is enabled, and the
-  argument below runs there. This uses the same normalisation as §9.2 (open point (i)),
-  measured by the `WaitV` derivation of a process that is not done.
-- `step/progress`: `balanced gr` gives the sender `P` of an external enabled step `gr`. Its
-  process is `owner P`, which takes part in `gr` through `P` (`owner-∈`).
+- **`ss/step` carries a hidden run and a non-hidden step** (D11):
+  `ss/step : G ==>* G₁ → G₁ -< α >-> G′ → ¬ Hidden α → SessionStatus M G js`.
+  `head/status` at a send or receive head uses `waitActive` (not `waitStep`): every leaf is
+  an `Ext` step (`send/ext`/`recv/ext`), so the root has `Ps ∈T* G`, a run containing an
+  `Ext Ps` step. That step is not hidden (it involves a role of `Ps` and is not internal to
+  `Ps`, so by partition it is internal to no process). Take the run's first non-hidden
+  step: its prefix is `G ==>* G₁` (`hidden?` at each step), and the step is at `G₁`.
+- `progress` on `ss/step`: `⊢s M ∶ G₁` by `⊢s/hidden` along the prefix, then
+  `step/progress` at `G₁`. The conclusion `done M ⊎ ∃ step` does not mention the graph
+  state, so proving it at `G₁` is proving it.
+- `step/progress`: `balanced gr` gives the sender `P` of the non-hidden step `gr`. Its
+  process is `owner P`, which takes part in `gr` through `P` (`owner-∈`), and `gr` is `Ext`
+  for it (not internal, since not hidden).
 - `sender/head-progress`, with the head acting as `r` under `Focus`, so `r ∈α gr`:
   - **Send.** `r` cannot receive in `gr`: that would give one `comm` with `r`'s own send, by
     `recv-overlap` at `r`. So `r` is `gr`'s sender, `P`. The leaf's own step `α′` then
@@ -823,8 +913,9 @@ step 9. The tree must be hole-free after every step.
    the compatibility layer.
 2. `Definitions/Typing/Roles.agda`: §2, including `ext-silent/⋄` and `weak/singletons`.
    It compiles against the unchanged theory.
-3. **Spike `hidden/first` (§9.2)** in a scratch file against `Roles.agda` and a stub
-   `⊢s`, before porting anything else. If it does not go through, switch to §5.6 now.
+3. **Spike `pull/β` and the `comm/ready` case split (§9.2)** in a scratch file against
+   `Roles.agda`, with `WaitV` over an abstract leaf family as today's `comm/ready-or-∈T`
+   has it (no `⊢s`, no processes). If it does not go through, switch to §5.6 now.
 4. `Typing/Declarative.agda`: §6.1, including `MessageGuarded`'s patterns.
 5. `Typing/Alg.agda`, `AlgEquiv.agda`, `MainLeaf.agda`, `Properties.agda` and
    `AlgDeclarative.agda`: §6.2–6.3.
@@ -856,7 +947,16 @@ step 9. The tree must be hole-free after every step.
      sessions are rejected (`Focus`).
   7. The safe send linearisation of §4.4: rejected. This is recorded as the known cost.
   8. A `Ρ` that is not a partition: rejected (`partition?`).
-  9. An unannotated action in a two-role process: rejected (`Acts`).
+  9. An unannotated action in a two-role process: rejected (`Acts`). A fully internal send
+     written out (`{P,Q} ◃ P ▹ {Q} ! …`): rejected (`Outward`).
+  10. `pull/β`'s case, end to end: `G --Z⟶Z′--> t`, `G --P⟶R--> G′`, `t --P⟶R--> t′`,
+      `G′ --Z⟶Z′--> t′`, with `Ρ = [{P},{R},{Z,Z′}]` and `{Z,Z′} ◃ ∅`. Accepted, and
+      `preservation` on the session step `P⟶R` at `G` returns the weak step with **no**
+      hidden prefix (the uninvolved internal step is dropped). Stated as a forced equality
+      on the run's length if `preservation` is made to return one, otherwise as a comment.
+  11. §5.2's rejected internal choice, also with the receiver outside: the same graph with
+      `{P,Q}` replaced by `{P}`, `{Q}` is accepted, since the choice is then by label at
+      `Q`'s receive. This pins down that the rejection is about hiding, not about the graph.
 - **`README.md`:** the process syntax (annotations and synonyms), `NProc`, `Roles`/`Session`,
   hidden internal communication, and the two rules with `Focus`.
 - **`CLAUDE.md`:** `Typing/Roles.agda` in the layout, `Safety`'s `Ρ` parameter, the pattern
@@ -891,7 +991,11 @@ needs an edit, the port is wrong somewhere.
 - **Three `_∈_`s:** `Data.Fin.Subset` (a role in a set), `Relation.Unary` (a state in a set,
   in `Alg.agda`), and `Data.List.Membership` (edges, in `Check/Alg.agda`). Rename on import
   where two meet. `Data.Fin.Subset`'s `⊤`/`⊥` clash with `Data.Unit`/`Data.Empty`; rename
-  them to `full`/`none`.
+  them to `full`/`none`. `Data.Fin.Subset._⊆_` clashes with `Relation.Unary._⊆_`, which
+  `Alg.agda` uses everywhere: never open `Subset`'s `_⊆_` there.
+- **`Internal` is by mentions, not participants (D10).** `X ∈α⁺ β` is the hypothesis to
+  discharge, and `send/ext`/`recv/ext` are the lemmas to reach for. Reaching for `balanced`
+  instead is a sign of being in a file that should not have `sync`.
 - **`_∈αs_`/`_∉αs_` unfold through `lookup`.** Pin `{Ps}{α}`, as for `∉α→¬∈α` today.
 - **Silent, not idle.** Every set-level "does nothing" is `Silent`. `_∉αs_` appears only
   inside `Silent` and in the partition arguments of §9.1.
@@ -914,3 +1018,72 @@ needs an edit, the port is wrong somewhere.
 - `Tests/MultiRole.agda` compiles with every decision forced.
 - `Safety.agda`'s only new parameter is `{k}(Ρ : Roles k)`, and `preservation`'s only
   change is `Step`.
+
+## 16. Review of 2026-10-01: dubious points and alternatives
+
+Each item names what is uncertain, the choice this plan makes, and the alternative to
+switch to if the choice fails. They are ordered by how much of the plan depends on them.
+
+1. **`hidden/first` (§9.2).** Proved on paper against `comm/ready`'s current structure;
+   not mechanised. *Alternative:* §5.6, explicit internal sends. Cost: processes write
+   their internal communication; `Step` is unchanged; `Focus` exempts fully internal
+   sends. Decide at step 3 of §11.
+
+2. **`Internal` by mentions (D10).** Chosen so that `AlgNorm`/`AlgEquiv` stay `sync`-free.
+   It makes `Internal` a property of an action's *text*, which is odd for a theory where
+   only `ev` is primitive, and it is weaker than participants-based internality in a
+   non-synchronous theory. *Alternative:* keep `Internal` by participants and add `sync`
+   as a parameter of `AlgNorm`/`AlgEquiv`/`AlgDeclarative` (today only `sendAt` has it).
+   Cost: `⊢a ⟺ ⊢p` would hold only for synchronous theories, which is every theory the
+   checker builds, so nothing user-visible changes. This alternative is simpler to state;
+   D10 is simpler to prove. Either is fine.
+
+3. **`Focus` is the whole side condition (§4).** It is sufficient for progress and exact
+   in what it rejects (§4.4), but it rejects send-before-send, which is always safe.
+   *Alternative:* the finer send condition of §4.4 ("no role of `Ps` receives in an
+   external step along silent runs that does not involve `P`") in `t/send` only. Cost: a
+   second condition to decide and to carry through `AlgNorm`; the progress proof's
+   `sender/head-progress` send case must then handle a head that sends as `r` while `gr`
+   involves another role of `Ps` as *sender*, which `balanced` refutes (one sender per
+   step). Deferred to `FUTURE_WORK.md`; nothing in this plan blocks it.
+
+4. **Typing quantifies over all internal branches (§5.2).** A process cannot depend on
+   which internal choice the graph takes, because its code never says. This rejects every
+   internal choice whose branches differ externally. *Alternative:* make the choice
+   visible with syntax, `P ▹ {Q} ! i < E >∙ Pr` with `Qs ⊆ Ps`, typed as a send whose step
+   is also silent for the process (so `s/comm` fires it alone, as in §5.6, but `Hidden`
+   still covers it for *other* processes' typing). This is §5.6 without giving up hiding
+   for the other processes. It is the natural extension if test 3's rejection turns out to
+   matter in practice; it does not change `hidden/first`.
+
+5. **The weak step is wider than what preservation produces (§5.4).** `_=<_>=>_` allows
+   any hidden steps; `preservation` yields only involved-process-internal ones.
+   *Alternative:* index `_=<_>=>_` by the set of processes whose internal steps may occur,
+   and state preservation with `{j₀} ∪ receivers`. Only worth doing if a downstream
+   result needs the narrower form; none does today.
+
+6. **Progress via the `∈T*` run (D11, §9.3).** The hidden prefix is read off whichever
+   non-done process `session/status` finds first. This is correct but the found state
+   `G₁` depends on that process. *Alternative:* a `SessionStatus` that normalises `G`
+   along hidden steps first. Rejected: it needs a well-founded measure on hidden runs,
+   which internal loops do not provide.
+
+7. **The compatibility layer (D9, §3.3).** `_◂_` as a function means `P ◂ Pr` and
+   `⁅ P ⁆ ◃ Pr` are the same term, so error messages and goals show the latter.
+   *Alternative:* keep `_◂_` as a second constructor of `NProc` with `Part`, and a
+   coercion. Rejected: every proof would have two cases. The cost of the function is
+   cosmetic.
+
+8. **`Partition` inside `⊢s` (D6).** It is re-proved by `partition?` on every session
+   check and carried by every `Safety/` statement. *Alternative:* a parameter of
+   `Safety`. Rejected for now: it would change every statement's hypotheses. Revisit if
+   `Safety/` ever takes `Ρ`-dependent hypotheses anyway.
+
+9. **Empty role sets.** `Partition` allows a process with no roles. It can only be typed
+   as `∅` (or `if`/`rec` over `∅`): `Acts` never holds and `t/end`'s `¬ ∅ ∈T* G` is
+   vacuous. Harmless; `partition?` need not reject it. Mention in `README.md`.
+
+10. **`Rec2Buy` with `{B,S}` (test 5).** Checked by hand (§4.4): every state's external
+    steps involve the acting role. Not yet run. If it is rejected, the plan's claim that
+    `Focus` costs nothing on graph-ordered roles is wrong, and §4.4 must be redone before
+    anything else.
