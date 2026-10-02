@@ -89,6 +89,11 @@ process's own **internal choice**, made by its next external action. An outsider
 act at an unstable state of the view; it acts after the hidden steps (which the session
 never performs; §4).
 
+**Internal loops are allowed.** A cycle of hidden steps only contributes its exits: the
+stable states reachable through it. Since the session never performs hidden steps, a loop
+is never executed; it only widens the internal choice (e.g. `Rec2Buy`'s split/no
+negotiation under `{A,B}` becomes the choice between buying and cancelling).
+
 ### 2.3 Order
 
 ```agda
@@ -123,15 +128,16 @@ For an assignment `Ρ` and an original theory `B`:
 1. `B` is well behaved and synchronous (today's hypotheses).
 2. For every multi-role process `Ps` with name `p`:
    - `WellBehaved (View.view B Ps p)` and `Synchronous (View.view B Ps p)`;
-   - **no internal loops**: `∀ G → Acc (flip _-τ->_) G`, i.e. there is no infinite run
-     of steps internal to `Ps`.
+   - **every internal loop has an exit**:
+     `∀ G → ∃[ G₁ ] Star _-τ->_ G G₁ × Stable G₁`.
 
 Both view conditions are hypotheses, like well-behavedness of `B`: neither is free.
 `balanced` holds by construction (a relabelled step is external, so it has a receiver
 outside the process and a sender inside it); `no-new-comm/step` must be checked.
 
-With no internal loops, every state reaches a stable state by hidden steps, so §2.2's
-eager closure is total and no state of a view looks `ended` while the process is busy.
+The exit condition makes §2.2's eager closure total: without it, a state whose hidden runs
+never reach a stable state would have no view steps and look `ended` while the process
+could still be needed. Loops themselves are allowed (§2.2).
 
 ## 4. Typing and semantics
 
@@ -208,7 +214,7 @@ proof. **This stays open.**
 | D3 | Conflicts (mixed choice, receive from different senders) are resolved by a fixed global order `≺` on comms. | No order: rejects every concurrency between a process's sends and receives. An order chosen by the user (a priority on roles or comms) fits the same slot. The textual order of a specification is not available: `P → Q . R → S` and `R → S . P → Q` are one LTS. |
 | D4 | Hidden steps are eager. | Lazy hiding (weak steps from any state): an outsider's action could then be matched before or after a hidden step, which duplicates targets. |
 | D5 | Views must be well behaved **and** synchronous; both are hypotheses. | Relativise `no-new-comm/step` to the assignment: changes the theory instead of the view. |
-| D6 | **No internal loops** (`Acc` for `_-τ->_`). | Allow loops with exits (the prototype does): the loop is then a local computation, which the process calculus does not model. Adding local steps to the calculus would allow it later. |
+| D6 | **Internal loops are allowed**; they contribute only their exits, and every state must reach a stable state by hidden steps. | Forbid internal loops (`∀ G → Acc (flip _-τ->_) G`): simpler closure, but rejects e.g. `Rec2Buy` under `{A,B}`. Model the loop as local computation (needs local steps in the calculus): would make a loop observable, e.g. for termination. |
 | D7 | `WellBehaved` up to `~`: weak `step-deterministic`, no `stepback/~`, `~` built into `t/unskip`/`After`. | A setoid carrier, or minimising views: heavier, and the latter is a recomputation. |
 | D8 | Process syntax unchanged. | An acting-role annotation on sends/receives: unnecessary, since in its view a process is one role. |
 
@@ -227,8 +233,9 @@ proof. **This stays open.**
 ## 8. Checker
 
 On a finite graph each piece is decidable: relabelling is a function on actions, `Stable`
-and `Kept` inspect one state's edges, the hidden closure is a walk, and "no internal loops"
-is acyclicity of internal edges. The checker may build each view as a graph (as the
+and `Kept` inspect one state's edges, the hidden closure is a walk with a visited set (so
+internal loops contribute their exits), and the exit condition is that every closure is
+non-empty. The checker may build each view as a graph (as the
 prototype does), check `wellBehaved?` and `synchronous?` on it, and run today's checker at
 role `p`. Making it compute on the fly is an optimisation, not a requirement.
 
@@ -243,7 +250,7 @@ tested where it matters — `RecMW` `{W2,R}` needs it, `LabelSorts` `{A,C}` stay
 |---|---|---|
 | `Examples/RoundRobin` | all pairs | — |
 | `Examples/OAuth2` | all pairs | — |
-| `Examples/Rec2Buy` | `{B,S}`, `{A,S}`, `{A,B}`* | — |
+| `Examples/Rec2Buy` | `{B,S}`, `{A,S}`, `{A,B}` (an internal loop; §2.2) | — |
 | `Examples/NoSynGT` | `{A,B}`, `{B,C}` | — |
 | `Examples/CounterExamples` (forward) | all pairs | — |
 | `Tests/Multicast` | `{A,B}`, `{B,C}` | — |
@@ -252,13 +259,9 @@ tested where it matters — `RecMW` `{W2,R}` needs it, `LabelSorts` `{A,C}` stay
 | §1's square | `{P,S}`, `{Q,R}` | — |
 | internal choice `P→Q#i . Q→R#i` | `{P,Q}` | — |
 
-\* `Rec2Buy` under `{A,B}` turns the split/no negotiation into an internal loop. The
-prototype accepts it by keeping only the loop's exits; under D6 it is rejected. The
-prototype must be brought in line: an internal cycle should be `inadmissible`.
-
-Where the prototype differs from this plan: it allows internal loops (above), and it
-identifies states (by hidden-closure sets, then bisimilarity) where the plan relies on
-§5.1 instead.
+Where the prototype differs from this plan: it does not check the exit condition (a state
+with an empty hidden closure just gets no edges), and it identifies states (by
+hidden-closure sets, then bisimilarity) where the plan relies on §5.1 instead.
 
 ## 10. Open
 
@@ -266,4 +269,5 @@ identifies states (by hidden-closure sets, then bisimilarity) where the plan rel
 - `view/run` and whether §5.1 suffices for every use of `WellBehaved` in a view (to be
   confirmed once step 1 of §7 is done).
 - Whether the order `≺` should be a parameter of `⊢s` (a user priority) rather than fixed.
-- Local computation steps in the calculus, which would let D6 be lifted.
+- Local computation steps in the calculus, which would make internal loops observable
+  (D6).
