@@ -27,8 +27,7 @@ module Definitions.Actions (N : ℕ) where
   infix 5 _<_>
 
   -- The shape of one participant's part in an action: a send to a set of
-  -- receivers, or a receive from one sender. Fullwidth ？ (U+FF1F): ASCII ?
-  -- is Agda's hole marker.
+  -- receivers, or a receive from one sender. Fullwidth ？ (U+FF1F)
   data Shape : Set where
     !_ : PartSet → Shape
     ？_ : Part → Shape
