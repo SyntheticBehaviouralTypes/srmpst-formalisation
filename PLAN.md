@@ -1,7 +1,7 @@
 # PLAN.md — one process, many roles, by local views
 
 *2026-10-03, `set-typing`. A step-by-step guide. Nothing is implemented except the
-finite-graph prototype `Tests/Quotient.agda` (untracked).*
+finite-graph prototype `Tests/Quotient.agda`.*
 
 **Terms.** A *role* is `Part = Fin N`. A *process* implements a role set `Ps`; an
 *assignment* `Ρ` partitions `Fin N` into processes. *Multi-role*: `|Ps| > 1`.
@@ -22,8 +22,8 @@ views: `{P,S}`: `PS→Q . R→PS`; `{Q,R}`: `P→QR . QR→S`.
 ## Step 1 — `WellBehaved` up to bisimilarity
 
 A view keeps all of `B`'s states, so states can become bisimilar in it: an unstable state
-with one hidden successor, or the two targets of a merged multicast (`NoSynGT` under
-`{B,C}`). Three fields are stated up to identity and fail on these (an audit of every
+with one hidden successor, or the two sides of a diamond that a hidden step separates
+(1a′). Three fields are stated up to identity and fail on these (an audit of every
 state `≡` in `Behav`, `Typing/`, `Safety/`, `Proc` found no others; `Step G nothing G′ =
 G ≡ G′` in `Preservation` is kept, since identity is always available). Step 1 is
 independent of views and must leave everything green (`./runall.sh --clean --tests`).
@@ -94,9 +94,14 @@ backward run, keep `stepback/~` for `B` and fall back to minimising views (D7).
 - States shared between premises (`t/send`'s target, `conts`, `⊢s`'s common `G`,
   `Unskip`/`After` endpoints, `t/rec`'s `Δ`) are harmless for the same reason.
 - Still excluded: targets that are not bisimilar.
-- **User-facing consequence.** If a sender's two messages to different roles of one
-  process have the same label and sort (`NoSynGT` under `{B,C}`), the process cannot tell
-  which role each was for. Type-safe, but labels must differ if it matters.
+- **Which role was a message for?** A multicast `S → {A,B}` is one message, received once
+  by a process owning `A` and `B`: nothing to tell apart. Two *separate* messages to roles
+  of one process are told apart by position when sequential (`S → A . S → B` gives the view
+  `S→AB . S→AB`, two different states). In a diamond (`NoSynGT` under `{B,C}`) the order is
+  the sender's run-time choice, so it cannot be used: pruning one order would deadlock
+  against a sender that picks the other, and the sender (a singleton) does not know about
+  the merger. Only labels can tell them apart, so this is required, not left to the user:
+  `Unambiguous` (Step 2, Step 5). Weak determinism is still needed for hidden steps.
 
 ## Step 2 — `Definitions/View.agda`
 
@@ -128,6 +133,10 @@ module View {N} (B : BTheory N) (Ps : PartSet) (p : Part) where   -- p ∈ Ps
 
   Exits : Set                          -- internal loops allowed, but each has an exit
   Exits = ∀ G → ∃[ G₁ ] Star _-τ->_ G G₁ × Stable G₁
+
+  Unambiguous : Set                    -- distinct steps at one state look distinct
+  Unambiguous = ∀ {G α α′ G′ G″} → G -< α >-> G′ → G -< α′ >-> G″
+              → ⌊ α ⌋ ≡ ⌊ α′ ⌋ → ⌊ α ⌋ ≢ nothing → α ≡ α′
 ```
 
 Hiding is eager: a state with a pending internal step offers what its stable τ-successors
@@ -162,7 +171,9 @@ external action. The session never performs internal steps, so loops are never e
 ```
 
 Hypotheses, as for `B` today: `WellBehaved B`, `Synchronous B`, and per multi-role `j`:
-`WellBehaved (view j)`, `Synchronous (view j)`, `Exits j`. `balanced` for a view holds by
+`WellBehaved (view j)`, `Synchronous (view j)`, `Exits j`, `Unambiguous j`. Note that
+`Conflict` must NOT include two receives from the same sender (Step 1c: that would
+deadlock against a sender free to order its sends). `balanced` for a view holds by
 construction; `no-new-comm/step` must be checked.
 
 ## Step 6 — Preservation and termination
@@ -183,9 +194,10 @@ as one sender's choice of labels, so it accepts both orders.)
 ## Step 8 — Checker
 
 On graphs everything is decidable: `⌊_⌋` is a function, `Stable`/`Kept` inspect one
-state, the τ-closure is a walk with a visited set, `Exits` is "no empty closure". Build
+state, the τ-closure is a walk with a visited set, `Exits` is "no empty closure",
+`Unambiguous` compares one state's relabelled edges. Build
 each view as a graph, check `wellBehaved?`/`synchronous?`, run today's checker at
-`name j`. Bring `Tests/Quotient.agda` in line: check `Exits`; drop the closure-set and
+`name j`. Bring `Tests/Quotient.agda` in line: check `Exits` and `Unambiguous`; drop the closure-set and
 bisimilarity minimisation once Step 1 makes them unnecessary.
 
 ---
@@ -206,9 +218,11 @@ bisimilarity minimisation once Step 1 makes them unnecessary.
 ## Evidence (`Tests/Quotient.agda`, ordered views)
 
 Accepted: `RoundRobin`, `OAuth2`, `Rec2Buy`, `CounterExamples` (forward), `RecMW` — all
-pairs; `NoSynGT`, `Multicast` — `{A,B}`, `{B,C}`; `LabelSorts` — `{A,B}`, `{B,C}`; the
-square — both views; `P→Q#i . Q→R#i` — `{P,Q}`. Rejected, correctly: `LabelSorts` `{A,C}`
-(one label, two sorts). `RecMW` `{W2,R}` needs the different-senders conflict.
+pairs; `NoSynGT` — `{A,B}`; `Multicast` — `{A,B}`, `{B,C}`; `LabelSorts` — `{A,B}`,
+`{B,C}`; the square — both views; `P→Q#i . Q→R#i` — `{P,Q}`. Rejected, correctly:
+`LabelSorts` `{A,C}` (one label, two sorts). `RecMW` `{W2,R}` needs the different-senders
+conflict. `NoSynGT` `{B,C}` is accepted by the prototype but fails `Unambiguous` (both
+sends carry label `0`, sort `unit`); the prototype does not check it yet.
 
 ## Open
 
