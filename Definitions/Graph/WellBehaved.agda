@@ -24,7 +24,7 @@ open import Function using (_∘_)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; _≢_; refl; sym; trans; subst; subst₂)
 open import Relation.Nullary using (Dec; yes; no; ¬?)
-open import Relation.Nullary.Decidable using (map′; T?; _×-dec_; _→-dec_)
+open import Relation.Nullary.Decidable using (map′; T?; _×?_; _→?_)
 
 open import Definitions.Behav using (BTheory; WellBehaved; Synchronous)
 open import Definitions.Expr using (_≟Sort_)
@@ -53,7 +53,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     ∀ {G} → BisimDec G
     → (left right : Edge (size G)) → Dec (SameTarget G left right)
   sameTarget? bisimT? (α , t) (α′ , t′) =
-    (α ≟Action α′) →-dec bisimT? t t′
+    (α ≟Action α′) →? bisimT? t t′
 
   -- `AllPairs` sees each pair once, so conditions use `Both R`.
   Both : {A : Set} → (A → A → Set) → A → A → Set
@@ -62,7 +62,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
   both? :
     ∀ {A : Set}{R : A → A → Set}
     → (∀ x y → Dec (R x y)) → ∀ x y → Dec (Both R x y)
-  both? R? x y = R? x y ×-dec R? y x
+  both? R? x y = R? x y ×? R? y x
 
   both/refl : ∀ {A : Set}{R : A → A → Set} → (∀ x → R x x) → ∀ x → Both R x x
   both/refl r x = r x , r x
@@ -75,7 +75,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     (left right : Edge n) → Dec (RecvCoherent left right)
   recvCoherent? (α , _) (α′ , _) =
     Fin.all? λ Q →
-      Recv? α Q →-dec (Q ∈α? α′) →-dec (comm α ≟Comm comm α′)
+      Recv? α Q →? (Q ∈α? α′) →? (comm α ≟Comm comm α′)
 
   recvCoherent/refl : ∀ {n} (edge : Edge n) → RecvCoherent edge edge
   recvCoherent/refl _ _ _ _ = refl
@@ -89,7 +89,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
   agreeOn? :
     ∀ {F} → (∀ c c′ → Dec (F c c′)) → ∀ x y → Dec (AgreeOn F x y)
   agreeOn? F? (just ((？ P) # c)) (just ((？ P′) # c′)) =
-    (P ≟Fin P′) →-dec F? c c′
+    (P ≟Fin P′) →? F? c c′
   agreeOn? F? nothing            _                   = yes tt
   agreeOn? F? (just ((! _) # _)) _                   = yes tt
   agreeOn? F? (just ((？ _) # _)) nothing             = yes tt
@@ -125,7 +125,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
 
   sortF? : ∀ c c′ → Dec (SortF c c′)
   sortF? c c′ =
-    (choiceKey c ≟ChoiceKey choiceKey c′) →-dec
+    (choiceKey c ≟ChoiceKey choiceKey c′) →?
       (Choice.sort c ≟Sort Choice.sort c′)
 
   SameArity SameSort : Edge n → Edge n → Set
@@ -171,8 +171,8 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     All.all?
       (λ where
         (γ , _) →
-          Fin.all? (λ X → (X ∈α? γ) →-dec (X ∉α? β))
-          →-dec available? γ (edges G s))
+          Fin.all? (λ X → (X ∈α? γ) →? (X ∉α? β))
+          →? available? γ (edges G s))
       (edges G t)
 
   NoNewBranchAfter :
@@ -197,11 +197,11 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     All.all?
       (λ where
         (α , _) →
-          Fin.all? (λ Q → Recv? α Q →-dec (Q ∉α? β)) →-dec
+          Fin.all? (λ Q → Recv? α Q →? (Q ∉α? β)) →?
             All.all?
               (λ where
                 (α′ , _) →
-                  (comm α′ ≟Comm comm α) →-dec
+                  (comm α′ ≟Comm comm α) →?
                     available? α′ (edges G s))
               (edges G t))
       (edges G s)
@@ -220,8 +220,8 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     (G : Graph) → BisimDec G → (left right : Edge (size G))
     → Dec (Completion G left right)
   completion? G bisimT? (α , t) (β , u) =
-    Any.any? (λ x → (proj₁ x ≟Action β) ×-dec
-      Any.any? (λ y → (proj₁ y ≟Action α) ×-dec bisimT? (proj₂ x) (proj₂ y))
+    Any.any? (λ x → (proj₁ x ≟Action β) ×?
+      Any.any? (λ y → (proj₁ y ≟Action α) ×? bisimT? (proj₂ x) (proj₂ y))
         (edges G u))
       (edges G t)
 
@@ -253,7 +253,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     (G : Graph) → BisimDec G → (left right : Edge (size G))
     → Dec (Commutes G left right)
   commutes? G bisimT? left@(α , _) right@(β , _) =
-    (α ⋄? β) →-dec completion? G bisimT? left right
+    (α ⋄? β) →? completion? G bisimT? left right
 
   -- Vacuous: `⋄` includes `≢`.
   commutes/refl : ∀ {G} (edge : Edge (size G)) → Commutes G edge edge
@@ -567,7 +567,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
           bad ()
   ... | just ((! Qs) # c) =
     map′ (λ b → Qs , c , b) from
-      (¬? (P ∈? Qs) ×-dec nonempty? Qs ×-dec (α ≟Action (P ⟶ Qs # c)))
+      (¬? (P ∈? Qs) ×? nonempty? Qs ×? (α ≟Action (P ⟶ Qs # c)))
     where
       from : SendsAt α P → P ∉ Qs × Nonempty Qs × α ≡ P ⟶ Qs # c
       from (Qs′ , c′ , b@(_ , _ , refl))

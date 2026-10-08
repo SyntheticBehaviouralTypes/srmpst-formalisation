@@ -19,7 +19,7 @@ open import Data.Sum using (inj₁; inj₂)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; _≢_; refl; sym; cong; subst)
 open import Relation.Nullary using (Dec; yes; no; ¬_)
-open import Relation.Nullary.Decidable using (map′; _→-dec_)
+open import Relation.Nullary.Decidable using (map′; _→?_)
 
 open import Definitions.Behav using (BTheory; WellBehaved; Synchronous)
 
@@ -137,12 +137,12 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
       (FinP.all? λ i →
         All.all?
           (λ e₁ →
-            nEq? n₁ (proj₂ e₁) nend →-dec
+            nEq? n₁ (proj₂ e₁) nend →?
             All.all?
               (λ e₂ →
                 FinP.all?
-                  (λ X → (X ∈α? proj₁ e₂) →-dec (X ∉α? proj₁ e₁))
-                →-dec
+                  (λ X → (X ∈α? proj₁ e₂) →? (X ∉α? proj₁ e₁))
+                →?
                 findAction (proj₁ e₂) (nedges n₁ (nst n₁ i)))
               (nedges n₂ (ninit n₂)))
           (nedges n₁ (nst n₁ i)))
@@ -191,16 +191,16 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
       (FinP.all? λ i →
         All.all?
           (λ e₁ →
-            nEq? n₁ (proj₂ e₁) nend →-dec
+            nEq? n₁ (proj₂ e₁) nend →?
             All.all?
               (λ eᵢ →
                 All.all?
                   (λ e₂ →
                     (comm (proj₁ e₂) ≟Comm comm (proj₁ eᵢ))
-                      →-dec
+                      →?
                     FinP.all?
-                      (λ Q → Recv? (proj₁ eᵢ) Q →-dec (Q ∉α? proj₁ e₁))
-                      →-dec
+                      (λ Q → Recv? (proj₁ eᵢ) Q →? (Q ∉α? proj₁ e₁))
+                      →?
                     findAction (proj₁ e₂) (nedges n₁ (nst n₁ i)))
                   (nedges n₂ (ninit n₂)))
               (nedges n₁ (nst n₁ i)))

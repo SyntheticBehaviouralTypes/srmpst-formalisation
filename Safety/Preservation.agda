@@ -29,7 +29,7 @@ open import Relation.Binary.PropositionalEquality
 open import Relation.Binary.Construct.Closure.ReflexiveTransitive
   using (Star; ε; _◅_; _◅◅_)
 open import Relation.Nullary using (¬_; yes; no)
-open import Relation.Nullary.Decidable using (_×-dec_)
+open import Relation.Nullary.Decidable using (_×?_)
 
 open import Definitions.Expr
 open import Definitions.Behav using (BTheory; WellBehaved; Balanced; Synchronous)
@@ -391,7 +391,7 @@ module Safety.Preservation
 
         kind : ∀ β → Kind β
         kind β
-          with FinP.any? (λ k → receives? j Qs k ×-dec (lu roles k ∈αˢ? β))
+          with FinP.any? (λ k → receives? j Qs k ×? (lu roles k ∈αˢ? β))
         ... | no none =
           k/idle λ k r → ¬∈αˢ→∉αˢ {lu roles k} {β} λ own → none (k , r , own)
         ... | yes (k , r , own) with internal? (lu roles k) β

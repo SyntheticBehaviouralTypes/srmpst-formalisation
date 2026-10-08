@@ -13,7 +13,7 @@ open import Data.Sum using (inj₁; inj₂)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; sym; subst)
 open import Relation.Nullary using (Dec; ¬_)
-open import Relation.Nullary.Decidable using (_×-dec_)
+open import Relation.Nullary.Decidable using (_×?_)
 
 open import Definitions.Behav using (BTheory; WellBehaved; Synchronous)
 
@@ -61,8 +61,8 @@ module Definitions.Graph.NetworkWB (N : ℕ) where
   disjoint? : ∀ n₁ n₂ → Dec (Disjoint n₁ n₂)
   disjoint? n₁ n₂ =
     edgePred? n₁ (λ α → FinP.any? (Recv? α))
-    ×-dec edgePred? n₂ (λ α → FinP.any? (Recv? α))
-    ×-dec edgePred? n₁ (λ α → edgePred? n₂ (λ β → α ⋄? β))
+    ×? edgePred? n₂ (λ α → FinP.any? (Recv? α))
+    ×? edgePred? n₁ (λ α → edgePred? n₂ (λ β → α ⋄? β))
 
   module _ {n₁ n₂ : Net} (dis : Disjoint n₁ n₂) where
 

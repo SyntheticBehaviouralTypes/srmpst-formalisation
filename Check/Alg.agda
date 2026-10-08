@@ -26,7 +26,7 @@ open import Data.List.Membership.Propositional.Properties
 open import Data.List.Relation.Unary.Any using (here; there)
 import Data.List.Relation.Unary.Any as Any
 open import Data.List.Relation.Unary.Any.Properties using (any⁺; any⁻)
-import Data.List
+open import Data.Bool.ListAction using (any)
 open import Data.Bool.Properties using (T-∧)
 open import Function.Bundles using (Equivalence)
 open import Data.List.Relation.Unary.All using (All; []; _∷_)
@@ -45,7 +45,7 @@ open import Induction.WellFounded using (Acc; acc)
 
 open import Relation.Nullary using (Dec; yes; no; ¬_)
 open import Relation.Nullary.Decidable
-  using (⌊_⌋; T?; map′; _×-dec_; _→-dec_; ¬?; toWitness; fromWitness)
+  using (⌊_⌋; T?; map′; _×?_; _→?_; ¬?; toWitness; fromWitness)
 open import Relation.Unary using (Decidable; _∈_; _⊆_; _∩_; Satisfiable)
 open import Data.Fin.Subset using () renaming (_∈_ to _∈ˢ_)
 open import Data.Fin.Subset.Properties using () renaming (_∈?_ to _∈ˢ?_)
@@ -129,7 +129,7 @@ module Check.Alg (N : ℕ) where
     ⊆? : {A B : States δ} → Decidable A → Decidable B → Dec (A ⊆ B)
     ⊆? A? B? =
       map′ (λ all {x} → all x) (λ sub x → sub)
-           (all-state? (λ x → A? x →-dec B? x))
+           (all-state? (λ x → A? x →? B? x))
 
     any-sort? : {A : Sort → Set} → (∀ U → Dec (A U)) → Dec (∃ A)
     any-sort? A? with A? s/bool | A? s/nat | A? s/unit
@@ -253,7 +253,7 @@ module Check.Alg (N : ℕ) where
                   (lose (step⇒listed gr)
                     (Equivalence.from T-∧
                       (matchEv-refl P e α′ eq , eqFin-refl t))) })
-           (T? (Data.List.any hit (edges G s)))
+           (T? (any hit (edges G s)))
       where
         hit : Edge n → Bool
         hit (α′ , t′) = matchEv P e α′ ∧ eqFin t′ t
@@ -275,8 +275,8 @@ module Check.Alg (N : ℕ) where
                   (matchEv-refl R e α′ eq , eqFin-refl t , fr) })
            (Any.any?
               (λ e′ → T? (matchEv R e (proj₁ e′))
-                      ×-dec T? (eqFin (proj₂ e′) t)
-                      ×-dec Foreign? Q (proj₁ e′))
+                      ×? T? (eqFin (proj₂ e′) t)
+                      ×? Foreign? Q (proj₁ e′))
               (edges G s))
 
     Steps : Behav → Set
@@ -434,7 +434,7 @@ module Check.Alg (N : ℕ) where
       ; inT?    = memoB λ s →
           map′ (λ { (t , (_ , path) , act) → reach→∈T G path act })
                (λ inT → let t , _ , path , act = ∈T→reach G inT in t , (_ , path) , act)
-               (FinP.any? λ t → row? G (λ _ → true) alls alls≡ s t ×-dec active? G P t)
+               (FinP.any? λ t → row? G (λ _ → true) alls alls≡ s t ×? active? G P t)
       ; moves?  = memoB steps?
       ; bisim?  = λ s t →
           map′ (λ x → sound (bisimulationCorrect G)
@@ -472,7 +472,7 @@ module Check.Alg (N : ℕ) where
     guarded? (_ ⇐ _ ？· _)        = yes mg/recv
     guarded? (ifp _ then A else B) =
       map′ (λ (a , b) → mg/if a b) (λ { (mg/if a b) → a , b })
-           (guarded? A ×-dec guarded? B)
+           (guarded? A ×? guarded? B)
     guarded? ∅       = no λ ()
     guarded? (v _)   = no λ ()
     guarded? (rec _) = no λ ()
@@ -557,7 +557,7 @@ module Check.Alg (N : ℕ) where
         Vis V w = ∃[ a ] T (lookup V a) × a ~ w
 
         vis? : ∀ V s → Dec (Vis V s)
-        vis? V s = FinP.any? (λ a → T? (lookup V a) ×-dec bisim? a s)
+        vis? V s = FinP.any? (λ a → T? (lookup V a) ×? bisim? a s)
 
         mark : Vec Bool n → Behav → Vec Bool n
         mark V s = V [ s ]≔ true
@@ -645,7 +645,7 @@ module Check.Alg (N : ℕ) where
           ∀ V s → Inv V s → Acc _<_ (n ∸ wt V) → Dec (WaitV P L (Vis V) s)
         wait-go V s inv (acc rs) with L? s
         ... | yes l = yes (wv/leaf l)
-        ... | no ¬l with inT? s ×-dec vis? V s
+        ... | no ¬l with inT? s ×? vis? V s
         ...   | yes (inT , anc) = yes (wv/cycle (s , anc , ~refl) inT)
         ...   | no ¬cyc with act? s
         ...     | yes (α , _ , gr , px) =
@@ -711,30 +711,30 @@ module Check.Alg (N : ℕ) where
       -- Cheaper test first: edge test, set lookup, reachability row.
       PostBy? step? X? (ws , t) =
         map′ (λ (s , gr , x) → s , x , gr) (λ (s , x , gr) → s , gr , x)
-          (FinP.any? (λ s → step? s t ×-dec X? (ws , s)))
+          (FinP.any? (λ s → step? s t ×? X? (ws , s)))
 
       Front? : {X : States δ} → Decidable X → Decidable (Front P X)
       -- Idle-reachability rows are built only for states in `X`.
       Front? X? (ws , u) =
         map′ (λ (a , r) → r , a) (λ (r , a) → a , r)
-          (act? u ×-dec FinP.any? (λ s → X? (ws , s) ×-dec walk? s u))
+          (act? u ×? FinP.any? (λ s → X? (ws , s) ×? walk? s u))
 
       Focus? : ∀ X s → Dec (Focus P X s)
       Focus? X s =
         map′ (λ all tr gr own → all _ tr _ _ gr own)
              (λ f u tr α t gr own → f tr gr own)
-             (FinP.all? λ u → unskip? s u →-dec
-                all-out? u (λ α t → (P ∈αˢ? α) →-dec (X ∈α? α)))
+             (FinP.all? λ u → unskip? s u →?
+                all-out? u (λ α t → (P ∈αˢ? α) →? (X ∈α? α)))
 
       Dom? : ∀ R e → Decidable (Dom {δ = δ} P R e)
       Dom? R e (_ , s) =
-        Focus? R s ×-dec
+        Focus? R s ×?
         map′ (λ x →
                let (α , t) , mem , b = find (any⁻ bit (edges G s) x)
                in t , α , matchEv-sound R e α b , listed⇒step mem)
              (λ { (t , α , eq , gr) →
                   any⁺ bit (lose (step⇒listed gr) (matchEv-refl R e α eq)) })
-             (T? (Data.List.any bit (edges G s)))
+             (T? (any bit (edges G s)))
         where
           bit : Edge n → Bool
           bit (α , _) = matchEv R e α
@@ -760,14 +760,14 @@ module Check.Alg (N : ℕ) where
       -- One scan of `s`'s edges, not one per label, sort and target.
       Offers? : ∀ Q R I → Decidable (Offers {δ = δ} P Q R I)
       Offers? Q R I (_ , s) =
-        Focus? R s ×-dec
+        Focus? R s ×?
         map′ (λ (x : Any.Any (λ e → OffersActᴾ R Q I (proj₁ e)) (edges G s)) →
                let (α , t) , mem , (j , U , eq) , fr = find x
                in j , U , t , α , eq , listed⇒step mem , fr)
              (λ { (j , U , t , α , eq , gr , fr) →
                   lose (step⇒listed gr) ((j , U , eq) , fr) })
              (Any.any?
-                (λ e → offersAct? R Q I (proj₁ e) ×-dec Foreign? P (proj₁ e))
+                (λ e → offersAct? R Q I (proj₁ e) ×? Foreign? P (proj₁ e))
                 (edges G s))
 
       Ended? : Decidable (Ended {δ = δ} P)
@@ -779,14 +779,14 @@ module Check.Alg (N : ℕ) where
         map′ (λ (a , (s′ , e , r) , x) → a , x , s′ , r , e)
              (λ (a , x , s′ , r , e) → a , (s′ , e , r) , x)
           (FinP.any? (λ a →
-             FinP.any? (λ s′ → bisim? s′ s ×-dec unskip? a s′)
-               ×-dec X? (ws , a)))
+             FinP.any? (λ s′ → bisim? s′ s ×? unskip? a s′)
+               ×? X? (ws , a)))
 
       Var? : (X : Fin δ) → Decidable (Var X)
       Var? X (ws , s) = bisim? (lookup ws X) s
 
       Diag? : {X : States δ} → Decidable X → Decidable (Diag X)
-      Diag? X? (W ∷ ws , s) = X? (ws , W) ×-dec bisim? W s
+      Diag? X? (W ∷ ws , s) = X? (ws , W) ×? bisim? W s
 
       -- Out of the frontier of `𝒮`, by a step with event `e` at `R`.
       After : Part → Event → States δ → States δ
@@ -811,14 +811,14 @@ module Check.Alg (N : ℕ) where
       Reached? : {𝒮 : States δ} → Decidable 𝒮 → Decidable (Reached 𝒮)
       Reached? 𝒮? (ws , u) =
         FinP.any? λ t →
-          bisim? u t ×-dec FinP.any? λ s → 𝒮? (ws , s) ×-dec walk? s t
+          bisim? u t ×? FinP.any? λ s → 𝒮? (ws , s) ×? walk? s t
 
       -- The states whose `¬P` run ends in `R`.
       Back : States δ → States δ
       Back R (ws , a) = ∃[ u ] a -[¬ P ]->* u × (ws , u) ∈ R
 
       Back? : {R : States δ} → Decidable R → Decidable (Back R)
-      Back? R? (ws , a) = FinP.any? λ u → unskip? a u ×-dec R? (ws , u)
+      Back? R? (ws , a) = FinP.any? λ u → unskip? a u ×? R? (ws , u)
 
       -- A `rec`: every state whose `¬P` run ends in `Reached 𝒮` (`a/rec`'s
       -- `Unskip` ends up to `~`).
@@ -855,14 +855,14 @@ module Check.Alg (N : ℕ) where
             -- Scans each reachable `u`'s edges, not every `(u , t)`; the
             -- event test is one bit (`matchEv`).
             𝒯? (ws , s) =
-              𝒮? (ws , s) ×-dec Ready? dom? (ws , s)
-              ×-dec map′ (λ { all u t run (α′ , eq , gr) →
-                              all u run α′ t gr (matchEv-refl Q e α′ eq) })
-                         (λ all u run α′ t gr b →
-                            all u t run (α′ , matchEv-sound Q e α′ b , gr))
-                      (FinP.all? λ u → walk? s u →-dec
-                         all-out? u (λ α′ t →
-                           T? (matchEv Q e α′) →-dec hit? r (ws , t)))
+              𝒮? (ws , s) ×? Ready? dom? (ws , s)
+              ×? map′ (λ { all u t run (α′ , eq , gr) →
+                           all u run α′ t gr (matchEv-refl Q e α′ eq) })
+                      (λ all u run α′ t gr b →
+                         all u t run (α′ , matchEv-sound Q e α′ b , gr))
+                   (FinP.all? λ u → walk? s u →?
+                      all-out? u (λ α′ t →
+                        T? (matchEv Q e α′) →? hit? r (ws , t)))
 
             typed : Satisfiable 𝒯 → Γ ⊢a P ◂ Q ⇒ Qs ! i < E >∙ Pr ∶ 𝒯
             typed ((ws , s) , x∈) =
@@ -916,17 +916,17 @@ module Check.Alg (N : ℕ) where
             𝒯? : Decidable 𝒯
             -- Scans each reachable `u`'s edges, not every `(u , t)`.
             𝒯? (ws , s) =
-              𝒮? (ws , s) ×-dec Ready? offers? (ws , s)
-              ×-dec map′ (λ { all j U u t run (α′ , eq , gr , fr) →
-                              all u run α′ t gr j U
-                                (matchEv-refl R (e j U) α′ eq , fr) })
-                         (λ all u run α′ t gr j U (b , fr) →
-                            all j U u t run
-                              (α′ , matchEv-sound R (e j U) α′ b , gr , fr))
-                      (FinP.all? λ u → walk? s u →-dec
-                         all-out? u (λ α′ t → FinP.all? λ j → all-sort? λ U →
-                           (T? (matchEv R (e j U) α′) ×-dec Foreign? P α′)
-                             →-dec hit? (res j U) (ws , t)))
+              𝒮? (ws , s) ×? Ready? offers? (ws , s)
+              ×? map′ (λ { all j U u t run (α′ , eq , gr , fr) →
+                           all u run α′ t gr j U
+                             (matchEv-refl R (e j U) α′ eq , fr) })
+                      (λ all u run α′ t gr j U (b , fr) →
+                         all j U u t run
+                           (α′ , matchEv-sound R (e j U) α′ b , gr , fr))
+                   (FinP.all? λ u → walk? s u →?
+                      all-out? u (λ α′ t → FinP.all? λ j → all-sort? λ U →
+                        (T? (matchEv R (e j U) α′) ×? Foreign? P α′)
+                          →? hit? (res j U) (ws , t)))
 
             typed : Satisfiable 𝒯 → Γ ⊢a P ◂ R ⇐ Q ？· Br ∶ 𝒯
             typed _ =
@@ -956,7 +956,7 @@ module Check.Alg (N : ℕ) where
           → Probe Γ P A 𝒮 → Probe Γ P B 𝒮
           → Probe Γ P (ifp E then A else B) 𝒮
         if-case etd rA rB =
-          finish (hit rA ∩ hit rB) (λ x → hit? rA x ×-dec hit? rB x)
+          finish (hit rA ∩ hit rB) (λ x → hit? rA x ×? hit? rB x)
             (λ x∈ → sub rA (proj₁ x∈))
             (λ sat → a/if etd (from-hit rA proj₁ sat) (from-hit rB proj₂ sat))
             (λ { (a/if _ ttd ftd) x∈ → into-hit rA ttd x∈ , into-hit rB ftd x∈ })
@@ -967,7 +967,7 @@ module Check.Alg (N : ℕ) where
 
         end-case : Probe Γ P ∅ 𝒮
         end-case =
-          finish (𝒮 ∩ Ended P) (λ x → 𝒮? x ×-dec Ended? x) proj₁
+          finish (𝒮 ∩ Ended P) (λ x → 𝒮? x ×? Ended? x) proj₁
             (λ _ → a/end proj₂)
             (λ { (a/end done) {x} (x∈𝒰 , x∈𝒮) → x∈𝒮 , done {x} x∈𝒰 })
 
@@ -975,7 +975,7 @@ module Check.Alg (N : ℕ) where
         var-case : (X : Fin δ) → Decidable (Unskip P (Var X)) → Probe Γ P (v X) 𝒮
         var-case X L? =
           finish (𝒮 ∩ Ready L?)
-            (λ x → 𝒮? x ×-dec Ready? L? x) proj₁
+            (λ x → 𝒮? x ×? Ready? L? x) proj₁
             (λ _ → a/var λ {x} x∈ → ready→ {L? = L?}{x} (proj₂ x∈))
             (λ { (a/var rdy) {x} (x∈𝒰 , x∈𝒮) → x∈𝒮 , →ready {L? = L?}{x} (rdy {x} x∈𝒰) })
 
@@ -987,7 +987,7 @@ module Check.Alg (N : ℕ) where
           ∀ {Pr : Proc γ (suc δ)} → Decidable (Past 𝒮)
           → (r : Probe Γ P Pr (Diag (Past 𝒮))) → Decidable (Entry r)
         Entry? past? r (ws , W) =
-          past? (ws , W) ×-dec FinP.all? λ s → bisim? W s →-dec hit? r (W ∷ ws , s)
+          past? (ws , W) ×? FinP.all? λ s → bisim? W s →? hit? r (W ∷ ws , s)
 
         -- `L?` is the TABLE of `Unskip P (Entry r)`.
         rec-case :
@@ -997,7 +997,7 @@ module Check.Alg (N : ℕ) where
           → (L? : Decidable (Unskip P (Entry r)))
           → Probe Γ P (rec Pr) 𝒮
         rec-case {Pr} guarded r L? =
-          finish 𝒯 (λ x → 𝒮? x ×-dec Ready? L? x) proj₁ typed max
+          finish 𝒯 (λ x → 𝒮? x ×? Ready? L? x) proj₁ typed max
           where
             𝒯 : States _
             𝒯 = 𝒮 ∩ Ready L?

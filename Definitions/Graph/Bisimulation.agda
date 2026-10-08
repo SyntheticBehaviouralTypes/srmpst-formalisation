@@ -7,7 +7,8 @@ open import Data.Bool.Properties using (T-∧)
 open import Data.Empty using (⊥-elim)
 open import Data.Fin using (Fin)
 import Data.Fin as Fin
-open import Data.List using (List; []; _∷_; all; any)
+open import Data.List using (List; []; _∷_)
+open import Data.Bool.ListAction using (all; any)
 open import Data.List.Membership.Propositional using (_∈_)
   renaming (find to find∈)
 import Data.List.Relation.Unary.Any as Any

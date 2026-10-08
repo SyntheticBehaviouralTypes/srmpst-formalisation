@@ -19,7 +19,7 @@ open import Relation.Binary.Construct.Closure.ReflexiveTransitive
   using (Star)
 open import Data.Vec using () renaming (lookup to lu)
 open import Relation.Nullary using (¬_; Dec)
-open import Relation.Nullary.Decidable using (_→-dec_)
+open import Relation.Nullary.Decidable using (_→?_)
 
 open import Definitions.Behav using (BTheory; Balanced)
 
@@ -41,7 +41,7 @@ module Definitions.View {N : ℕ} (B : BTheory N) where
     Internal α = ∀ X → X ∈α α → X ∈ Ps
 
     internal? : ∀ α → Dec (Internal α)
-    internal? α = FinP.all? λ X → (X ∈α? α) →-dec (X ∈? Ps)
+    internal? α = FinP.all? λ X → (X ∈α? α) →? (X ∈? Ps)
 
     infix 4 _-τ->_
 

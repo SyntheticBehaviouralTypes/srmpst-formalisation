@@ -12,7 +12,7 @@ import Data.Vec.Properties as VecP
 open import Relation.Binary.PropositionalEquality
   using (_≡_; _≢_; refl; sym; trans; cong)
 open import Relation.Nullary using (Dec; ¬_; ¬?; yes; no)
-open import Relation.Nullary.Decidable using (_×-dec_; _→-dec_)
+open import Relation.Nullary.Decidable using (_×?_; _→?_)
 import Data.Fin.Properties as FinP
 open import Definitions.Expr using (Sort)
 
@@ -111,10 +111,10 @@ module Definitions.Actions (N : ℕ) where
   ¬∈αˢ→∉αˢ {α = α} ¬∈ P P∈ = ¬∈α→∉α {P} {α} λ P∈α → ¬∈ (P , P∈ , P∈α)
 
   _∈αˢ?_ : (Ps : PartSet) → (α : Action) → Dec (Ps ∈αˢ α)
-  Ps ∈αˢ? α = FinP.any? λ P → (P ∈? Ps) ×-dec (P ∈α? α)
+  Ps ∈αˢ? α = FinP.any? λ P → (P ∈? Ps) ×? (P ∈α? α)
 
   _∉αˢ?_ : (Ps : PartSet) → (α : Action) → Dec (Ps ∉αˢ α)
-  Ps ∉αˢ? α = FinP.all? λ P → (P ∈? Ps) →-dec (P ∉α? α)
+  Ps ∉αˢ? α = FinP.all? λ P → (P ∈? Ps) →? (P ∉α? α)
 
   -- A single role is the singleton set.
   ∈α→∈αˢ⁅⁆ : ∀ {P α} → P ∈α α → ⁅ P ⁆ ∈αˢ α
@@ -154,7 +154,7 @@ module Definitions.Actions (N : ℕ) where
   Foreign Q α = ∃[ S ] S ∉ Q × Send α S
 
   Foreign? : (Q : PartSet) → (α : Action) → Dec (Foreign Q α)
-  Foreign? Q α = FinP.any? λ S → ¬? (S ∈? Q) ×-dec Send? α S
+  Foreign? Q α = FinP.any? λ S → ¬? (S ∈? Q) ×? Send? α S
 
   infix 4 _⋄_
 

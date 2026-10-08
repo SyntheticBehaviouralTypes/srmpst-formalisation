@@ -17,7 +17,7 @@ open import Data.Vec
   renaming (lookup to lu)
 open import Data.Vec.Properties using (lookup∘tabulate; lookup⇒[]=; []=⇒lookup)
 open import Relation.Nullary using (Dec; yes; no; ¬_; ¬?)
-open import Relation.Nullary.Decidable using (_×-dec_)
+open import Relation.Nullary.Decidable using (_×?_)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; _≢_; refl; trans; sym; cong)
 
@@ -240,7 +240,7 @@ module Definitions.Proc (N : ℕ) where
 
     receives? : ∀ j Qs k → Dec (Receives j Qs k)
     receives? j Qs k =
-      ¬? (k ≟f j) ×-dec FinP.any? (λ R → (R ∈? Qs) ×-dec (owner R ≟f k))
+      ¬? (k ≟f j) ×? FinP.any? (λ R → (R ∈? Qs) ×? (owner R ≟f k))
 
     -- Multicast update: `j` becomes `Pr`, each receiver `k` becomes `F k`.
     upd-at :

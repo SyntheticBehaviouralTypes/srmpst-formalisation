@@ -19,7 +19,7 @@ open import Relation.Binary.Definitions using (DecidableEquality)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; cong; cong₂; sym; trans)
 open import Relation.Nullary using (Dec; yes; no; ¬?)
-open import Relation.Nullary.Decidable using (map′; _×-dec_; _→-dec_)
+open import Relation.Nullary.Decidable using (map′; _×?_; _→?_)
 
 open import Definitions.Expr using (Sort; s/bool; s/nat; s/unit; _≟Sort_)
 
@@ -99,8 +99,8 @@ module Definitions.Graph.Action (N : ℕ) where
   _⋄?_ : (α β : Action) → Dec (α ⋄ β)
   α ⋄? β =
     ¬? (α ≟Action β)
-    ×-dec FinP.all? (λ Q → Recv? α Q →-dec Q ∉α? β)
-    ×-dec FinP.all? (λ Q → Recv? β Q →-dec Q ∉α? α)
+    ×? FinP.all? (λ Q → Recv? α Q →? Q ∉α? β)
+    ×? FinP.all? (λ Q → Recv? β Q →? Q ∉α? α)
 
   -- Bit equalities for the checker: a `Dec`'s tag forces its proof, a bit
   -- does not (`-sound` builds it on demand).

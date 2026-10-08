@@ -26,7 +26,7 @@ open import Relation.Binary.Construct.Closure.ReflexiveTransitive
 open import Relation.Binary.PropositionalEquality
   using (_≡_; sym; subst)
 open import Relation.Nullary using (Dec; ¬_; ¬?)
-open import Relation.Nullary.Decidable using (_×-dec_; _→-dec_; T?)
+open import Relation.Nullary.Decidable using (_×?_; _→?_; T?)
 
 import Definitions.View as View
 
@@ -44,14 +44,14 @@ module Definitions.Graph.View (N : ℕ) where
       module V = View (graphTheory G)
 
     internal? : ∀ α → Dec (V.Internal Ps α)
-    internal? α = all? λ X → (X ∈α? α) →-dec (X ∈? Ps)
+    internal? α = all? λ X → (X ∈α? α) →? (X ∈? Ps)
 
     -- `Ps` takes part, not internally.
     External : Action → Set
     External α = ¬ V.Internal Ps α × Ps ∈αˢ α
 
     external? : ∀ α → Dec (External α)
-    external? α = ¬? (internal? α) ×-dec (Ps ∈αˢ? α)
+    external? α = ¬? (internal? α) ×? (Ps ∈αˢ? α)
 
     -- ══════════════════════════════════════════════════════════════════
     --  `Ps`'s internal edges, and what they reach
