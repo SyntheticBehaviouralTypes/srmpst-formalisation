@@ -5,3 +5,4 @@
 module Definitions.Typing where
 
 open import Definitions.Typing.Declarative public
+open import Definitions.Typing.Alg public

@@ -14,7 +14,7 @@ open import Data.Empty using (⊥; ⊥-elim)
 
 open import Data.List.Relation.Unary.Any using (Any; here; there)
 
-open import Definitions.Typing
+open import Definitions.Typing.Declarative
 
 module Definitions.Typing.MainLeaf {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   open MPST wb

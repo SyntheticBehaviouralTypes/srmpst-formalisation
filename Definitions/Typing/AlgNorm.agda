@@ -42,7 +42,7 @@ open import Data.Fin.Subset using () renaming (_∈_ to _∈ˢ_)
 open import Relation.Binary.Construct.Closure.ReflexiveTransitive
   using (Star; ε; _◅_)
 
-open import Definitions.Typing
+open import Definitions.Typing.Declarative
 
 module Definitions.Typing.AlgNorm
   {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where

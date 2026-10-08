@@ -16,7 +16,7 @@ open import Data.Sum using (inj₁; inj₂)
 
 open import Data.Empty using (⊥)
 
-open import Definitions.Typing
+open import Definitions.Typing.Declarative
 
 module Definitions.Typing.AlgEquiv {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   open MPST wb

@@ -38,7 +38,7 @@ open import Relation.Nullary using (¬_)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; _≢_; refl; sym; trans; cong; subst)
 
-open import Definitions.Typing
+open import Definitions.Typing.Declarative
 
 module Tests.WaitNotSkip where
 

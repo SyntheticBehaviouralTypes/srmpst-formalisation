@@ -18,7 +18,7 @@ open import Relation.Nullary using (yes; no)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; sym; subst)
 open import Utils.Vec using (lookup-not-insertAt)
-open import Definitions.Typing
+open import Definitions.Typing.Declarative
 
 module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private

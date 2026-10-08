@@ -11,7 +11,7 @@ open import Data.Product using (_,_)
 
 open import Relation.Unary using (_∈_)
 
-open import Definitions.Typing
+open import Definitions.Typing.Declarative
 
 module Definitions.Typing.AlgDeclarative
   {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where

@@ -26,14 +26,15 @@ open import Function using (_∘_)
 
 open import Relation.Nullary using (¬_)
 
-open import Relation.Unary using (Pred; _∈_; _⊆_; _∩_; Satisfiable)
+open import Relation.Unary using (Pred; _∈_; _⊆_; _∪_; _∩_; Satisfiable)
+  renaming (∅ to ∅S)
 
 open import Data.Fin.Subset using () renaming (_∈_ to _∈ˢ_)
 
 open import Relation.Binary.Construct.Closure.ReflexiveTransitive
   using (Star; ε; _◅_)
 
-open import Definitions.Typing
+open import Definitions.Typing.Declarative
 
 module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   open MPST wb
@@ -64,7 +65,7 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
 
     wv/cycle :
       ∀ {V s}
-      → (anc : ∃[ a ] V a × (a ~ s))
+      → (anc : Satisfiable (V ∩ (_~ s)))
       → (inT : P ∈T s)
       → WaitV P L V s
 
@@ -72,13 +73,13 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       ∀ {V s α t}
       → (na : P not-active-in s)
       → (gr : s -< α >-> t)
-      → (k  : ∀ {β u} → s -< β >-> u → WaitV P L (λ v → V v ⊎ (s ~ v)) u)
+      → (k  : ∀ {β u} → s -< β >-> u → WaitV P L (V ∪ (s ~_)) u)
       → WaitV P L V s
 
   waitV/mono :
-    ∀ {P}{L V V′ : Behavs}
+    ∀ {P L V V′}
     → V ⊆ V′
-    → ∀ {s} → WaitV P L V s → WaitV P L V′ s
+    → WaitV P L V ⊆ WaitV P L V′
 
   waitV/mono f (wv/leaf x) =
     wv/leaf x
@@ -157,12 +158,10 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     ∀ {P}{L : Behavs}
     → Closed L
     → ∀ {G}
-    → WaitV P L (λ _ → ⊥) G
-    → ∀ {V W : Behavs}
-    → (∀ {v} → W v → V v ⊎ (G ~ v))
-    → ∀ {u}
-    → WaitV P L W u
-    → WaitV P L V u
+    → WaitV P L ∅S G
+    → ∀ {V W}
+    → W ⊆ V ∪ (G ~_)
+    → WaitV P L W ⊆ WaitV P L V
 
   waitV/unfold-top c top f (wv/leaf x) =
     wv/leaf x
@@ -245,7 +244,7 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   waitV/walk :
     ∀ {P}{L V : Behavs}{s}
     → WaitV P L V s
-    → WaitV P (λ u → L u × Star (_⇝[ P ]_) s u) V s
+    → WaitV P (L ∩ Star (_⇝[ P ]_) s) V s
 
   waitV/walk (wv/leaf x)       = wv/leaf (x , ε)
   waitV/walk (wv/cycle a inT)  = wv/cycle a inT
@@ -277,7 +276,8 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   -- The continuation set of `a/send`/`a/recv` is monotone.
   after/mono :
     ∀ {P step}{𝒮 𝒮′ : States δ}
-    → 𝒮′ ⊆ 𝒮 → PostBy step (Front P 𝒮′) ⊆ PostBy step (Front P 𝒮)
+    → 𝒮′ ⊆ 𝒮
+    → PostBy step (Front P 𝒮′) ⊆ PostBy step (Front P 𝒮)
   after/mono f {ws , _} (s , ((a , a∈ , run) , act) , gr) =
     s , ((a , f {ws , a} a∈ , run) , act) , gr
 
@@ -326,7 +326,6 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       → (rdy : 𝒮 ⊆ Wait P (Unskip P (Var X)))
       → Γ ⊢a P ◂ v X ∶ 𝒮
 
-    -- `𝒜`: the states `rec` is entered at.
     a/rec :
       ∀ {P Pr}{𝒮 𝒜 : States δ}
       → (guarded : MessageGuarded Pr)
@@ -334,7 +333,6 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       → (rdy     : 𝒮 ⊆ Wait P (Unskip P 𝒜))
       → Γ ⊢a P ◂ rec Pr ∶ 𝒮
 
-  -- Downward closure of `𝒮`.
   alg/mono :
     ∀ {Γ : Vec Sort γ}{PPr : NProc γ δ}{𝒮 𝒮′}
     → 𝒮′ ⊆ 𝒮

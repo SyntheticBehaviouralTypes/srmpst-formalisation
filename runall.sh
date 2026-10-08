@@ -43,8 +43,8 @@ NOTES:
     excluded and there are no special cases.  Measured 2026-10-07:
     478 s, 2.3 GB peak resident.
 
-    `wellBehaved?` witnesses must be `opaque` (see CLAUDE.md): a
-    transparent one is re-evaluated at every use site.
+    `wellBehaved?` witnesses must be `opaque`: a transparent one is re-evaluated
+    at every use site.
 EOF
     exit 0
 }
