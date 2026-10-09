@@ -1,9 +1,11 @@
 {-# OPTIONS --guardedness #-}
 
-open import Data.Nat using (ℕ; zero; suc)
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Nat using (ℕ; suc)
+open import Data.Fin using (Fin)
 
-open import Data.Vec using (Vec; []; _∷_; lookup)
+open import Data.Vec using (Vec; lookup)
+open import Data.Vec.Relation.Binary.Pointwise.Inductive
+  as Pointwise using (Pointwise)
 open import Data.Product using (∃-syntax; _,_; _×_; proj₁; proj₂)
 open import Data.Maybe using (just)
 open import Data.Fin.Subset using (_∈_; _∉_; Nonempty)
@@ -268,24 +270,11 @@ module Definitions.Behav where
 
     -- Environment bisimilarity
 
-    data _~ᵛ_ : ∀ {δ δ′} → Vec Behav δ → Vec Behav δ′ → Set where
-      ~ᵛ/[] :
-        [] ~ᵛ []
-
-      ~ᵛ/∷ :
-        ∀ {δ δ′}
-          {G G′ : Behav}
-          {Δ  : Vec Behav δ}
-          {Δ′ : Vec Behav δ′}
-        → G ~ G′
-        → Δ ~ᵛ Δ′
-        → (G ∷ Δ) ~ᵛ (G′ ∷ Δ′)
+    _~ᵛ_ : ∀ {δ δ′} → Vec Behav δ → Vec Behav δ′ → Set
+    _~ᵛ_ = Pointwise _~_
 
     ~ᵛ-refl : ∀ {δ} {Δ : Vec Behav δ} → Δ ~ᵛ Δ
-    ~ᵛ-refl {Δ = []} =
-      ~ᵛ/[]
-    ~ᵛ-refl {Δ = _ ∷ _} =
-      ~ᵛ/∷ ~refl ~ᵛ-refl
+    ~ᵛ-refl = Pointwise.refl ~refl
 
     lookup/~ᵛ :
       ∀ {δ}
@@ -295,10 +284,7 @@ module Definitions.Behav where
       → (X : Fin δ)
       → lookup Δ X ~ G
       → lookup Δ′ X ~ G
-    lookup/~ᵛ (~ᵛ/∷ G~G′ _) zero G~lookup =
-      ~trans (~sym G~G′) G~lookup
-    lookup/~ᵛ (~ᵛ/∷ _ Δ~Δ′) (suc X) G~lookup =
-      lookup/~ᵛ Δ~Δ′ X G~lookup
+    lookup/~ᵛ Δ~Δ′ X = ~trans (~sym (Pointwise.lookup Δ~Δ′ X))
 
   record WellBehaved {N : ℕ} (B : BTheory N) : Set₁ where
     open Definitions.Actions N

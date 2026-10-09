@@ -16,14 +16,15 @@
 
 module Tests.LabelSorts where
 
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin using (Fin)
+open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Data.List using ([]; _∷_)
 open import Data.Product using (proj₁)
 open import Data.Unit using (tt)
 open import Data.Bool using (true)
 open import Relation.Nullary using (Dec; ¬_)
-open import Relation.Nullary.Decidable using (toWitness; toWitnessFalse)
+open import Relation.Nullary.Decidable using (from-yes; from-no)
 
 open import Definitions.Expr
   using (s/bool; s/nat; s/unit; val; v/nat; v/bool; v/unit; is-zero; var)
@@ -36,16 +37,16 @@ open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
 A B C : Fin 3
-A = zero
-B = suc zero
-C = suc (suc zero)
+A = 0F
+B = 1F
+C = 2F
 
 here : Fin 1
-here = zero
+here = 0F
 
 lbl0 lbl1 : Fin 2
-lbl0 = zero
-lbl1 = suc zero
+lbl0 = 0F
+lbl1 = 1F
 
 g : OpenGraph 0
 g =
@@ -87,16 +88,16 @@ wtd/good : Dec (⊢s[ singletons ] M/good ∶ initial (proj₁ wbg))
 wtd/good = typecheckSession wbg singletons M/good
 
 well-typed : ⊢s[ singletons ] M/good ∶ initial (proj₁ wbg)
-well-typed = toWitness {a? = wtd/good} _
+well-typed = from-yes wtd/good
 
 -- ══════════════════════════════════════════════════════════════════════
 --  Control: the `s/bool` leaf really IS inspected
 -- ══════════════════════════════════════════════════════════════════════
 --
--- The branch body needs `var zero ∶ s/nat`, so the `s/bool` leaf rejects.
+-- The branch body needs `var 0F ∶ s/nat`, so the `s/bool` leaf rejects.
 
 p/B′ : Proc 0 0
-p/B′ = B ⇐ A ？·((ifp is-zero (var zero) then ∅ else ∅) v∷ v[])
+p/B′ = B ⇐ A ？·((ifp is-zero (var 0F) then ∅ else ∅) v∷ v[])
 
 M/bad : Over.Session singletons
 M/bad = p/A v∷ p/B′ v∷ p/C v∷ v[]
@@ -105,4 +106,4 @@ wtd/bad : Dec (⊢s[ singletons ] M/bad ∶ initial (proj₁ wbg))
 wtd/bad = typecheckSession wbg singletons M/bad
 
 not-well-typed : ¬ (⊢s[ singletons ] M/bad ∶ initial (proj₁ wbg))
-not-well-typed = toWitnessFalse {a? = wtd/bad} _
+not-well-typed = from-no wtd/bad

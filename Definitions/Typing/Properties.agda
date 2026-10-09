@@ -2,6 +2,7 @@
 
 open import Data.Nat using (ℕ)
 open import Data.Vec using (Vec)
+open import Data.Vec.Relation.Binary.Pointwise.Inductive using ([]; _∷_)
 open import Data.Product using (_,_)
 open import Function using (_∘_)
 open import Definitions.Typing
@@ -32,7 +33,7 @@ module Definitions.Typing.Properties {N : ℕ}{B : BTheory N}(wb : WellBehaved B
         (λ gr′ →
           skip-td/bisim
             Δ~Δ′
-            (~ᵛ/∷ G~G′ Ξ~Ξ′)
+            (G~G′ ∷ Ξ~Ξ′)
             (~R→~ G~G′ gr′)
             (ktd (~R→ G~G′ gr′)))
 
@@ -66,7 +67,7 @@ module Definitions.Typing.Properties {N : ℕ}{B : BTheory N}(wb : WellBehaved B
             (conts (α′ , eq′ , ~R→ G~G′ gr′ , fr′)) })
 
     td/bisim Δ~Δ′ G~G′ (t/skip std) =
-      t/skip (skip-td/bisim Δ~Δ′ ~ᵛ/[] G~G′ std)
+      t/skip (skip-td/bisim Δ~Δ′ [] G~G′ std)
 
     td/bisim Δ~Δ′ G~G′ (t/unskip tr eq ptd) =
       t/unskip tr (~trans eq G~G′) (td/bisim Δ~Δ′ ~refl ptd)
@@ -78,7 +79,7 @@ module Definitions.Typing.Properties {N : ℕ}{B : BTheory N}(wb : WellBehaved B
         (td/bisim Δ~Δ′ G~G′ ftd)
 
     td/bisim Δ~Δ′ G~G′ (t/rec guarded td) =
-      t/rec guarded (td/bisim (~ᵛ/∷ G~G′ Δ~Δ′) G~G′ td)
+      t/rec guarded (td/bisim (G~G′ ∷ Δ~Δ′) G~G′ td)
 
     td/bisim Δ~Δ′ G~G′ (t/var eq) =
       t/var (~trans (lookup/~ᵛ Δ~Δ′ _ eq) G~G′)

@@ -2,15 +2,14 @@
 
 -- Type checking over nets.  `WBNet n` certifies a net compositionally:
 -- `base` decides its graph, `∥` adds `disjoint?`, `⨾` adds the seam
--- conditions.  Its evidence fields are `T ⌊ … ⌋` implicits, solved on
+-- conditions.  Its evidence fields are `True …` implicits, solved on
 -- concrete nets.  `typecheckNet` runs the graph checker on `present n`.
 
-open import Data.Bool using (T)
 open import Data.Nat using (ℕ)
 open import Data.Fin.Properties using (all?)
 open import Data.Vec using () renaming (lookup to lu)
 open import Relation.Nullary using (Dec)
-open import Relation.Nullary.Decidable using (⌊_⌋; toWitness)
+open import Relation.Nullary.Decidable using (toWitness; True)
 
 open import Definitions.Behav using (WellBehaved; Synchronous)
 open import Definitions.Typing.Declarative using (module Sessions)
@@ -37,20 +36,20 @@ module Check.Network (N : ℕ) where
   data WBNet : Net → Set where
     base :
       ∀ {G}
-      → {p : T ⌊ wellBehaved? (underlying (present (base G))) ⌋}
-      → {q : T ⌊ synchronous? (underlying (present (base G))) ⌋}
-      → {m : T ⌊ moves? G ⌋}
+      → {p : True (wellBehaved? (underlying (present (base G))))}
+      → {q : True (synchronous? (underlying (present (base G))))}
+      → {m : True (moves? G)}
       → WBNet (base G)
     _∥_ :
       ∀ {n₁ n₂}
       → WBNet n₁ → WBNet n₂
-      → {d : T ⌊ disjoint? n₁ n₂ ⌋}
+      → {d : True (disjoint? n₁ n₂)}
       → WBNet (n₁ ∥ n₂)
     _⨾_ :
       ∀ {n₁ n₂}
       → WBNet n₁ → WBNet n₂
-      → {sc : T ⌊ seamComm? n₁ n₂ ⌋}
-      → {sb : T ⌊ seamBranch? n₁ n₂ ⌋}
+      → {sc : True (seamComm? n₁ n₂)}
+      → {sb : True (seamBranch? n₁ n₂)}
       → WBNet (n₁ ⨾ n₂)
 
   netMoves : ∀ {n} → WBNet n → Moves n

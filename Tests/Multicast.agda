@@ -13,8 +13,9 @@
 
 module Tests.Multicast where
 
-open import Data.Bool using (T; not; true)
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Bool using (true)
+open import Data.Fin using (Fin)
+open import Data.Fin.Patterns
 open import Data.Fin.Subset using (⁅_⁆; _∪_; ⊥)
 open import Data.List using ([]; _∷_)
 open import Data.Maybe using (just; nothing)
@@ -22,7 +23,7 @@ open import Data.Product using (_,_)
 open import Data.Unit using (tt)
 import Data.Vec as V
 open V using () renaming ([] to v[]; _∷_ to _v∷_)
-open import Relation.Nullary.Decidable using (⌊_⌋)
+open import Relation.Nullary.Decidable using (True; False)
 
 open import Definitions.Expr using (s/bool; val; v/bool)
 open import Check
@@ -34,13 +35,13 @@ open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
 A B C : Fin 3
-A = zero
-B = suc zero
-C = suc (suc zero)
+A = 0F
+B = 1F
+C = 2F
 
 -- the singleton index: pins `I = 0` for a non-branching send.
 here : Fin 1
-here = zero
+here = 0F
 
 BC CB : PartSet
 BC = ⁅ B ⁆ ∪ ⁅ C ⁆
@@ -65,21 +66,26 @@ module Once where
   send Qs = A ⇒ Qs ! here < val (v/bool true) >∙ ∅
 
   -- 1. accepted.
-  accepted : T ⌊ typecheckSession wbg singletons (send BC v∷ recv B v∷ recv C v∷ v[]) ⌋
+  accepted :
+    True (typecheckSession wbg singletons
+            (send BC v∷ recv B v∷ recv C v∷ v[]))
   accepted = tt
 
   -- 2. the receiver set is order-free.
-  order-free : T ⌊ typecheckSession wbg singletons (send CB v∷ recv B v∷ recv C v∷ v[]) ⌋
+  order-free :
+    True (typecheckSession wbg singletons
+            (send CB v∷ recv B v∷ recv C v∷ v[]))
   order-free = tt
 
   -- 3. `C` never receives.
   missing-receiver :
-    T (not ⌊ typecheckSession wbg singletons (send BC v∷ recv B v∷ ∅ v∷ v[]) ⌋)
+    False (typecheckSession wbg singletons (send BC v∷ recv B v∷ ∅ v∷ v[]))
   missing-receiver = tt
 
   -- 4. `A` sends to `B` alone, but the protocol's step is to `{B, C}`.
   wrong-receivers :
-    T (not ⌊ typecheckSession wbg singletons (send ⁅ B ⁆ v∷ recv B v∷ recv C v∷ v[]) ⌋)
+    False (typecheckSession wbg singletons
+             (send ⁅ B ⁆ v∷ recv B v∷ recv C v∷ v[]))
   wrong-receivers = tt
 
 -- ══════════════════════════════════════════════════════════════════════
@@ -92,14 +98,14 @@ module NotSynchronous where
   self : OpenGraph 0
   self = (A ⟶ ⁅ A ⁆ # mkChoice here s/bool) ∙ end
 
-  self-rejected : T (not ⌊ synchronous? (underlying (compile self)) ⌋)
+  self-rejected : False (synchronous? (underlying (compile self)))
   self-rejected = tt
 
   -- An empty multicast: `A` sends to nobody.
   nobody : OpenGraph 0
   nobody = (A ⟶ ⊥ # mkChoice here s/bool) ∙ end
 
-  nobody-rejected : T (not ⌊ synchronous? (underlying (compile nobody)) ⌋)
+  nobody-rejected : False (synchronous? (underlying (compile nobody)))
   nobody-rejected = tt
 
   -- A lone receive: `A` receives from itself, and nobody sends.
@@ -108,9 +114,9 @@ module NotSynchronous where
     just ((？ A) # mkChoice here s/bool) V.∷ nothing V.∷ nothing V.∷ V.[]
 
   lonely : OpenGraph 0
-  lonely = openGraph 1 (node zero) (((lone , ended) ∷ []) v∷ v[])
+  lonely = openGraph 1 (node 0F) (((lone , ended) ∷ []) v∷ v[])
 
-  lone-rejected : T (not ⌊ synchronous? (underlying (compile lonely)) ⌋)
+  lone-rejected : False (synchronous? (underlying (compile lonely)))
   lone-rejected = tt
 
 -- ══════════════════════════════════════════════════════════════════════
@@ -120,16 +126,17 @@ module NotSynchronous where
 module Loop where
 
   g : OpenGraph 0
-  g = μ ((A ⟶ BC # mkChoice here s/bool) ∙ var zero)
+  g = μ ((A ⟶ BC # mkChoice here s/bool) ∙ var 0F)
 
   wbg : WBGraph {N = 3}
   wbg = buildG g
 
   p/A : Proc 0 0
-  p/A = rec (A ⇒ BC ! here < val (v/bool true) >∙ v zero)
+  p/A = rec (A ⇒ BC ! here < val (v/bool true) >∙ v 0F)
 
   p/R : Part → Proc 0 0
-  p/R R = rec (R ⇐ A ？· (v zero V.∷ V.[]))
+  p/R R = rec (R ⇐ A ？· (v 0F V.∷ V.[]))
 
-  looping : T ⌊ typecheckSession wbg singletons (p/A v∷ p/R B v∷ p/R C v∷ v[]) ⌋
+  looping :
+    True (typecheckSession wbg singletons (p/A v∷ p/R B v∷ p/R C v∷ v[]))
   looping = tt

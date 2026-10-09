@@ -14,18 +14,18 @@ import Data.Nat.Properties as Nat
 open import Data.Fin using (Fin; zero; suc) renaming (_≟_ to _≟Fin_)
 import Data.Fin.Properties as FinP
 
-open import Data.Vec using (Vec; []; _∷_; lookup; replicate; _[_]≔_)
+open import Data.Vec using (Vec; []; _∷_; lookup)
 import Data.Vec as V
 import Data.Vec.Properties as VecP
 
 open import Data.List using (List; []; _∷_; filter)
 open import Data.List.Membership.Propositional
-  renaming (_∈_ to _∈L_)
+  using (find; lose) renaming (_∈_ to _∈L_)
 open import Data.List.Membership.Propositional.Properties
   using (∈-filter⁺; ∈-filter⁻)
 open import Data.List.Relation.Unary.Any using (here; there)
 import Data.List.Relation.Unary.Any as Any
-open import Data.List.Relation.Unary.Any.Properties using (any⁺; any⁻)
+open import Data.List.Relation.Unary.Any.Properties using (any⁺; any⁻; ¬Any[])
 open import Data.Bool.ListAction using (any)
 open import Data.Bool.Properties using (T-∧)
 open import Function.Bundles using (Equivalence)
@@ -36,6 +36,7 @@ open import Data.Product.Properties using (≡-dec)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.Empty using (⊥; ⊥-elim)
 open import Data.Unit using (tt)
+open import Data.Unit.Polymorphic using () renaming (⊤ to ⊤₁; tt to tt₁)
 open import Data.Bool using (Bool; true; false; T; _∧_)
 open import Data.Maybe using (just; nothing)
 
@@ -45,10 +46,15 @@ open import Induction.WellFounded using (Acc; acc)
 
 open import Relation.Nullary using (Dec; yes; no; ¬_)
 open import Relation.Nullary.Decidable
-  using (⌊_⌋; T?; map′; _×?_; _→?_; ¬?; toWitness; fromWitness)
-open import Relation.Unary using (Decidable; _∈_; _⊆_; _∩_; Satisfiable)
-open import Data.Fin.Subset using () renaming (_∈_ to _∈ˢ_)
-open import Data.Fin.Subset.Properties using () renaming (_∈?_ to _∈ˢ?_)
+  using (⌊_⌋; T?; True; map′; _×?_; _→?_; ¬?; toWitness; fromWitness)
+open import Relation.Unary using (Decidable; _∈_; _⊆_; _∩_; Satisfiable; ｛_｝)
+  renaming (∅ to ∅S)
+open import Relation.Unary.Properties using (∅?)
+open import Data.Fin.Subset using (Subset; _∪_; ⁅_⁆; ∣_∣)
+  renaming (_∈_ to _∈ˢ_; ⊥ to ∅ˢ)
+open import Data.Fin.Subset.Properties
+  using (p⊆p∪q; x∈p∪q⁺; x∈p∪q⁻; x∈⁅x⁆; x∈⁅y⁆⇒x≡y; ∉⊥; ∣p∣≤n; p⊂q⇒∣p∣<∣q∣)
+open import Utils.Bits using () renaming (_∈?_ to _∈ˢ?_)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; sym; trans; subst; cong)
 open import Relation.Binary.Construct.Closure.ReflexiveTransitive
@@ -66,14 +72,13 @@ module Check.Alg (N : ℕ) where
     using (Graph; graph; size; outgoing; edges; Edge
           ; listed⇒step; step⇒listed; graphTheory)
   open import Definitions.Graph.Bisimulation N
-    using (Matrix; approximation; bisimulationCorrect; sound; complete)
+    using (Matrix; approximation; bisimulationCorrect)
   open import Definitions.Graph.Action N
     using (eqFin; eqFin-sound; eqFin-refl
           ; eqMaybeEvent; eqMaybeEvent-sound; eqMaybeEvent-refl)
   open import Definitions.Graph.Reachability N
     using (Step; PathVia; path/nil; path/cons; reachVia; reachFix; reachFix≡; reachVia-sound
-          ; reachVia-complete; T→≡true; ≡true→T; reach→∈T; ∈T→reach; active?
-          ; anyActive→∈; ∈α-lift; wt; wt/strict; wt-bound)
+          ; reachVia-complete; reach→∈T; ∈T→reach; active?)
 
   module AlgCheck
     (G : Graph)
@@ -190,9 +195,6 @@ module Check.Alg (N : ℕ) where
         with-table tbl spec x = fromBit (A? x) (spec x)
 
     -- Dependent tables, for the branches of a receive.
-    record ⊤₁ : Set₁ where
-      constructor tt₁
-
     AllFin′ : (m : ℕ) → (Fin m → Set₁) → Set₁
     AllFin′ zero    B = ⊤₁
     AllFin′ (suc m) B = B zero × AllFin′ m (B ∘ suc)
@@ -289,9 +291,7 @@ module Check.Alg (N : ℕ) where
              → (∀ {α u} → (α , u) ∈L es → s -< α >-> u)
              → (∀ {α u} → s -< α >-> u → (α , u) ∈L es)
              → Dec (Steps s)
-        from []            _   back = no λ { (_ , _ , gr) → case (back gr) }
-          where case : ∀ {e} → e ∈L [] → ⊥
-                case ()
+        from []            _   back = no λ { (_ , _ , gr) → ¬Any[] (back gr) }
         from ((β , u) ∷ _) fwd _    = yes (β , u , fwd (here refl))
 
     -- The decider gets the membership proof (`WaitDec` needs it).
@@ -316,10 +316,10 @@ module Check.Alg (N : ℕ) where
     active⇒? : ∀ P s → Dec (Active P s)
     active⇒? P s with active? G P s
     ... | yes any =
-      let (α , u) , mem , px = anyActive→∈ G (edges G s) any
+      let (α , u) , mem , px = find any
       in yes (α , u , listed⇒step mem , px)
     ... | no ¬any =
-      no λ { (_ , _ , gr , px) → ¬any (∈α-lift G (step⇒listed gr) px) }
+      no λ { (_ , _ , gr , px) → ¬any (lose (step⇒listed gr) px) }
 
     idle : ∀ {P s} → ¬ Active P s → P not-active-in s
     idle {P} ¬act {α} gr = ¬∈αˢ→∉αˢ {P} {α} (λ px → ¬act (_ , _ , gr , px))
@@ -340,7 +340,7 @@ module Check.Alg (N : ℕ) where
     path⇒walk {P} ok≡ (path/cons oks gr rest) =
       (idle (λ { (_ , _ , gr′ , px) →
                  toWitness (subst T (ok≡ _) oks)
-                   (∈α-lift G (step⇒listed gr′) px) })
+                   (lose (step⇒listed gr′) px) })
       , _ , gr) ◅ path⇒walk ok≡ rest
 
     walk⇒path :
@@ -352,7 +352,7 @@ module Check.Alg (N : ℕ) where
       in suc k ,
          path/cons
            (subst T (sym (ok≡ _)) (fromWitness λ any →
-              let (α , u) , mem , px = anyActive→∈ G _ any
+              let (α , u) , mem , px = find {A = Edge n} any
               in ∉αˢ→¬∈αˢ {P} {α} (na (listed⇒step mem)) px))
            gr p
 
@@ -389,15 +389,15 @@ module Check.Alg (N : ℕ) where
 
     -- Reading a reachability row.
     row? :
-      ∀ (H : Graph)(ok′ : Fin (size H) → Bool)(rows : Vec (Vec Bool (size H)) (size H))
+      ∀ (H : Graph)(ok′ : Fin (size H) → Bool)
+        (rows : Vec (Subset (size H)) (size H))
       → (∀ s → lookup rows s ≡ reachVia H ok′ s)
       → ∀ s t → Dec (∃[ k ] PathVia H ok′ s t k)
     row? H ok′ rows spec s t =
-      map′ (λ x → reachVia-sound H ok′ s
-                    (T→≡true (subst (λ r → T (lookup r t)) (spec s) x)))
-           (λ { (_ , p) → subst (λ r → T (lookup r t)) (sym (spec s))
-                            (≡true→T (reachVia-complete H ok′ s p)) })
-           (T? (lookup (lookup rows s) t))
+      map′ (λ x → reachVia-sound H ok′ s (subst (t ∈ˢ_) (spec s) x))
+           (λ { (_ , p) →
+                subst (t ∈ˢ_) (sym (spec s)) (reachVia-complete H ok′ s p) })
+           (t ∈ˢ? lookup rows s)
 
     -- ══════════════════════════════════════════════════════════════════
     --  The graph-level facts, tabulated once
@@ -437,10 +437,10 @@ module Check.Alg (N : ℕ) where
                (FinP.any? λ t → row? G (λ _ → true) alls alls≡ s t ×? active? G P t)
       ; moves?  = memoB steps?
       ; bisim?  = λ s t →
-          map′ (λ x → sound (bisimulationCorrect G)
+          map′ (λ x → Equivalence.to (bisimulationCorrect G)
                         (subst (λ r → T (lookup (lookup r s) t)) m≡ x))
                (λ r → subst (λ r′ → T (lookup (lookup r′ s) t)) (sym m≡)
-                        (complete (bisimulationCorrect G) r))
+                        (Equivalence.from (bisimulationCorrect G) r))
                (T? (lookup (lookup m s) t))
       }
 
@@ -500,11 +500,11 @@ module Check.Alg (N : ℕ) where
     -- What a probe found, as a set (empty for `none`).
     hit : ∀ {Γ : Vec Sort γ}{P}{Pr : Proc γ δ}{𝒮} → Probe Γ P Pr 𝒮 → States δ
     hit (found T) = Found.𝒯 T
-    hit (none _)  = λ _ → ⊥
+    hit (none _)  = ∅S
 
     hit? : ∀ {Γ : Vec Sort γ}{P}{Pr : Proc γ δ}{𝒮}(r : Probe Γ P Pr 𝒮) → Decidable (hit r)
     hit? (found T) = Found.𝒯? T
-    hit? (none _)  = λ _ → no λ ()
+    hit? (none _)  = ∅?
 
     from-hit :
       ∀ {Γ : Vec Sort γ}{P}{Pr : Proc γ δ}{𝒮 X}(r : Probe Γ P Pr 𝒮)
@@ -553,30 +553,26 @@ module Check.Alg (N : ℕ) where
 
       module WaitDec (L : Behavs)(L? : Decidable L) where
 
-        Vis : Vec Bool n → Behavs
-        Vis V w = ∃[ a ] T (lookup V a) × a ~ w
+        Vis : Subset n → Behavs
+        Vis V w = ∃[ a ] a ∈ˢ V × a ~ w
 
         vis? : ∀ V s → Dec (Vis V s)
-        vis? V s = FinP.any? (λ a → T? (lookup V a) ×? bisim? a s)
+        vis? V s = FinP.any? (λ a → (a ∈ˢ? V) ×? bisim? a s)
 
-        mark : Vec Bool n → Behav → Vec Bool n
-        mark V s = V [ s ]≔ true
+        mark : Subset n → Behav → Subset n
+        mark V s = V ∪ ⁅ s ⁆
 
-        marked : ∀ V s → T (lookup (mark V s) s)
-        marked V s rewrite VecP.lookup∘update s V true = tt
-
-        kept : ∀ V s {a} → T (lookup V a) → T (lookup (mark V s) a)
-        kept V s {a} x with a ≟Fin s
-        ... | yes refl = marked V s
-        ... | no a≢s rewrite VecP.lookup∘update′ a≢s V true = x
+        marked : ∀ V s → s ∈ˢ mark V s
+        marked V s = x∈p∪q⁺ (inj₂ (x∈⁅x⁆ s))
 
         vis/mark→ : ∀ V s {v} → Vis (mark V s) v → Vis V v ⊎ (s ~ v)
-        vis/mark→ V s (a , ma , a~v) with a ≟Fin s
-        ... | yes refl = inj₂ a~v
-        ... | no a≢s rewrite VecP.lookup∘update′ a≢s V true = inj₁ (a , ma , a~v)
+        vis/mark→ V s (a , ma , a~v) with x∈p∪q⁻ V ⁅ s ⁆ ma
+        ... | inj₁ a∈ = inj₁ (a , a∈ , a~v)
+        ... | inj₂ a∈ with x∈⁅y⁆⇒x≡y s a∈
+        ...   | refl = inj₂ a~v
 
         vis/mark← : ∀ V s {v} → Vis V v ⊎ (s ~ v) → Vis (mark V s) v
-        vis/mark← V s (inj₁ (a , ma , a~v)) = a , kept V s ma , a~v
+        vis/mark← V s (inj₁ (a , ma , a~v)) = a , p⊆p∪q ⁅ s ⁆ ma , a~v
         vis/mark← V s (inj₂ s~v)           = s , marked V s , s~v
 
         -- A step the walk takes: out of a non-leaf, idle state.
@@ -610,26 +606,26 @@ module Check.Alg (N : ℕ) where
             refute ¬inT x loop (from ◅◅ (y ◅ ε)) to (k gr)
 
         -- Every visited state has a non-empty walk to the current one.
-        Inv : Vec Bool n → Behav → Set
-        Inv V s = ∀ a → T (lookup V a) → ∃[ m ] a ↝ m × Star _↝_ m s
+        Inv : Subset n → Behav → Set
+        Inv V s = ∀ a → a ∈ˢ V → ∃[ m ] a ↝ m × Star _↝_ m s
 
         vis/~ : ∀ {V a s} → Vis V a → a ~ s → Vis V s
         vis/~ (b , vb , b~a) a~s = b , vb , ~trans b~a a~s
 
         inv/step : ∀ {V s u} → Inv V s → s ↝ u → Inv (mark V s) u
-        inv/step {V} {s} inv x a ma with a ≟Fin s
-        ... | yes refl = _ , x , ε
-        ... | no a≢s rewrite VecP.lookup∘update′ a≢s V true =
-          let m , a↝m , m↝*s = inv a ma
+        inv/step {V} {s} inv x a ma with x∈p∪q⁻ V ⁅ s ⁆ ma
+        ... | inj₁ a∈ =
+          let m , a↝m , m↝*s = inv a a∈
           in m , a↝m , m↝*s ◅◅ (x ◅ ε)
+        ... | inj₂ a∈ with x∈⁅y⁆⇒x≡y s a∈
+        ...   | refl = _ , x , ε
 
         -- Marking an unmarked state shrinks the measure.
-        shrink : ∀ V s → ¬ T (lookup V s) → n ∸ wt (mark V s) < n ∸ wt V
+        shrink : ∀ V s → ¬ s ∈ˢ V → n ∸ ∣ mark V s ∣ < n ∸ ∣ V ∣
         shrink V s ¬vs =
           Nat.∸-monoʳ-<
-            (wt/strict {left = V} {right = mark V s} (λ i → kept V s {i})
-               (λ eq → ¬vs (subst (λ w → T (lookup w s)) (sym eq) (marked V s))))
-            (wt-bound (mark V s))
+            (p⊂q⇒∣p∣<∣q∣ (p⊆p∪q ⁅ s ⁆ , s , marked V s , ¬vs))
+            (∣p∣≤n (mark V s))
 
         -- Neither a leaf nor a cycle is available at `s`.
         stuck :
@@ -642,7 +638,7 @@ module Check.Alg (N : ℕ) where
         stuck ¬l ¬cyc (wv/step na gr k) = _ , _ , gr , na , k
 
         wait-go :
-          ∀ V s → Inv V s → Acc _<_ (n ∸ wt V) → Dec (WaitV P L (Vis V) s)
+          ∀ V s → Inv V s → Acc _<_ (n ∸ ∣ V ∣) → Dec (WaitV P L (Vis V) s)
         wait-go V s inv (acc rs) with L? s
         ... | yes l = yes (wv/leaf l)
         ... | no ¬l with inT? s ×? vis? V s
@@ -654,7 +650,7 @@ module Check.Alg (N : ℕ) where
         ...     | no ¬act with moves? s
         ...       | no ¬st =
           no λ w → let β , u , gr , _ = stuck {V} ¬l ¬cyc w in ¬st (β , u , gr)
-        ...       | yes (_ , _ , gr₀) with T? (lookup V s)
+        ...       | yes (_ , _ , gr₀) with s ∈ˢ? V
         ...         | yes vs =
           let m , s↝m , m↝*s = inv s vs
           in no (refute (λ inT → ¬cyc (inT , s , vs , ~refl)) s↝m m↝*s ε ε)
@@ -670,24 +666,20 @@ module Check.Alg (N : ℕ) where
           no λ w → let _ , _ , _ , _ , k = stuck {V} ¬l ¬cyc w
                    in ¬all λ mem → waitV/mono (vis/mark← V s) (k (listed⇒step mem))
 
-        wait? : ∀ s → Dec (WaitV P L (λ _ → ⊥) s)
+        wait? : ∀ s → Dec (WaitV P L ∅S s)
         wait? s =
           map′ (waitV/mono empty) (waitV/mono λ ())
-            (wait-go (replicate n false) s
-               (λ a x → ⊥-elim (empty′ a x)) (<-wellFounded _))
+            (wait-go ∅ˢ s (λ _ x → ⊥-elim (∉⊥ x)) (<-wellFounded _))
           where
-            empty′ : ∀ a → T (lookup (replicate n false) a) → ⊥
-            empty′ a x rewrite VecP.lookup-replicate a false = x
-
-            empty : ∀ {v} → Vis (replicate n false) v → ⊥
-            empty (a , x , _) = empty′ a x
+            empty : ∀ {v} → Vis ∅ˢ v → ⊥
+            empty (_ , x , _) = ∉⊥ x
 
       Wait? : {L : States δ} → Decidable L → Decidable (Wait P L)
       Wait? L? (ws , s) = WaitDec.wait? _ (λ t → L? (ws , t)) s
 
       -- `Wait` lives in `Set₁`; a set of states stores the decided bit.
       Ready : {L : States δ} → Decidable L → States δ
-      Ready L? x = T ⌊ Wait? L? x ⌋
+      Ready L? x = True (Wait? L? x)
 
       Ready? : {L : States δ}(L? : Decidable L) → Decidable (Ready L?)
       Ready? L? x = T? ⌊ Wait? L? x ⌋
@@ -1096,10 +1088,7 @@ module Check.Alg (N : ℕ) where
 
     -- Only singletons are asked about (`tc?`), and a singleton is never
     -- empty, so the probe always has a state to start from.
-    at : State δ → States δ
-    at x = x ≡_
-
-    at? : (x : State δ) → Decidable (at x)
+    at? : (x : State δ) → Decidable ｛ x ｝
     at? x = ≡-dec (VecP.≡-dec FinP._≟_) FinP._≟_ x
 
     alg? :
@@ -1108,13 +1097,13 @@ module Check.Alg (N : ℕ) where
         (P : PartSet)
         (Pr : Proc γ δ)
         (x : State δ)
-      → Dec (Γ ⊢a P ◂ Pr ∶ at x)
+      → Dec (Γ ⊢a P ◂ Pr ∶ ｛ x ｝)
     alg? Γ P Pr x = decide (memo (at? x))
       where
-        decide : Decidable (at x) → Dec (Γ ⊢a P ◂ Pr ∶ at x)
-        decide 𝒮? = answer (Probing.probe P (env P) Γ Pr (at x) 𝒮?)
+        decide : Decidable ｛ x ｝ → Dec (Γ ⊢a P ◂ Pr ∶ ｛ x ｝)
+        decide 𝒮? = answer (Probing.probe P (env P) Γ Pr ｛ x ｝ 𝒮?)
           where
-            answer : Probe Γ P Pr (at x) → Dec (Γ ⊢a P ◂ Pr ∶ at x)
+            answer : Probe Γ P Pr ｛ x ｝ → Dec (Γ ⊢a P ◂ Pr ∶ ｛ x ｝)
             answer r with ⊆? 𝒮? (hit? r)
             ... | yes sub = yes (from-hit r sub (x , refl))
             ... | no ¬sub = no λ d → ¬sub λ x∈ → into-hit r d (x∈ , x∈)

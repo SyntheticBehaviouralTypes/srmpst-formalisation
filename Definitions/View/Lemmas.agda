@@ -13,7 +13,6 @@ import Data.List.Relation.Unary.All as All
 open import Data.Maybe using (just)
 open import Data.Product using (∃-syntax; _,_; _×_; proj₂)
 open import Data.Unit using (⊤; tt)
-open import Function using (id)
 import Relation.Binary.Construct.Closure.ReflexiveTransitive as Star
 open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.Vec using () renaming (lookup to lu)
@@ -181,7 +180,7 @@ module Definitions.View.Lemmas
           G -[¬ Ps ]->* H × Star (_-τ->_ Ps) H H₁ × H₁ ~ G₁
     split mixed
       with split/ {Q = λ _ → ⊤}
-             (Star.gmap id (λ (γ , gr , m) → γ , gr , tt , m) mixed)
+             (Star.map (λ (γ , gr , m) → γ , gr , tt , m) mixed)
     ... | H , H₁ , (bs , tr , qs) , τs , H₁~G₁ =
       H , H₁ , (bs , tr , All.map proj₂ qs) , τs , H₁~G₁
 
@@ -294,7 +293,7 @@ module Definitions.View.Lemmas
         → Ps ∈αˢ α → G -< α >->ᵍ G′
         → ∃[ H ] ∃[ H′ ] G -[¬ Ps ]->* H × _-<_>->ᵛ_ Ps H α H′ × H′ ~ G′
       project/own {α = α} own@(X₀ , X₀∈ , X₀∈α) (¬hid , G₁ , τs , gr)
-        with split {Ps} (Star.gmap id (classify {α = α}) τs)
+        with split {Ps} (Star.map (classify {α = α}) τs)
       ... | H , H₁ , tr , τs′ , H₁~G₁
         with ~R H₁~G₁ gr
       ... | H′ , gr′ , H′~G′ =
@@ -311,7 +310,7 @@ module Definitions.View.Lemmas
       own/global {α = α} (X , X∈ , X∈α) (inj₁ (idle , _)) =
         ⊥-elim (∉α→¬∈α {X} {α} (idle X X∈) X∈α)
       own/global {α = α} _ (inj₂ (¬int , (X₀ , X₀∈ , X₀∈α) , G₁ , τs , gr)) =
-        ¬hid , G₁ , Star.gmap id lift τs , gr
+        ¬hid , G₁ , Star.map lift τs , gr
         where
           ¬hid : ¬ Hidden α
           ¬hid (X , X∈α , int) =

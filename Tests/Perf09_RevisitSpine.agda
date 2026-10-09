@@ -8,13 +8,14 @@
 
 module Tests.Perf09_RevisitSpine where
 
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin using (Fin)
+open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Data.List using ([]; _∷_)
 open import Data.Product using (_,_; proj₁)
 open import Data.Unit using (tt)
 open import Relation.Nullary using (Dec)
-open import Relation.Nullary.Decidable using (toWitness)
+open import Relation.Nullary.Decidable using (from-yes)
 
 open import Definitions.Expr using (s/bool)
 open import Check
@@ -26,24 +27,24 @@ open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
 A B C : Fin 3
-A = zero
-B = suc zero
-C = suc (suc zero)
+A = 0F
+B = 1F
+C = 2F
 
 here : Fin 1
-here = zero
+here = 0F
 
 lbl0 lbl1 : Fin 2
-lbl0 = zero
-lbl1 = suc zero
+lbl0 = 0F
+lbl1 = 1F
 
 -- states: 0 = u, 1 = t, 2 = ℓ, plus the DSL's distinguished end
 g : OpenGraph 0
-g = openGraph 3 (node zero)
-  ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , node (suc zero))
-    ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , node (suc (suc zero)))
+g = openGraph 3 (node 0F)
+  ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , node 1F)
+    ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , node 2F)
     ∷ [] )                                                            -- u
-  v∷ ( ((B ⟶ ⁅ A ⁆ # mkChoice here s/bool) , node zero) ∷ [] )        -- t → u
+  v∷ ( ((B ⟶ ⁅ A ⁆ # mkChoice here s/bool) , node 0F) ∷ [] )        -- t → u
   v∷ ( ((A ⟶ ⁅ C ⁆ # mkChoice here s/bool) , ended) ∷ [] )                 -- ℓ
   v∷ v[]
   )
@@ -61,4 +62,4 @@ wtd : Dec (⊢ᵛ[ ⁅ C ⁆ ] p ∶ initial (proj₁ wbg))
 wtd = typecheck wbg ⁅ C ⁆ p
 
 C-well-typed : ⊢ᵛ[ ⁅ C ⁆ ] p ∶ initial (proj₁ wbg)
-C-well-typed = toWitness {a? = wtd} _
+C-well-typed = from-yes wtd

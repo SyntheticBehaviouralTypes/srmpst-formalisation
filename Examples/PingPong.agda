@@ -5,14 +5,15 @@
 
 module Examples.PingPong where
 
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin using (Fin)
+open import Data.Fin.Patterns
 open import Data.Vec using ([]; _∷_)
 open import Data.Bool using (true)
 open import Data.Product using (proj₁; ∃-syntax; _×_)
 open import Data.List using (length)
 open import Relation.Binary.PropositionalEquality using (_≡_)
 open import Data.Sum using (_⊎_)
-open import Relation.Nullary.Decidable using (toWitness)
+open import Relation.Nullary.Decidable using (from-yes)
 
 open import Definitions.Expr using (s/bool; s/nat; val; v/bool; v/nat)
 open import Check
@@ -23,15 +24,15 @@ open import Definitions.Actions 2 renaming (_<_> to mkChoice)
 open import Definitions.Proc 2
 
 A B : Fin 2
-A = zero
-B = suc zero
+A = 0F
+B = 1F
 
 here : Fin 1
-here = zero
+here = 0F
 
 -- {A,B}: one process.
 Ρ/AB : Assignment 1
-Ρ/AB = byOwner λ _ → zero
+Ρ/AB = byOwner λ _ → 0F
 
 module NonRecursive where
   -- A --bool--> B --nat--> A, end
@@ -59,7 +60,7 @@ module NonRecursive where
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
-    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+    M-typed = from-yes (typecheckSession wbg Ρ M)
 
     M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
            → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -76,7 +77,7 @@ module NonRecursive where
     M = ∅ ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
-    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+    M-typed = from-yes (typecheckSession wbg Ρ M)
 
     M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
            → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -87,7 +88,7 @@ module Recursive where
   -- μ (A --bool--> B --nat--> loop)
   ping-pong : OpenGraph 0
   ping-pong =
-    μ ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ ((B ⟶ ⁅ A ⁆ # mkChoice here s/nat) ∙ var zero))
+    μ ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ ((B ⟶ ⁅ A ⁆ # mkChoice here s/nat) ∙ var 0F))
 
   wbg : WBGraph {N = 2}
   wbg = buildG ping-pong
@@ -103,12 +104,12 @@ module Recursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = rec (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ (A ⇐ B ？· (v zero ∷ [])))
-      ∷ rec (B ⇐ A ？· ((B ⇒ ⁅ A ⁆ ! here < val (v/nat 0) >∙ v zero) ∷ []))
+    M = rec (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ (A ⇐ B ？· (v 0F ∷ [])))
+      ∷ rec (B ⇐ A ？· ((B ⇒ ⁅ A ⁆ ! here < val (v/nat 0) >∙ v 0F) ∷ []))
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
-    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+    M-typed = from-yes (typecheckSession wbg Ρ M)
 
     M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
            → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -125,7 +126,7 @@ module Recursive where
     M = ∅ ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
-    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+    M-typed = from-yes (typecheckSession wbg Ρ M)
 
     M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
            → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′

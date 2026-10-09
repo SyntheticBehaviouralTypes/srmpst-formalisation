@@ -6,7 +6,8 @@
 
 module Examples.Rec2Buy where
 
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin using (Fin)
+open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Data.List using ([]; _∷_)
 open import Data.Sum using (_⊎_)
@@ -14,7 +15,7 @@ open import Data.Product using (_,_; proj₁; ∃-syntax; _×_)
 open import Data.List using (length)
 open import Relation.Binary.PropositionalEquality using (_≡_)
 open import Data.Unit using (tt)
-open import Relation.Nullary.Decidable using (toWitness)
+open import Relation.Nullary.Decidable using (from-yes)
 
 open import Definitions.Expr
   using (s/nat; s/unit; val; v/nat; v/unit; is-zero; var)
@@ -26,33 +27,33 @@ open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
 A B S : Fin 3
-A = zero
-B = suc zero
-S = suc (suc zero)
+A = 0F
+B = 1F
+S = 2F
 
 here : Fin 1
-here = zero
+here = 0F
 
 lbl0 lbl1 : Fin 2
-lbl0 = zero
-lbl1 = suc zero
+lbl0 = 0F
+lbl1 = 1F
 
 private
   -- state references (`Ref 0 6`)
   t0 t1 t2 t3 t4 t5 : Ref 0 6
-  t0 = node zero
-  t1 = node (suc zero)
-  t2 = node (suc (suc zero))
-  t3 = node (suc (suc (suc zero)))
-  t4 = node (suc (suc (suc (suc zero))))
-  t5 = node (suc (suc (suc (suc (suc zero)))))
+  t0 = node 0F
+  t1 = node 1F
+  t2 = node 2F
+  t3 = node 3F
+  t4 = node 4F
+  t5 = node 5F
 
 -- s0 --A→S item(nat)--> s1 --S→A price(nat)--> s2
 -- s2 --A→B split(nat)--> s4 | --A→B cancel(unit)--> s3
 -- s4 --B→A yes(nat)--> s5   | --B→A no(unit)-----> s2   (the loop)
 -- s3 --A→S no(unit)--> ended;  s5 --A→S buy(unit)--> ended
 rec2buy : OpenGraph 0
-rec2buy = openGraph 6 (node zero)
+rec2buy = openGraph 6 (node 0F)
   (  ( ((A ⟶ ⁅ S ⁆ # mkChoice here s/nat) , t1) ∷ [] )                    -- s0
   v∷ ( ((S ⟶ ⁅ A ⁆ # mkChoice here s/nat) , t2) ∷ [] )                    -- s1
   v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/nat) , t4)                           -- s2: split
@@ -77,11 +78,11 @@ p/A : Proc 0 0
 p/A =
   A ⇒ ⁅ S ⁆ ! here < val (v/nat 0) >∙
   (A ⇐ S ？·
-    ( rec (ifp is-zero (var zero)
+    ( rec (ifp is-zero (var 0F)
            then (A ⇒ ⁅ B ⁆ ! lbl0 < val (v/nat 0) >∙
                  (A ⇐ B ？·
                    (  (A ⇒ ⁅ S ⁆ ! lbl0 < val v/unit >∙ ∅)
-                   v∷ v zero
+                   v∷ v 0F
                    v∷ v[])))
            else (A ⇒ ⁅ B ⁆ ! lbl1 < val v/unit >∙
                  (A ⇒ ⁅ S ⁆ ! lbl1 < val v/unit >∙ ∅)))
@@ -90,9 +91,9 @@ p/A =
 p/B : Proc 0 0
 p/B =
   rec (B ⇐ A ？·
-        (  (ifp is-zero (var zero)
+        (  (ifp is-zero (var 0F)
             then (B ⇒ ⁅ A ⁆ ! lbl0 < val (v/nat 0) >∙ ∅)
-            else (B ⇒ ⁅ A ⁆ ! lbl1 < val v/unit >∙ v zero))
+            else (B ⇒ ⁅ A ⁆ ! lbl1 < val v/unit >∙ v 0F))
         v∷ ∅
         v∷ v[]))
 
@@ -113,7 +114,7 @@ module A∣B∣S where
   M = p/A v∷ p/B v∷ p/S v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -123,15 +124,15 @@ module A∣B∣S where
 -- ── Every other partition: each process against its block's view ───────
 
 own/AB∣S own/AS∣B own/A∣BS : Fin 3 → Fin 2
-own/AB∣S zero             = zero
-own/AB∣S (suc zero)       = zero
-own/AB∣S (suc (suc zero)) = suc zero
-own/AS∣B zero             = zero
-own/AS∣B (suc zero)       = suc zero
-own/AS∣B (suc (suc zero)) = zero
-own/A∣BS zero             = zero
-own/A∣BS (suc zero)       = suc zero
-own/A∣BS (suc (suc zero)) = suc zero
+own/AB∣S 0F = 0F
+own/AB∣S 1F = 0F
+own/AB∣S 2F = 1F
+own/AS∣B 0F = 0F
+own/AS∣B 1F = 1F
+own/AS∣B 2F = 0F
+own/A∣BS 0F = 0F
+own/A∣BS 1F = 1F
+own/A∣BS 2F = 1F
 
 -- {A,B} {S}: the split/no loop is an internal cycle; its exits are the
 -- two final sends to `S` (here: `no`, after an internal cancel).
@@ -147,7 +148,7 @@ module AB∣S where
     v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -164,7 +165,7 @@ module AS∣B where
   M = (A ⇒ ⁅ B ⁆ ! lbl1 < val v/unit >∙ ∅) v∷ p/B v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -190,7 +191,7 @@ module A∣BS where
     v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -200,7 +201,7 @@ module A∣BS where
 -- {A,B,S}: everything is internal.
 module ABS where
   Ρ : Assignment 1
-  Ρ = byOwner λ _ → zero
+  Ρ = byOwner λ _ → 0F
   open Over Ρ
   open Global Ρ using (_-[_]->ᵍ_)
 
@@ -208,7 +209,7 @@ module ABS where
   M = ∅ v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′

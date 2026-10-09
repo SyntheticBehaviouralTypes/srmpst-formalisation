@@ -9,18 +9,19 @@
 --  │ A⟶C # 1<unit>       A⟶B # 0<bool>       B⟶C # 0<bool>
 --  └───────────────► s₂ ───────────────► t₂ ───────────────► ended
 --
--- `p/B` forwards what it received: `C ! here < var zero >∙ ∅`.
+-- `p/B` forwards what it received: `C ! here < var 0F >∙ ∅`.
 
 module Tests.LabelSortsForward where
 
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin using (Fin)
+open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Data.List using ([]; _∷_)
 open import Data.Product using (proj₁)
 open import Data.Unit using (tt)
 open import Data.Bool using (true)
 open import Relation.Nullary using (Dec)
-open import Relation.Nullary.Decidable using (toWitness)
+open import Relation.Nullary.Decidable using (from-yes)
 
 open import Definitions.Expr
   using (s/bool; s/nat; s/unit; val; v/nat; v/bool; v/unit; var)
@@ -33,16 +34,16 @@ open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
 A B C : Fin 3
-A = zero
-B = suc zero
-C = suc (suc zero)
+A = 0F
+B = 1F
+C = 2F
 
 here : Fin 1
-here = zero
+here = 0F
 
 lbl0 lbl1 : Fin 2
-lbl0 = zero
-lbl1 = suc zero
+lbl0 = 0F
+lbl1 = 1F
 
 g : OpenGraph 0
 g =
@@ -69,7 +70,7 @@ p/A =
 
 -- USES the bound variable, at two different sorts, in one derivation
 p/B : Proc 0 0
-p/B = B ⇐ A ？· ((B ⇒ ⁅ C ⁆ ! here < var zero >∙ ∅) v∷ v[])
+p/B = B ⇐ A ？· ((B ⇒ ⁅ C ⁆ ! here < var 0F >∙ ∅) v∷ v[])
 
 p/C : Proc 0 0
 p/C =
@@ -85,4 +86,4 @@ wtd : Dec (⊢s[ singletons ] M ∶ initial (proj₁ wbg))
 wtd = typecheckSession wbg singletons M
 
 well-typed : ⊢s[ singletons ] M ∶ initial (proj₁ wbg)
-well-typed = toWitness {a? = wtd} _
+well-typed = from-yes wtd

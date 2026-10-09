@@ -5,7 +5,8 @@
 
 module Examples.SendRecv where
 
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin using (Fin)
+open import Data.Fin.Patterns
 open import Data.Fin.Subset using (⁅_⁆)
 open import Data.Vec using ([]; _∷_)
 open import Data.Bool using (true)
@@ -13,7 +14,7 @@ open import Data.Product using (proj₁; ∃-syntax; _×_)
 open import Data.List using (length)
 open import Relation.Binary.PropositionalEquality using (_≡_)
 open import Data.Sum using (_⊎_)
-open import Relation.Nullary.Decidable using (toWitness)
+open import Relation.Nullary.Decidable using (from-yes)
 
 open import Definitions.Expr using (s/bool; val; v/bool)
 open import Check
@@ -23,16 +24,16 @@ open import Definitions.Actions 2 renaming (_<_> to mkChoice)
 open import Definitions.Proc 2
 
 A B : Fin 2
-A = zero
-B = suc zero
+A = 0F
+B = 1F
 
 -- Pins `I = 0` for a non-branching send.
 here : Fin 1
-here = zero
+here = 0F
 
 -- {A,B}: one process.
 Ρ/AB : Assignment 1
-Ρ/AB = byOwner λ _ → zero
+Ρ/AB = byOwner λ _ → 0F
 
 module NonRecursive where
   -- A --bool--> B, end
@@ -56,7 +57,7 @@ module NonRecursive where
     M = (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ ∅) ∷ (B ⇐ A ？· (∅ ∷ [])) ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
-    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+    M-typed = from-yes (typecheckSession wbg Ρ M)
 
     M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
            → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -73,7 +74,7 @@ module NonRecursive where
     M = ∅ ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
-    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+    M-typed = from-yes (typecheckSession wbg Ρ M)
 
     M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
            → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -83,7 +84,7 @@ module NonRecursive where
 module Recursive where
   -- μ (A --bool--> loop)
   sendrecv : OpenGraph 0
-  sendrecv = μ ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ var zero)
+  sendrecv = μ ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ var 0F)
 
   wbg : WBGraph {N = 2}
   wbg = buildG sendrecv
@@ -99,12 +100,12 @@ module Recursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = rec (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ v zero)
-      ∷ rec (B ⇐ A ？· (v zero ∷ []))
+    M = rec (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ v 0F)
+      ∷ rec (B ⇐ A ？· (v 0F ∷ []))
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
-    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+    M-typed = from-yes (typecheckSession wbg Ρ M)
 
     M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
            → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -121,7 +122,7 @@ module Recursive where
     M = ∅ ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
-    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+    M-typed = from-yes (typecheckSession wbg Ρ M)
 
     M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
            → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -142,12 +143,12 @@ module RecursiveUnfoldOnce where
 
     M : Session
     M = (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙
-           (rec (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ v zero)))
-      ∷ rec (B ⇐ A ？· (v zero ∷ []))
+           (rec (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ v 0F)))
+      ∷ rec (B ⇐ A ？· (v 0F ∷ []))
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
-    M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+    M-typed = from-yes (typecheckSession wbg Ρ M)
 
     M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
            → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′

@@ -1,7 +1,7 @@
 {-# OPTIONS --guardedness #-}
 
 open import Data.List using (List; []; _∷_)
-open import Data.List.Membership.Propositional using (_∈_)
+open import Data.List.Membership.Propositional using (_∈_; lose)
 import Data.List.Relation.Unary.All as All
 open All using (All)
 import Data.List.Relation.Unary.AllPairs as Pairs
@@ -11,6 +11,7 @@ open import Data.Nat using (ℕ)
 open import Data.Product using (_,_)
 open import Data.Maybe using (just; nothing)
 open import Data.Unit using (tt)
+open import Function.Bundles using (Equivalence)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl)
 open import Relation.Nullary using (Dec)
 open import Relation.Nullary.Decidable using (map′)
@@ -43,10 +44,7 @@ module Definitions.Graph.Decision (N : ℕ) where
       {xs : List (Edge n)}
     → (α , t) ∈ xs
     → Available α xs
-  listed⇒available (Any.here refl) =
-    Any.here refl
-  listed⇒available (Any.there member) =
-    Any.there (listed⇒available member)
+  listed⇒available member = lose member refl
 
   deterministic/complete :
     ∀ {G}
@@ -62,7 +60,7 @@ module Definitions.Graph.Decision (N : ℕ) where
         → (α′ , t′) ∈ edges G s
         → SameTarget G (α , t) (α′ , t′)
       deterministic-pair left right refl =
-        complete correct
+        Equivalence.from correct
           (WellBehaved.step-deterministic well-behaved
             (listed⇒step left)
             (listed⇒step right))
@@ -183,7 +181,7 @@ module Definitions.Graph.Decision (N : ℕ) where
     pairs/complete {G = G} s λ grα grβ independent →
       let _ , _ , grv , grw , vw =
             WellBehaved.step-diamond well-behaved grα grβ independent
-      in completion/complete grv grw (complete correct vw)
+      in completion/complete grv grw (Equivalence.from correct vw)
 
   localConditions/complete :
     ∀ {G}

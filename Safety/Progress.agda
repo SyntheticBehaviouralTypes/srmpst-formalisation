@@ -115,7 +115,7 @@ module Safety.Progress
       (_ , gr , ib) ◅ run/walk tr qs
 
     τs/walk : ∀ {k u v} → Star (_-τ->_ (lu roles k)) u v → Star Walk u v
-    τs/walk {k} = Star.gmap id λ (γ , gr , int) → γ , gr , k , int
+    τs/walk {k} = Star.map λ (γ , gr , int) → γ , gr , k , int
 
     -- A step at the end of a walk that its sender's block takes part in
     -- externally.

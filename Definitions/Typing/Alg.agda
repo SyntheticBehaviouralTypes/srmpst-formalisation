@@ -18,9 +18,9 @@ open import Data.Vec
 
 open import Data.Product using (Σ-syntax; ∃-syntax; _,_; _×_)
 
-open import Data.Sum using (_⊎_; inj₁; inj₂; [_,_]′)
+open import Data.Sum using (_⊎_; inj₁; inj₂; [_,_]′; map₁; map₂)
 
-open import Data.Empty using (⊥; ⊥-elim)
+open import Data.Empty using (⊥-elim)
 
 open import Function using (_∘_)
 
@@ -88,12 +88,7 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     wv/cycle (a , f a∈ , a~s) inT
 
   waitV/mono f (wv/step na gr k) =
-    wv/step na gr
-      (λ gr′ →
-        waitV/mono
-          (λ { (inj₁ x)   → inj₁ (f x)
-             ; (inj₂ s~v) → inj₂ s~v })
-          (k gr′))
+    wv/step na gr (λ gr′ → waitV/mono (map₁ f) (k gr′))
 
   waitV/leaf-mono :
     ∀ {P}{L L′ V : Behavs}
@@ -123,9 +118,7 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       (na-bisim G~H na)
       (~L→ G~H gr)
       (λ gr′ →
-        waitV/mono
-          (λ { (inj₁ x)   → inj₁ x
-             ; (inj₂ G~v) → inj₂ (~trans (~sym G~H) G~v) })
+        waitV/mono (map₂ (~trans (~sym G~H)))
           (wait/~ c (~R→~ G~H gr′) (k (~R→ G~H gr′))))
 
   -- If every leaf makes `P` active, so does the root.
@@ -144,7 +137,7 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     ∀ {P}{L : Behavs}{s α t}
     → s -< α >-> t
     → P ∈αˢ α
-    → WaitV P L (λ _ → ⊥) s
+    → WaitV P L ∅S s
     → L s
 
   waitLeaf _  _  (wv/leaf x)             = x
@@ -257,7 +250,7 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
 
   -- `Wait`, lifted to states: the anchors ride along.
   Wait : PartSet → States δ → Pred (State δ) (Level.suc 0ℓ)
-  Wait P L (ws , s) = WaitV P (λ t → (ws , t) ∈ L) (λ _ → ⊥) s
+  Wait P L (ws , s) = WaitV P (λ t → (ws , t) ∈ L) ∅S s
 
   -- Forward along `¬P` runs, up to `~` (`t/unskip`); unlike `Reach`, these
   -- may pass `P`-active states.

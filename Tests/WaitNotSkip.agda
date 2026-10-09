@@ -31,6 +31,7 @@ open import Data.Empty using (⊥; ⊥-elim)
 
 open import Data.List using ([]; _∷_)
 
+open import Relation.Unary using () renaming (∅ to ∅S)
 open import Data.List.Relation.Unary.Any using (here; there)
 
 open import Relation.Nullary using (¬_)
@@ -354,5 +355,5 @@ module Tests.WaitNotSkip where
   ce/no-skip = noSkip (λ ())
 
   -- … and no `Wait` either.
-  ce/no-wait : ¬ WaitV ⁅ P ⁆ 𝒮 (λ _ → ⊥) (g 0)
+  ce/no-wait : ¬ WaitV ⁅ P ⁆ 𝒮 ∅S (g 0)
   ce/no-wait w = ce/no-skip (wait⇒skip ⁅ P ⁆ Pr 𝒮 w)

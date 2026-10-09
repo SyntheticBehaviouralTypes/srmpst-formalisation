@@ -14,7 +14,7 @@ open import Data.Product using (_,_)
 
 open import Data.Sum using (inj₁; inj₂)
 
-open import Data.Empty using (⊥)
+open import Relation.Unary using () renaming (∅ to ∅S)
 
 open import Definitions.Typing.Declarative
 
@@ -88,14 +88,14 @@ module Definitions.Typing.AlgEquiv {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
     skip⇒wait :
       ∀ {G}
       → (Lf & [] ⊢skip P ◂ Pr ∶ G)
-      → WaitV P 𝒮 (λ _ → ⊥) G
+      → WaitV P 𝒮 ∅S G
 
     skip⇒wait d =
       waitV/mono (λ { (() , _) }) (skip⇒waitV d)
 
     wait⇒skip :
       ∀ {G}
-      → WaitV P 𝒮 (λ _ → ⊥) G
+      → WaitV P 𝒮 ∅S G
       → (Lf & [] ⊢skip P ◂ Pr ∶ G)
 
     wait⇒skip w =

@@ -7,7 +7,8 @@
 
 module Examples.RecMW where
 
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin using (Fin)
+open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Data.List using ([]; _∷_)
 open import Data.Sum using (_⊎_)
@@ -17,7 +18,7 @@ open import Data.Unit using (tt)
 open import Data.Bool using (true; false)
 import Data.Nat
 open import Relation.Binary.PropositionalEquality using (_≡_; refl)
-open import Relation.Nullary.Decidable using (toWitness; does)
+open import Relation.Nullary.Decidable using (does; from-yes)
 
 open import Definitions.Expr
   using (s/bool; s/nat; val; v/nat; v/bool; is-zero; var)
@@ -29,18 +30,18 @@ open import Definitions.Actions 4 renaming (_<_> to mkChoice)
 open import Definitions.Proc 4
 
 M R W1 W2 : Fin 4
-M  = zero
-R  = suc zero
-W1 = suc (suc zero)
-W2 = suc (suc (suc zero))
+M  = 0F
+R  = 1F
+W1 = 2F
+W2 = 3F
 
 here : Fin 1
-here = zero
+here = 0F
 
 -- M→W datum/stop ([nat, bool]); R→M continue/stop ([nat, bool])
 lbl0 lbl1 : Fin 2
-lbl0 = zero
-lbl1 = suc zero
+lbl0 = 0F
+lbl1 = 1F
 
 -- One round: `M→W1`, then `M→W2 ∥ W1→R`, then `W2→R`; `R` loops or stops.
 recmw : OpenGraph 0
@@ -49,7 +50,7 @@ recmw =
       (   ((M ⟶ ⁅ W2 ⁆ # mkChoice lbl0 s/nat) ∙ end)
         ∥ ((W1 ⟶ ⁅ R ⁆ # mkChoice here s/nat) ∙ end)
       ⨾ (W2 ⟶ ⁅ R ⁆ # mkChoice here s/nat) ∙
-        choice ((R ⟶ ⁅ M ⁆ # mkChoice lbl0 s/nat) ⇒ gvar zero)
+        choice ((R ⟶ ⁅ M ⁆ # mkChoice lbl0 s/nat) ⇒ gvar 0F)
                ( ((R ⟶ ⁅ M ⁆ # mkChoice lbl1 s/bool) ⇒
                    ((M ⟶ ⁅ W1 ⁆ # mkChoice lbl1 s/bool) ∙
                     (M ⟶ ⁅ W2 ⁆ # mkChoice lbl1 s/bool) ∙ end))
@@ -68,7 +69,7 @@ p/M : Proc 0 0
 p/M = rec (M ⇒ ⁅ W1 ⁆ ! lbl0 < val (v/nat 0) >∙
           (M ⇒ ⁅ W2 ⁆ ! lbl0 < val (v/nat 1) >∙
           (M ⇐ R ？·
-            (  v zero
+            (  v 0F
             v∷ (M ⇒ ⁅ W1 ⁆ ! lbl1 < val (v/bool false) >∙
                 (M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool false) >∙ ∅))
             v∷ v[]))))
@@ -76,9 +77,9 @@ p/M = rec (M ⇒ ⁅ W1 ⁆ ! lbl0 < val (v/nat 0) >∙
 p/R : Proc 0 0
 p/R = rec (R ⇐ W1 ？·
             (  (R ⇐ W2 ？·
-                 (  (ifp is-zero (var zero)
+                 (  (ifp is-zero (var 0F)
                      then (R ⇒ ⁅ M ⁆ ! lbl1 < val (v/bool true) >∙ ∅)
-                     else (R ⇒ ⁅ M ⁆ ! lbl0 < var (suc zero) >∙ v zero))
+                     else (R ⇒ ⁅ M ⁆ ! lbl0 < var 1F >∙ v 0F))
                  v∷ v[]))
             v∷ v[]))
 
@@ -88,7 +89,7 @@ p/W : Fin 4 → Proc 0 0
 p/W W = W ⇐ M ？·
         (  (rec (W ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
                  (W ⇐ M ？·
-                   (v zero v∷ ∅ v∷ v[]))))
+                   (v 0F v∷ ∅ v∷ v[]))))
         v∷ ∅
         v∷ v[])
 
@@ -103,7 +104,7 @@ module M∣R∣W1∣W2 where
   Ms = p/M v∷ p/R v∷ p/W W1 v∷ p/W W2 v∷ v[]
 
   Ms-typed : ⊢s[ Ρ ] Ms ∶ s₀
-  Ms-typed = toWitness {a? = typecheckSession wbg Ρ Ms} _
+  Ms-typed = from-yes (typecheckSession wbg Ρ Ms)
 
   Ms-safe : ∀ {αs Ms′} → Ms =[ αs ]⇒* Ms′
           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] Ms′ ∶ G′
@@ -124,21 +125,21 @@ module M∣R∣W1∣W2 where
 mw1₁ mw1₂ : Proc 0 0
 mw1₁ = rec (M ⇒ ⁅ W2 ⁆ ! lbl0 < val (v/nat 0) >∙
             (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-             (M ⇐ R ？· (v zero v∷ (M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool true) >∙ ∅) v∷ v[]))))
+             (M ⇐ R ？· (v 0F v∷ (M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool true) >∙ ∅) v∷ v[]))))
 mw1₂ = rec (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
             (M ⇒ ⁅ W2 ⁆ ! lbl0 < val (v/nat 0) >∙
-             (M ⇐ R ？· (v zero v∷ (M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool true) >∙ ∅) v∷ v[]))))
+             (M ⇐ R ？· (v 0F v∷ (M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool true) >∙ ∅) v∷ v[]))))
 
 -- {M,W2}: `M→W2` is internal; `W1→R` is none of its business.
 mw2 : Proc 0 0
 mw2 = rec (M ⇒ ⁅ W1 ⁆ ! lbl0 < val (v/nat 0) >∙
            (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-            (M ⇐ R ？· (v zero v∷ (M ⇒ ⁅ W1 ⁆ ! lbl1 < val (v/bool true) >∙ ∅) v∷ v[]))))
+            (M ⇐ R ？· (v 0F v∷ (M ⇒ ⁅ W1 ⁆ ! lbl1 < val (v/bool true) >∙ ∅) v∷ v[]))))
 
 -- {R,W1}: `W1→R` is internal; the block always continues.
 w1r : Proc 0 0
 w1r = rec (W1 ⇐ M ？·
-            (  (R ⇐ W2 ？· ((R ⇒ ⁅ M ⁆ ! lbl0 < val (v/nat 0) >∙ v zero) v∷ v[]))
+            (  (R ⇐ W2 ？· ((R ⇒ ⁅ M ⁆ ! lbl0 < val (v/nat 0) >∙ v 0F) v∷ v[]))
             v∷ ∅
             v∷ v[]))
 
@@ -160,11 +161,11 @@ mr₂ = M ⇒ ⁅ W1 ⁆ ! lbl0 < val (v/nat 0) >∙
 -- `W1→R` (from different senders): `Focus` refuses either order.
 rw2₁ rw2₂ : Proc 0 0
 rw2₁ = rec (W2 ⇐ M ？·
-             (  (R ⇐ W1 ？· ((R ⇒ ⁅ M ⁆ ! lbl0 < val (v/nat 0) >∙ v zero) v∷ v[]))
+             (  (R ⇐ W1 ？· ((R ⇒ ⁅ M ⁆ ! lbl0 < val (v/nat 0) >∙ v 0F) v∷ v[]))
              v∷ ∅
              v∷ v[]))
 rw2₂ = rec (R ⇐ W1 ？·
-             (  (W2 ⇐ M ？· ((R ⇒ ⁅ M ⁆ ! lbl0 < val (v/nat 0) >∙ v zero) v∷ ∅ v∷ v[]))
+             (  (W2 ⇐ M ？· ((R ⇒ ⁅ M ⁆ ! lbl0 < val (v/nat 0) >∙ v 0F) v∷ ∅ v∷ v[]))
              v∷ v[]))
 
 -- {W1,W2}: after `M→W1`, `W2` may receive `M→W2` while `W1` may send
@@ -172,12 +173,12 @@ rw2₂ = rec (R ⇐ W1 ？·
 w12₁ w12₂ : Proc 0 0
 w12₁ = rec (W1 ⇐ M ？·
              (  (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-                  (W2 ⇐ M ？· ((W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙ v zero) v∷ ∅ v∷ v[])))
+                  (W2 ⇐ M ？· ((W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙ v 0F) v∷ ∅ v∷ v[])))
              v∷ (W2 ⇐ M ？· (∅ v∷ ∅ v∷ v[]))
              v∷ v[]))
 w12₂ = rec (W1 ⇐ M ？·
              (  (W2 ⇐ M ？· ((W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-                               (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙ v zero))
+                               (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙ v 0F))
                              v∷ ∅ v∷ v[]))
              v∷ (W2 ⇐ M ？· (∅ v∷ ∅ v∷ v[]))
              v∷ v[]))
@@ -198,7 +199,7 @@ mrw2 = M ⇒ ⁅ W1 ⁆ ! lbl0 < val (v/nat 0) >∙
 mw12 : Proc 0 0
 mw12 = rec (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
              (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-              (M ⇐ R ？· (v zero v∷ ∅ v∷ v[]))))
+              (M ⇐ R ？· (v 0F v∷ ∅ v∷ v[]))))
 
 -- {R,W1,W2}: the reports are internal; the workers hear `M`, `R` stops.
 rw12 : Proc 0 0
@@ -214,15 +215,15 @@ rw12 = W1 ⇐ M ？·
 -- ── Owner maps: M, R, W1, W2 ↦ block ──────────────────────────────────
 
 own : ∀ {K} → Fin K → Fin K → Fin K → Fin K → Fin 4 → Fin K
-own m r w₁ w₂ zero                   = m
-own m r w₁ w₂ (suc zero)             = r
-own m r w₁ w₂ (suc (suc zero))       = w₁
-own m r w₁ w₂ (suc (suc (suc zero))) = w₂
+own m r w₁ w₂ 0F = m
+own m r w₁ w₂ 1F = r
+own m r w₁ w₂ 2F = w₁
+own m r w₁ w₂ 3F = w₂
 
 b0 b1 b2 : ∀ {K} → Fin (3 Data.Nat.+ K)
-b0 = zero
-b1 = suc zero
-b2 = suc (suc zero)
+b0 = 0F
+b1 = 1F
+b2 = 2F
 
 -- ── Two roles together, the others alone ──────────────────────────────
 
@@ -237,22 +238,22 @@ b2 = suc (suc zero)
 -- ── Two and two ───────────────────────────────────────────────────────
 
 Ρ/MR∣W1W2 Ρ/MW1∣RW2 Ρ/MW2∣RW1 : Assignment 2
-Ρ/MR∣W1W2 = byOwner (own zero zero (suc zero) (suc zero))
-Ρ/MW1∣RW2 = byOwner (own zero (suc zero) zero (suc zero))
-Ρ/MW2∣RW1 = byOwner (own zero (suc zero) (suc zero) zero)
+Ρ/MR∣W1W2 = byOwner (own 0F 0F 1F 1F)
+Ρ/MW1∣RW2 = byOwner (own 0F 1F 0F 1F)
+Ρ/MW2∣RW1 = byOwner (own 0F 1F 1F 0F)
 
 -- ── Three and one ─────────────────────────────────────────────────────
 
 Ρ/MRW1∣W2 Ρ/MRW2∣W1 Ρ/MW1W2∣R Ρ/RW1W2∣M : Assignment 2
-Ρ/MRW1∣W2 = byOwner (own zero zero zero (suc zero))
-Ρ/MRW2∣W1 = byOwner (own zero zero (suc zero) zero)
-Ρ/MW1W2∣R = byOwner (own zero (suc zero) zero zero)
-Ρ/RW1W2∣M = byOwner (own (suc zero) zero zero zero)
+Ρ/MRW1∣W2 = byOwner (own 0F 0F 0F 1F)
+Ρ/MRW2∣W1 = byOwner (own 0F 0F 1F 0F)
+Ρ/MW1W2∣R = byOwner (own 0F 1F 0F 0F)
+Ρ/RW1W2∣M = byOwner (own 1F 0F 0F 0F)
 
 -- ── All four ──────────────────────────────────────────────────────────
 
 Ρ/MRW1W2 : Assignment 1
-Ρ/MRW1W2 = byOwner (own zero zero zero zero)
+Ρ/MRW1W2 = byOwner (own 0F 0F 0F 0F)
 
 -- ── Rejected: a block with two own roles able to act at once ──────────
 
@@ -293,7 +294,7 @@ module MW2∣R∣W1 where
   Ms = mw2 v∷ p/R v∷ p/W W1 v∷ v[]
 
   Ms-typed : ⊢s[ Ρ ] Ms ∶ s₀
-  Ms-typed = toWitness {a? = typecheckSession wbg Ρ Ms} _
+  Ms-typed = from-yes (typecheckSession wbg Ρ Ms)
 
   Ms-safe : ∀ {αs Ms′} → Ms =[ αs ]⇒* Ms′
           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] Ms′ ∶ G′
@@ -309,7 +310,7 @@ module RW1∣M∣W2 where
   Ms = w1r v∷ p/M v∷ p/W W2 v∷ v[]
 
   Ms-typed : ⊢s[ Ρ ] Ms ∶ s₀
-  Ms-typed = toWitness {a? = typecheckSession wbg Ρ Ms} _
+  Ms-typed = from-yes (typecheckSession wbg Ρ Ms)
 
   Ms-safe : ∀ {αs Ms′} → Ms =[ αs ]⇒* Ms′
           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] Ms′ ∶ G′
@@ -325,7 +326,7 @@ module MW2∣RW1 where
   Ms = mw2 v∷ w1r v∷ v[]
 
   Ms-typed : ⊢s[ Ρ ] Ms ∶ s₀
-  Ms-typed = toWitness {a? = typecheckSession wbg Ρ Ms} _
+  Ms-typed = from-yes (typecheckSession wbg Ρ Ms)
 
   Ms-safe : ∀ {αs Ms′} → Ms =[ αs ]⇒* Ms′
           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] Ms′ ∶ G′
@@ -341,7 +342,7 @@ module MRW1∣W2 where
   Ms = mrw1 v∷ p/W W2 v∷ v[]
 
   Ms-typed : ⊢s[ Ρ ] Ms ∶ s₀
-  Ms-typed = toWitness {a? = typecheckSession wbg Ρ Ms} _
+  Ms-typed = from-yes (typecheckSession wbg Ρ Ms)
 
   Ms-safe : ∀ {αs Ms′} → Ms =[ αs ]⇒* Ms′
           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] Ms′ ∶ G′
@@ -357,7 +358,7 @@ module MRW2∣W1 where
   Ms = mrw2 v∷ p/W W1 v∷ v[]
 
   Ms-typed : ⊢s[ Ρ ] Ms ∶ s₀
-  Ms-typed = toWitness {a? = typecheckSession wbg Ρ Ms} _
+  Ms-typed = from-yes (typecheckSession wbg Ρ Ms)
 
   Ms-safe : ∀ {αs Ms′} → Ms =[ αs ]⇒* Ms′
           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] Ms′ ∶ G′
@@ -373,7 +374,7 @@ module MW1W2∣R where
   Ms = mw12 v∷ p/R v∷ v[]
 
   Ms-typed : ⊢s[ Ρ ] Ms ∶ s₀
-  Ms-typed = toWitness {a? = typecheckSession wbg Ρ Ms} _
+  Ms-typed = from-yes (typecheckSession wbg Ρ Ms)
 
   Ms-safe : ∀ {αs Ms′} → Ms =[ αs ]⇒* Ms′
           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] Ms′ ∶ G′
@@ -389,7 +390,7 @@ module RW1W2∣M where
   Ms = rw12 v∷ p/M v∷ v[]
 
   Ms-typed : ⊢s[ Ρ ] Ms ∶ s₀
-  Ms-typed = toWitness {a? = typecheckSession wbg Ρ Ms} _
+  Ms-typed = from-yes (typecheckSession wbg Ρ Ms)
 
   Ms-safe : ∀ {αs Ms′} → Ms =[ αs ]⇒* Ms′
           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] Ms′ ∶ G′
@@ -406,7 +407,7 @@ module MRW1W2 where
   Ms = ∅ v∷ v[]
 
   Ms-typed : ⊢s[ Ρ ] Ms ∶ s₀
-  Ms-typed = toWitness {a? = typecheckSession wbg Ρ Ms} _
+  Ms-typed = from-yes (typecheckSession wbg Ρ Ms)
 
   Ms-safe : ∀ {αs Ms′} → Ms =[ αs ]⇒* Ms′
           → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] Ms′ ∶ G′

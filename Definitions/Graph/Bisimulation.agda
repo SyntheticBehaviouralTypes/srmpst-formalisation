@@ -3,19 +3,19 @@
 open import Data.Bool
   using (Bool; T; true; _∧_)
 import Data.Bool.Properties as Bool
-open import Data.Bool.Properties using (T-∧)
+open import Data.Bool.Properties using (T-∧; T-≡)
 open import Data.Empty using (⊥-elim)
 open import Data.Fin using (Fin)
 import Data.Fin as Fin
 open import Data.List using (List; []; _∷_)
 open import Data.Bool.ListAction using (all; any)
-open import Data.List.Membership.Propositional using (_∈_)
+open import Data.List.Membership.Propositional using (_∈_; lose)
   renaming (find to find∈)
 import Data.List.Relation.Unary.Any as Any
 import Data.List.Relation.Unary.Any.Properties as AnyP
 import Data.List.Relation.Unary.All as All
 import Data.List.Relation.Unary.All.Properties as AllP
-open import Function using (Equivalence)
+open import Function using (Equivalence; _⇔_; mk⇔)
 open Equivalence using (to; from)
 open import Data.Nat
   using (ℕ; zero; suc; _+_; _*_; _≤_; _<_; z≤n)
@@ -24,6 +24,10 @@ open import Data.Product
   using (_×_; _,_; proj₁; proj₂; Σ-syntax)
 open import Data.Unit using (tt)
 open import Data.Vec using (Vec; lookup; replicate; tabulate)
+open import Data.Fin.Subset using (Subset; _⊆_; ∣_∣)
+open import Data.Fin.Subset.Properties
+  using (p⊆q⇒∣p∣≤∣q∣; p⊂q⇒∣p∣<∣q∣; ∣⊤∣≡n)
+open import Data.Nat.GeneralisedArithmetic using (iterate)
 import Data.Vec as V
 import Data.Vec.Properties as Vec
 open import Relation.Binary.PropositionalEquality
@@ -34,28 +38,13 @@ open import Relation.Nullary using (Dec; yes; no)
 
 open import Definitions.Behav using (BTheory)
 open import Utils.Bits
-  using (wt; Incl; wt/mono; wt/strict; wt/true; iterateFix; iterateFix/iterate)
-  renaming (iter to iterate)
+  using (iterate/stable; iterateFix; iterateFix/iterate; ⊆∧≢⇒⊂)
 
 module Definitions.Graph.Bisimulation (N : ℕ) where
 
   open import Definitions.Actions N using (Action)
   open import Definitions.Graph.Action N
   open import Definitions.Graph.Core N
-
-  module Semantic (G : Graph) where
-    open BTheory (graphTheory G)
-
-    forth :
-      ∀ {s t α u}
-      → s ~ t
-      → BTheory._-<_>->_ (graphTheory G) s α u
-      → Σ[ v ∈ State G ]
-          BTheory._-<_>->_ (graphTheory G) t α v × (u ~ v)
-    forth equivalent gr = ~L equivalent gr
-
-    symmetric : ∀ {s t} → s ~ t → t ~ s
-    symmetric = ~sym
 
   Matrix : Graph → Set
   Matrix G = Vec (Vec Bool (size G)) (size G)
@@ -118,7 +107,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
 
   approximation/iterate :
     ∀ {G}
-    → approximation G ≡ iterate (size G * size G) (refine G) (top G)
+    → approximation G ≡ iterate (refine G) (top G) (size G * size G)
   approximation/iterate {G} =
     iterateFix/iterate (matrix≟ G) (size G * size G) (refine G) (top G)
 
@@ -146,7 +135,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
     → T (p x)
     → T (any p xs)
   any/intro {p = p} member proof =
-    AnyP.any⁺ p (Any.map (λ { refl → proof }) member)
+    AnyP.any⁺ p (lose member proof)
 
   all/member :
     ∀ {A : Set}
@@ -233,7 +222,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
     ∀ {G} fuel
       {relation : Matrix G}
     → Symmetric G relation
-    → Symmetric G (iterate fuel (refine G) relation)
+    → Symmetric G (iterate (refine G) relation fuel)
   iterate/symmetric zero symmetric =
     symmetric
   iterate/symmetric {G} (suc fuel) {relation} symmetric =
@@ -273,22 +262,22 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
       (iterate/symmetric {G} (size G * size G)
         (top/symmetric {G = G}))
 
-  matrixWeight : ∀ {m n} → Vec (Vec Bool n) m → ℕ
+  matrixWeight : ∀ {m n} → Vec (Subset n) m → ℕ
   matrixWeight V.[] = zero
   matrixWeight (row V.∷ rows) =
-    wt row + matrixWeight rows
+    ∣ row ∣ + matrixWeight rows
 
   RowsIncluded :
     ∀ {m n}
-    → Vec (Vec Bool n) m
-    → Vec (Vec Bool n) m
+    → Vec (Subset n) m
+    → Vec (Subset n) m
     → Set
   RowsIncluded left right =
-    ∀ i → Incl (lookup left i) (lookup right i)
+    ∀ i → lookup left i ⊆ lookup right i
 
   matrixWeight/mono :
     ∀ {m n}
-      {left right : Vec (Vec Bool n) m}
+      {left right : Vec (Subset n) m}
     → RowsIncluded left right
     → matrixWeight left ≤ matrixWeight right
   matrixWeight/mono {left = V.[]} {V.[]} included =
@@ -298,14 +287,13 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
     {right V.∷ rights}
     included =
     Nat.+-mono-≤
-      (wt/mono {left = left} {right = right}
-        (included Fin.zero))
+      (p⊆q⇒∣p∣≤∣q∣ (included Fin.zero))
       (matrixWeight/mono {left = lefts} {right = rights} λ i →
         included (Fin.suc i))
 
   matrixWeight/strict :
     ∀ {m n}
-      {left right : Vec (Vec Bool n) m}
+      {left right : Vec (Subset n) m}
     → RowsIncluded left right
     → left ≢ right
     → matrixWeight left < matrixWeight right
@@ -317,16 +305,14 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
     included unequal
     with Vec.≡-dec Bool._≟_ left right
   ... | yes refl =
-    Nat.+-monoʳ-< (wt right)
+    Nat.+-monoʳ-< ∣ right ∣
       (matrixWeight/strict
         {left = lefts} {right = rights}
         (λ i → included (Fin.suc i))
         (λ equal → unequal (cong (right V.∷_) equal)))
   ... | no row≢ =
     Nat.+-mono-<-≤
-      (wt/strict
-        {left = left} {right = right}
-        (included Fin.zero) row≢)
+      (p⊂q⇒∣p∣<∣q∣ (⊆∧≢⇒⊂ (included Fin.zero) row≢))
       (matrixWeight/mono {left = lefts} {right = rights} λ i →
         included (Fin.suc i))
 
@@ -337,14 +323,18 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
   refine/weight< {G} {relation} unequal =
     matrixWeight/strict
       {left = refine G relation} {right = relation}
-      (refine/descending {G} {relation}) unequal
+      (λ s {t} t∈ →
+        Vec.lookup⇒[]= t _
+          (to T-≡ (refine/descending {G} {relation} s t
+                     (from T-≡ (Vec.[]=⇒lookup t∈)))))
+      unequal
 
   matrixWeight/replicate :
-    ∀ {n} m (row : Vec Bool n)
-    → matrixWeight (replicate m row) ≡ m * wt row
+    ∀ {n} m (row : Subset n)
+    → matrixWeight (replicate m row) ≡ m * ∣ row ∣
   matrixWeight/replicate zero row = refl
   matrixWeight/replicate (suc m) row =
-    cong (wt row +_) (matrixWeight/replicate m row)
+    cong (∣ row ∣ +_) (matrixWeight/replicate m row)
 
   top/weight :
     ∀ {G} → matrixWeight (top G) ≡ size G * size G
@@ -352,28 +342,18 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
     trans
       (matrixWeight/replicate (size G)
         (replicate (size G) true))
-      (cong (size G *_) (wt/true (size G)))
+      (cong (size G *_) (∣⊤∣≡n (size G)))
 
   Stable : (G : Graph) → Matrix G → Set
   Stable G relation = refine G relation ≡ relation
-
-  iterate/fixed :
-    ∀ {G} fuel
-      {relation : Matrix G}
-    → Stable G relation
-    → iterate fuel (refine G) relation ≡ relation
-  iterate/fixed zero stable = refl
-  iterate/fixed {G} (suc fuel) {relation} stable
-    rewrite stable =
-    iterate/fixed {G} fuel stable
 
   stable/iterate :
     ∀ {G} fuel
       {relation : Matrix G}
     → Stable G relation
-    → Stable G (iterate fuel (refine G) relation)
+    → Stable G (iterate (refine G) relation fuel)
   stable/iterate {G} fuel {relation} stable =
-    let fixed = iterate/fixed {G} fuel stable
+    let fixed = iterate/stable (refine G) relation stable fuel
     in
     trans
       (cong (refine G) fixed)
@@ -383,7 +363,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
     ∀ {G} fuel
       {relation : Matrix G}
     → matrixWeight relation ≤ fuel
-    → Stable G (iterate fuel (refine G) relation)
+    → Stable G (iterate (refine G) relation fuel)
   stabilize {G} zero {relation} bounded
     with matrix≟ G (refine G relation) relation
   ... | yes stable = stable
@@ -454,7 +434,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
       λ where
       (α , u) member →
         let v , gr , later =
-              Semantic.forth G equivalent
+              BTheory.~L (graphTheory G) equivalent
                 (listed⇒step member)
         in
         any/intro
@@ -473,7 +453,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
     semantic/forth
       {G} {relation} {s = t} {t = s}
       contained
-      (Semantic.symmetric G equivalent)
+      (BTheory.~sym (graphTheory G) equivalent)
 
   semantic/refine :
     ∀ {G}
@@ -494,7 +474,7 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
       {relation : Matrix G}
     → SemanticContained G relation
     → SemanticContained G
-        (iterate fuel (refine G) relation)
+        (iterate (refine G) relation fuel)
   iterate/contains zero contained =
     contained
   iterate/contains {G} (suc fuel) {relation} contained =
@@ -603,23 +583,10 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
       (approximation/stable {G})
       (approximation/symmetric {G})
 
-  record BisimulationCorrect (G : Graph) : Set where
-    field
-      sound :
-        ∀ {s t}
-        → Bisimilar G s t
-        → BTheory._~_ (graphTheory G) s t
-
-      complete :
-        ∀ {s t}
-        → BTheory._~_ (graphTheory G) s t
-        → Bisimilar G s t
-
-  open BisimulationCorrect public
+  BisimulationCorrect : Graph → Set
+  BisimulationCorrect G =
+    ∀ {s t} → Bisimilar G s t ⇔ BTheory._~_ (graphTheory G) s t
 
   bisimulationCorrect : (G : Graph) → BisimulationCorrect G
   bisimulationCorrect G =
-    record
-      { sound = approximation/sound {G = G}
-      ; complete = semantic⇒bisimilar {G = G}
-      }
+    mk⇔ (approximation/sound {G = G}) (semantic⇒bisimilar {G = G})

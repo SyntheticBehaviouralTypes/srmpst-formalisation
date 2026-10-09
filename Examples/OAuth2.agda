@@ -6,7 +6,8 @@
 
 module Examples.OAuth2 where
 
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin using (Fin)
+open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Data.List using ([]; _∷_)
 open import Data.Sum using (_⊎_)
@@ -15,7 +16,7 @@ open import Data.List using (length)
 open import Relation.Binary.PropositionalEquality using (_≡_)
 open import Data.Unit using (tt)
 open import Data.Bool using (true)
-open import Relation.Nullary.Decidable using (toWitness)
+open import Relation.Nullary.Decidable using (from-yes)
 
 open import Definitions.Expr using (s/bool; s/nat; val; v/bool; v/nat)
 open import Check
@@ -26,31 +27,31 @@ open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
 S C A : Fin 3
-S = zero
-C = suc zero
-A = suc (suc zero)
+S = 0F
+C = 1F
+A = 2F
 
 here : Fin 1
-here = zero
+here = 0F
 
 -- the S→C choice: login/cancel (both carry a nat)
 login cancel : Fin 2
-login  = zero
-cancel = suc zero
+login  = 0F
+cancel = 1F
 
 -- the C→A choice: passwd (nat) / quit (bool)
 passwd quit : Fin 2
-passwd = zero
-quit   = suc zero
+passwd = 0F
+quit   = 1F
 
 -- s0 --S→C[login]--> s1 --C→A[passwd]--> s2 --A→S[auth]--> ended
 -- s0 --S→C[cancel]--> s3 --C→A[quit]----------------------> ended
 oauth : OpenGraph 0
-oauth = openGraph 4 (node zero)
-  ( ( ((S ⟶ ⁅ C ⁆ # mkChoice login s/nat) , node (suc zero))
-    ∷ ((S ⟶ ⁅ C ⁆ # mkChoice cancel s/nat) , node (suc (suc (suc zero))))
+oauth = openGraph 4 (node 0F)
+  ( ( ((S ⟶ ⁅ C ⁆ # mkChoice login s/nat) , node 1F)
+    ∷ ((S ⟶ ⁅ C ⁆ # mkChoice cancel s/nat) , node 3F)
     ∷ [] )                                                            -- s0
-  v∷ ( ((C ⟶ ⁅ A ⁆ # mkChoice passwd s/nat) , node (suc (suc zero)))
+  v∷ ( ((C ⟶ ⁅ A ⁆ # mkChoice passwd s/nat) , node 2F)
      ∷ [] )                                                           -- s1
   v∷ ( ((A ⟶ ⁅ S ⁆ # mkChoice here s/bool) , ended) ∷ [] )             -- s2
   v∷ ( ((C ⟶ ⁅ A ⁆ # mkChoice quit s/bool) , ended) ∷ [] )             -- s3
@@ -92,7 +93,7 @@ module S∣C∣A where
   M = p/S v∷ p/C v∷ p/A v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -102,15 +103,15 @@ module S∣C∣A where
 -- ── Every other partition: each process against its block's view ───────
 
 own/SC∣A own/SA∣C own/S∣CA : Fin 3 → Fin 2
-own/SC∣A zero             = zero
-own/SC∣A (suc zero)       = zero
-own/SC∣A (suc (suc zero)) = suc zero
-own/SA∣C zero             = zero
-own/SA∣C (suc zero)       = suc zero
-own/SA∣C (suc (suc zero)) = zero
-own/S∣CA zero             = zero
-own/S∣CA (suc zero)       = suc zero
-own/S∣CA (suc (suc zero)) = suc zero
+own/SC∣A 0F = 0F
+own/SC∣A 1F = 0F
+own/SC∣A 2F = 1F
+own/SA∣C 0F = 0F
+own/SA∣C 1F = 1F
+own/SA∣C 2F = 0F
+own/S∣CA 0F = 0F
+own/S∣CA 1F = 1F
+own/S∣CA 2F = 1F
 
 -- {S,C} {A}: the server's choice is internal; the client's forward to `A`
 -- makes it (here: `login`, then `A`'s report reaches `S`).
@@ -123,7 +124,7 @@ module SC∣A where
   M = (C ⇒ ⁅ A ⁆ ! passwd < val (v/nat 0) >∙ (S ⇐ A ？· (∅ v∷ v[]))) v∷ p/A v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -140,7 +141,7 @@ module SA∣C where
   M = (S ⇒ ⁅ C ⁆ ! cancel < val (v/nat 0) >∙ (A ⇐ C ？· (∅ v∷ ∅ v∷ v[]))) v∷ p/C v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -157,7 +158,7 @@ module S∣CA where
   M = p/S v∷ (C ⇐ S ？· ((A ⇒ ⁅ S ⁆ ! here < val (v/bool true) >∙ ∅) v∷ ∅ v∷ v[])) v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -167,7 +168,7 @@ module S∣CA where
 -- {S,C,A}: everything is internal.
 module SCA where
   Ρ : Assignment 1
-  Ρ = byOwner λ _ → zero
+  Ρ = byOwner λ _ → 0F
   open Over Ρ
   open Global Ρ using (_-[_]->ᵍ_)
 
@@ -175,7 +176,7 @@ module SCA where
   M = ∅ v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′

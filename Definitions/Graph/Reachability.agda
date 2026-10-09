@@ -1,27 +1,29 @@
 {-# OPTIONS --guardedness #-}
 
-open import Data.Nat using (ℕ; zero; suc; _+_; _∸_; _≤_; _<_; s≤s)
+open import Data.Nat using (ℕ; zero; suc; _∸_; _≤_; s≤s)
 import Data.Nat.Properties as Nat
+open import Data.Nat.GeneralisedArithmetic using (iterate)
 open import Data.Unit using (tt)
 open import Data.Empty using (⊥-elim)
 open import Data.Bool using (Bool; true; _∨_; T)
 import Data.Bool.Properties as Bool
 open import Data.Fin using () renaming (_≟_ to _≟Fin_)
-import Data.Fin as F
 import Data.Fin.Properties as FinP
-open import Data.List using (List; _∷_)
-open import Data.List.Membership.Propositional using (_∈_)
+open import Data.Fin.Subset
+  using (Subset; _⊆_; ∣_∣; ⁅_⁆) renaming (_∈_ to _∈ˢ_)
+open import Data.Fin.Subset.Properties
+  using (⊆-refl; ⊆-trans; x∈⁅x⁆; x∈⁅y⁆⇒x≡y; ∣⁅x⁆∣≡1; ∣p∣≤n; p⊂q⇒∣p∣<∣q∣)
+open import Data.List.Membership.Propositional using (find; lose)
 open import Data.List.Relation.Unary.Any using (Any; here; there)
 import Data.List.Relation.Unary.Any as Any
-open import Data.Product using (_×_; _,_; ∃-syntax; Σ-syntax; proj₁; proj₂)
+open import Data.Product using (_×_; _,_; ∃-syntax; proj₁; proj₂)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
-open import Data.Vec using (Vec; lookup; tabulate)
-import Data.Vec as V
+open import Data.Vec using (lookup; tabulate)
 import Data.Vec.Properties as VecP
-open import Relation.Nullary using (Dec; yes; no; ¬_)
-open import Relation.Nullary.Decidable using (⌊_⌋; toWitness; T?)
+open import Relation.Nullary using (Dec; yes; no)
+open import Relation.Nullary.Decidable using (⌊_⌋; T?; _×?_)
 open import Relation.Binary.PropositionalEquality
-  using (_≡_; refl; sym; trans; cong; subst; _≢_)
+  using (_≡_; refl; sym; trans; cong; subst)
 
 module Definitions.Graph.Reachability (N : ℕ) where
 
@@ -29,7 +31,10 @@ module Definitions.Graph.Reachability (N : ℕ) where
   open import Definitions.Behav using (BTheory)
   open import Definitions.Graph.Core N
 
-  open import Utils.Bits public
+  open import Utils.Bits
+    using ( iterate-suc; iterate-add; iterate/stable; iterateFix
+          ; iterateFix/iterate; ⊆∧≢⇒⊂ )
+    renaming (_∈?_ to _∈ˢ?_)
 
   -- ══════════════════════════════════════════════════════════════════
   --  Reachability over a concrete finite graph
@@ -43,87 +48,52 @@ module Definitions.Graph.Reachability (N : ℕ) where
     Step : State G → Action → State G → Set
     Step s α t = _-<_>->_ {G} s α t
 
-    -- ── Initial marking (only `s`) ──
-
-    startMark : State G → Vec Bool (size G)
-    startMark s = tabulate (λ t → ⌊ t ≟Fin s ⌋)
-
-    ⌊≟⌋-refl : ∀ (s : State G) → ⌊ s ≟Fin s ⌋ ≡ true
-    ⌊≟⌋-refl s with s ≟Fin s
-    ... | yes _  = refl
-    ... | no ¬p  = ⊥-elim (¬p refl)
-
-    startMark-marks : ∀ s → lookup (startMark s) s ≡ true
-    startMark-marks s = trans (VecP.lookup∘tabulate _ s) (⌊≟⌋-refl s)
-
-    startMark-sound : ∀ {s t} → lookup (startMark s) t ≡ true → t ≡ s
-    startMark-sound {s} {t} p =
-      toWitness (≡true→T (trans (sym (VecP.lookup∘tabulate _ t)) p))
-
     -- ── One-step expansion ──
 
-    OneStep : Vec Bool (size G) → (State G → Bool) → State G → Set
+    OneStep : Subset (size G) → (State G → Bool) → State G → Set
     OneStep m ok t =
-      ∃[ s ] (T (lookup m s) × T (ok s) × Any (λ e → proj₂ e ≡ t) (edges G s))
-
-    oneStepAt? :
-      ∀ (m : Vec Bool (size G)) (ok : State G → Bool) (t s : State G)
-      → Dec (T (lookup m s) × T (ok s)
-             × Any (λ e → proj₂ e ≡ t) (edges G s))
-    oneStepAt? m ok t s
-      with T? (lookup m s) | T? (ok s)
-         | Any.any? (λ e → proj₂ e ≟Fin t) (edges G s)
-    ... | yes a | yes b | yes c = yes (a , b , c)
-    ... | no ¬a | _     | _     = no λ { (a , _ , _) → ¬a a }
-    ... | _     | no ¬b | _     = no λ { (_ , b , _) → ¬b b }
-    ... | _     | _     | no ¬c = no λ { (_ , _ , c) → ¬c c }
+      ∃[ s ] (s ∈ˢ m × T (ok s) × Any (λ e → proj₂ e ≡ t) (edges G s))
 
     oneStep? : ∀ m ok t → Dec (OneStep m ok t)
-    oneStep? m ok t = FinP.any? (oneStepAt? m ok t)
+    oneStep? m ok t =
+      FinP.any? λ s →
+        (s ∈ˢ? m) ×? T? (ok s) ×? Any.any? (λ e → proj₂ e ≟Fin t) (edges G s)
 
-    expand : (State G → Bool) → Vec Bool (size G) → Vec Bool (size G)
+    expand : (State G → Bool) → Subset (size G) → Subset (size G)
     expand ok m = tabulate (λ t → lookup m t ∨ ⌊ oneStep? m ok t ⌋)
 
     expand-lookup :
       ∀ ok m t → lookup (expand ok m) t ≡ (lookup m t ∨ ⌊ oneStep? m ok t ⌋)
     expand-lookup ok m t = VecP.lookup∘tabulate _ t
 
-    expand-infl :
-      ∀ ok m t → lookup m t ≡ true → lookup (expand ok m) t ≡ true
-    expand-infl ok m t p rewrite expand-lookup ok m t | p = refl
+    expand-infl : ∀ ok m → m ⊆ expand ok m
+    expand-infl ok m {t} t∈ =
+      VecP.lookup⇒[]= t (expand ok m)
+        (trans (expand-lookup ok m t)
+          (cong (_∨ ⌊ oneStep? m ok t ⌋) (VecP.[]=⇒lookup t∈)))
 
     expand-step :
       ∀ ok m {s α t}
-      → lookup m s ≡ true → T (ok s) → Step s α t
-      → lookup (expand ok m) t ≡ true
+      → s ∈ˢ m → T (ok s) → Step s α t → t ∈ˢ expand ok m
     expand-step ok m {s} {α} {t} ms oks gr
       with oneStep? m ok t | expand-lookup ok m t
-    ... | yes _  | eqL = trans eqL (Bool.∨-zeroʳ (lookup m t))
+    ... | yes _  | eqL =
+      VecP.lookup⇒[]= t (expand ok m) (trans eqL (Bool.∨-zeroʳ (lookup m t)))
     ... | no ¬os | _   =
-      ⊥-elim (¬os
-        (s , ≡true→T ms , oks
-           , Any.map (λ px → sym (cong proj₂ px)) (step⇒listed gr)))
-
-    -- extract a graph edge witnessing the one-step successor
-    findEdge :
-      ∀ {t} (xs : List (Edge (size G)))
-      → Any (λ e → proj₂ e ≡ t) xs
-      → Σ[ α ∈ Action ] ((α , t) ∈ xs)
-    findEdge (( α , u) ∷ xs) (here refl) = α , here refl
-    findEdge (e ∷ xs) (there a) with findEdge xs a
-    ... | α , mem = α , there mem
+      ⊥-elim (¬os (s , ms , oks , lose (step⇒listed gr) refl))
 
     expand-sound :
       ∀ ok m {t}
-      → lookup (expand ok m) t ≡ true
-      → (lookup m t ≡ true)
-      ⊎ (∃[ s ] (lookup m s ≡ true × T (ok s) × ∃[ α ] (Step s α t)))
+      → t ∈ˢ expand ok m
+      → t ∈ˢ m ⊎ (∃[ s ] (s ∈ˢ m × T (ok s) × ∃[ α ] (Step s α t)))
     expand-sound ok m {t} p with oneStep? m ok t | expand-lookup ok m t
-    ... | yes (s , Tms , oks , anyWit) | _ =
-      let (α , mem) = findEdge (edges G s) anyWit
-      in inj₂ (s , T→≡true Tms , oks , α , listed⇒step mem)
+    ... | yes (s , ms , oks , hit) | _ =
+      let (α , _) , mem , u≡t = find hit
+      in inj₂ (s , ms , oks , α , subst (Step s α) u≡t (listed⇒step mem))
     ... | no _ | eqL =
-      inj₁ (trans (sym (trans eqL (Bool.∨-identityʳ (lookup m t)))) p)
+      inj₁ (VecP.lookup⇒[]= t m
+        (trans (sym (trans eqL (Bool.∨-identityʳ (lookup m t))))
+          (VecP.[]=⇒lookup p)))
 
     -- ── Bounded reachability paths ──
 
@@ -145,196 +115,135 @@ module Definitions.Graph.Reachability (N : ℕ) where
 
     -- ── Completeness: every path is captured ──
 
-    iter-infl :
-      ∀ ok k m {i}
-      → lookup m i ≡ true → lookup (iter k (expand ok) m) i ≡ true
-    iter-infl ok zero    m p = p
-    iter-infl ok (suc k) m {i} p =
-      iter-infl ok k (expand ok m) (expand-infl ok m i p)
+    iterate-infl : ∀ ok m k → m ⊆ iterate (expand ok) m k
+    iterate-infl ok m zero    = ⊆-refl
+    iterate-infl ok m (suc k) =
+      ⊆-trans (expand-infl ok m) (iterate-infl ok (expand ok m) k)
 
     complete-aux :
-      ∀ ok (m : Vec Bool (size G)) k {a t n}
-      → lookup m a ≡ true → PathVia ok a t n → n ≤ k
-      → lookup (iter k (expand ok) m) t ≡ true
-    complete-aux ok m k ma path/nil _ = iter-infl ok k m ma
+      ∀ ok m k {a t n}
+      → a ∈ˢ m → PathVia ok a t n → n ≤ k
+      → t ∈ˢ iterate (expand ok) m k
+    complete-aux ok m k ma path/nil _ = iterate-infl ok m k ma
     complete-aux ok m (suc k) ma (path/cons oka gr rest) (s≤s n≤k) =
       complete-aux ok (expand ok m) k (expand-step ok m ma oka gr) rest n≤k
 
-    reachVia : (State G → Bool) → State G → Vec Bool (size G)
-    reachVia ok s = iter (size G) (expand ok) (startMark s)
+    reachVia : (State G → Bool) → State G → Subset (size G)
+    reachVia ok s = iterate (expand ok) ⁅ s ⁆ (size G)
 
     -- ── Soundness ──
 
-    iter-sound :
-      ∀ ok (s : State G) k {t}
-      → lookup (iter k (expand ok) (startMark s)) t ≡ true
+    iterate-sound :
+      ∀ ok s k {t}
+      → t ∈ˢ iterate (expand ok) ⁅ s ⁆ k
       → ∃[ n ] PathVia ok s t n
-    iter-sound ok s zero {t} p =
-      zero , subst (λ z → PathVia ok s z zero) (sym (startMark-sound p)) path/nil
-    iter-sound ok s (suc k) {t} p
-      with expand-sound ok (iter k (expand ok) (startMark s))
-             (subst (λ z → lookup z t ≡ true)
-               (iter-suc k (expand ok) (startMark s)) p)
-    ... | inj₁ pt = iter-sound ok s k pt
-    ... | inj₂ (s′ , ms′ , oks′ , α , gr) with iter-sound ok s k ms′
+    iterate-sound ok s zero {t} p =
+      zero , subst (λ z → PathVia ok s z zero) (sym (x∈⁅y⁆⇒x≡y s p)) path/nil
+    iterate-sound ok s (suc k) {t} p
+      with expand-sound ok (iterate (expand ok) ⁅ s ⁆ k)
+             (subst (t ∈ˢ_) (iterate-suc (expand ok) ⁅ s ⁆ k) p)
+    ... | inj₁ pt = iterate-sound ok s k pt
+    ... | inj₂ (s′ , ms′ , oks′ , α , gr) with iterate-sound ok s k ms′
     ...   | n , path = suc n , pathVia-snoc path oks′ gr
 
     reachVia-sound :
-      ∀ ok s {t}
-      → lookup (reachVia ok s) t ≡ true → ∃[ n ] PathVia ok s t n
-    reachVia-sound ok s p = iter-sound ok s (size G) p
+      ∀ ok s {t} → t ∈ˢ reachVia ok s → ∃[ n ] PathVia ok s t n
+    reachVia-sound ok s p = iterate-sound ok s (size G) p
 
     -- ── Fixpoint saturation (bounded by `size G`) ──
 
-    f-infl-row : ∀ ok X → Incl X (expand ok X)
-    f-infl-row ok X i TXi = ≡true→T (expand-infl ok X i (T→≡true TXi))
-
-    iter-extra :
-      ∀ ok j X → Incl X (iter j (expand ok) X)
-    iter-extra ok zero    X = Incl-refl {v = X}
-    iter-extra ok (suc j) X =
-      Incl-trans
-        {a = X} {b = expand ok X} {c = iter j (expand ok) (expand ok X)}
-        (f-infl-row ok X) (iter-extra ok j (expand ok X))
-
     grow :
       ∀ ok s k
-      → (wt (startMark s) + k ≤ wt (iter k (expand ok) (startMark s)))
-      ⊎ (expand ok (iter k (expand ok) (startMark s))
-           ≡ iter k (expand ok) (startMark s))
-    grow ok s zero = inj₁ (Nat.≤-reflexive (Nat.+-identityʳ (wt (startMark s))))
+      → (suc k ≤ ∣ iterate (expand ok) ⁅ s ⁆ k ∣)
+      ⊎ (expand ok (iterate (expand ok) ⁅ s ⁆ k)
+           ≡ iterate (expand ok) ⁅ s ⁆ k)
+    grow ok s zero = inj₁ (Nat.≤-reflexive (sym (∣⁅x⁆∣≡1 s)))
     grow ok s (suc k) = go (grow ok s k)
       where
-        X : Vec Bool (size G)
-        X = iter k (expand ok) (startMark s)
+        X : Subset (size G)
+        X = iterate (expand ok) ⁅ s ⁆ k
+
+        X′≡ : iterate (expand ok) ⁅ s ⁆ (suc k) ≡ expand ok X
+        X′≡ = iterate-suc (expand ok) ⁅ s ⁆ k
 
         fixStep :
           expand ok X ≡ X
-          → expand ok (iter (suc k) (expand ok) (startMark s))
-              ≡ iter (suc k) (expand ok) (startMark s)
+          → expand ok (iterate (expand ok) ⁅ s ⁆ (suc k))
+              ≡ iterate (expand ok) ⁅ s ⁆ (suc k)
         fixStep fix =
-          let e : iter (suc k) (expand ok) (startMark s) ≡ X
-              e = trans (iter-suc k (expand ok) (startMark s)) fix
-          in trans (cong (expand ok) e) (trans fix (sym e))
-
-        growStep :
-          wt (startMark s) + k ≤ wt X
-          → expand ok X ≢ X
-          → wt (startMark s) + suc k
-              ≤ wt (iter (suc k) (expand ok) (startMark s))
-        growStep bound ¬fix =
-          let strict : suc (wt X) ≤ wt (expand ok X)
-              strict = wt/strict {left = X} {right = expand ok X}
-                         (f-infl-row ok X) (λ e → ¬fix (sym e))
-              weqn : wt (expand ok X)
-                       ≡ wt (iter (suc k) (expand ok) (startMark s))
-              weqn = cong wt (sym (iter-suc k (expand ok) (startMark s)))
-              chain : suc (wt (startMark s) + k)
-                        ≤ wt (iter (suc k) (expand ok) (startMark s))
-              chain = subst (suc (wt (startMark s) + k) ≤_) weqn
-                        (Nat.≤-trans (s≤s bound) strict)
-          in subst (_≤ wt (iter (suc k) (expand ok) (startMark s)))
-               (sym (Nat.+-suc (wt (startMark s)) k)) chain
+          trans (cong (expand ok) (trans X′≡ fix))
+            (trans fix (sym (trans X′≡ fix)))
 
         go :
-          (wt (startMark s) + k ≤ wt X)
-          ⊎ (expand ok X ≡ X)
-          → (wt (startMark s) + suc k
-               ≤ wt (iter (suc k) (expand ok) (startMark s)))
-          ⊎ (expand ok (iter (suc k) (expand ok) (startMark s))
-               ≡ iter (suc k) (expand ok) (startMark s))
+          (suc k ≤ ∣ X ∣) ⊎ (expand ok X ≡ X)
+          → (suc (suc k) ≤ ∣ iterate (expand ok) ⁅ s ⁆ (suc k) ∣)
+          ⊎ (expand ok (iterate (expand ok) ⁅ s ⁆ (suc k))
+               ≡ iterate (expand ok) ⁅ s ⁆ (suc k))
         go (inj₂ fix) = inj₂ (fixStep fix)
         go (inj₁ bound) with VecP.≡-dec Bool._≟_ (expand ok X) X
         ... | yes fix = inj₂ (fixStep fix)
-        ... | no ¬fix = inj₁ (growStep bound ¬fix)
+        ... | no ¬fix =
+          inj₁ (subst (λ Y → suc (suc k) ≤ ∣ Y ∣) (sym X′≡)
+                  (Nat.≤-trans (s≤s bound)
+                    (p⊂q⇒∣p∣<∣q∣
+                      (⊆∧≢⇒⊂ (expand-infl ok X) (λ e → ¬fix (sym e))))))
 
     reach-fixed : ∀ ok s → expand ok (reachVia ok s) ≡ reachVia ok s
     reach-fixed ok s with grow ok s (size G)
     ... | inj₂ fix = fix
-    ... | inj₁ bound = ⊥-elim (Nat.<-irrefl refl bad)
-      where
-        bad : size G < size G
-        bad = Nat.≤-trans
-                (Nat.+-monoˡ-≤ (size G)
-                  (wt-pos {v = startMark s} {i = s} (startMark-marks s)))
-                (Nat.≤-trans bound
-                  (wt-bound (iter (size G) (expand ok) (startMark s))))
+    ... | inj₁ bound =
+      ⊥-elim (Nat.<-irrefl refl (Nat.<-≤-trans bound (∣p∣≤n (reachVia ok s))))
 
-    fix-iter :
-      ∀ ok s j → iter j (expand ok) (reachVia ok s) ≡ reachVia ok s
-    fix-iter ok s zero = refl
-    fix-iter ok s (suc j) =
-      trans (iter-suc j (expand ok) (reachVia ok s))
-        (trans (cong (expand ok) (fix-iter ok s j)) (reach-fixed ok s))
+    fix-iterate :
+      ∀ ok s j → iterate (expand ok) (reachVia ok s) j ≡ reachVia ok s
+    fix-iterate ok s =
+      iterate/stable (expand ok) (reachVia ok s) (reach-fixed ok s)
 
     converge :
-      ∀ ok s n
-      → Incl (iter n (expand ok) (startMark s)) (reachVia ok s)
-    converge ok s n i x with Nat.≤-total n (size G)
+      ∀ ok s n → iterate (expand ok) ⁅ s ⁆ n ⊆ reachVia ok s
+    converge ok s n {i} x with Nat.≤-total n (size G)
     ... | inj₁ n≤ =
-      subst (λ z → T (lookup (iter z (expand ok) (startMark s)) i))
-        (Nat.m+[n∸m]≡n n≤)
-        (subst (λ w → T (lookup w i))
-          (sym (iter-add n (size G ∸ n) (expand ok) (startMark s)))
-          (iter-extra ok (size G ∸ n) (iter n (expand ok) (startMark s)) i x))
+      subst (λ z → i ∈ˢ iterate (expand ok) ⁅ s ⁆ z) (Nat.m+[n∸m]≡n n≤)
+        (subst (i ∈ˢ_)
+          (sym (iterate-add (expand ok) ⁅ s ⁆ n (size G ∸ n)))
+          (iterate-infl ok (iterate (expand ok) ⁅ s ⁆ n) (size G ∸ n) x))
     ... | inj₂ ≤n =
-      subst (λ w → T (lookup w i)) eqn x
+      subst (i ∈ˢ_) eqn x
       where
-        eqn : iter n (expand ok) (startMark s) ≡ reachVia ok s
+        eqn : iterate (expand ok) ⁅ s ⁆ n ≡ reachVia ok s
         eqn =
-          trans (cong (λ z → iter z (expand ok) (startMark s))
-                   (sym (Nat.m+[n∸m]≡n ≤n)))
-            (trans (iter-add (size G) (n ∸ size G) (expand ok) (startMark s))
-              (fix-iter ok s (n ∸ size G)))
+          trans (cong (iterate (expand ok) ⁅ s ⁆) (sym (Nat.m+[n∸m]≡n ≤n)))
+            (trans (iterate-add (expand ok) ⁅ s ⁆ (size G) (n ∸ size G))
+              (fix-iterate ok s (n ∸ size G)))
 
     reachVia-complete :
-      ∀ ok s {t n} → PathVia ok s t n → lookup (reachVia ok s) t ≡ true
-    reachVia-complete ok s {t} {n} path =
-      T→≡true
-        (converge ok s n t
-          (≡true→T (complete-aux ok (startMark s) n (startMark-marks s) path Nat.≤-refl)))
+      ∀ ok s {t n} → PathVia ok s t n → t ∈ˢ reachVia ok s
+    reachVia-complete ok s {n = n} path =
+      converge ok s n (complete-aux ok ⁅ s ⁆ n (x∈⁅x⁆ s) path Nat.≤-refl)
 
     -- ── The row to COMPUTE ──
     --
     -- `reachVia` is the specification; `reachFix` forces each round and
     -- stops at the fixpoint.
-    reachFix : (State G → Bool) → State G → Vec Bool (size G)
+    reachFix : (State G → Bool) → State G → Subset (size G)
     reachFix ok s =
-      iterateFix (VecP.≡-dec Bool._≟_) (size G) (expand ok) (startMark s)
+      iterateFix (VecP.≡-dec Bool._≟_) (size G) (expand ok) ⁅ s ⁆
 
     reachFix≡ : ∀ ok s → reachFix ok s ≡ reachVia ok s
     reachFix≡ ok s =
-      iterateFix/iterate (VecP.≡-dec Bool._≟_) (size G) (expand ok) (startMark s)
+      iterateFix/iterate (VecP.≡-dec Bool._≟_) (size G) (expand ok) ⁅ s ⁆
 
     -- ══════════════════════════════════════════════════════════════
     --  Exact participation:  P ∈T s  ⇔  reach a P-active edge
     -- ══════════════════════════════════════════════════════════════
-
-    ∈α-lift :
-      ∀ {P x} {xs : List (Edge (size G))}
-      → x ∈ xs → P ∈αˢ proj₁ x → Any (λ e → P ∈αˢ proj₁ e) xs
-    ∈α-lift (here refl) px = here px
-    ∈α-lift (there mem) px = there (∈α-lift mem px)
-
-    anyActive→∈ :
-      ∀ {P} (xs : List (Edge (size G)))
-      → Any (λ e → P ∈αˢ proj₁ e) xs
-      → Σ[ e ∈ Edge (size G) ] (e ∈ xs × P ∈αˢ proj₁ e)
-    anyActive→∈ (e ∷ xs) (here px) = e , here refl , px
-    anyActive→∈ (e ∷ xs) (there a) with anyActive→∈ xs a
-    ... | e′ , mem , px = e′ , there mem , px
-
-    activeToStep :
-      ∀ {P s} → Any (λ e → P ∈αˢ proj₁ e) (edges G s) → P ∈T s
-    activeToStep {P} {s} a with anyActive→∈ (edges G s) a
-    ... | (α , u) , mem , px = in/α (listed⇒step mem) px
 
     reach→∈T :
       ∀ {P s t n}
       → PathVia (λ _ → true) s t n
       → Any (λ e → P ∈αˢ proj₁ e) (edges G t)
       → P ∈T s
-    reach→∈T path/nil active = activeToStep active
+    reach→∈T path/nil active =
+      let _ , mem , px = find active in in/α (listed⇒step mem) px
     reach→∈T (path/cons _ gr rest) active = in/later gr (reach→∈T rest active)
 
     ∈T→reach :
@@ -342,7 +251,7 @@ module Definitions.Graph.Reachability (N : ℕ) where
       → ∃[ t ] (∃[ n ] PathVia (λ _ → true) s t n
                 × Any (λ e → P ∈αˢ proj₁ e) (edges G t))
     ∈T→reach {P} {s} (_ , _ , tr/step gr _ , here px) =
-      s , zero , path/nil , ∈α-lift (step⇒listed gr) px
+      s , zero , path/nil , lose (step⇒listed gr) px
     ∈T→reach {P} {s} (_ , t , tr/step gr tr , there mem)
       with ∈T→reach (_ , t , tr , mem)
     ... | t′ , n , path , active = t′ , suc n , path/cons tt gr path , active

@@ -4,7 +4,7 @@ open import Data.Fin using (Fin)
   renaming (_≟_ to _≟Fin_)
 import Data.Fin.Properties as Fin
 open import Data.Empty using (⊥; ⊥-elim)
-open import Data.List using (List; []; _∷_)
+open import Data.List using (List; [])
 open import Data.List.Membership.Propositional using (_∈_; find; lose)
 import Data.List.Relation.Unary.All as All
 open All using (All)
@@ -20,7 +20,7 @@ open import Data.Fin.Subset.Properties using (_∈?_; nonempty?)
 open import Data.Maybe using (Maybe; just; nothing)
 open import Data.Unit using (⊤; tt)
 open import Data.Bool using (T)
-open import Function using (_∘_)
+open import Function using (Equivalence)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; _≢_; refl; sym; trans; subst; subst₂)
 open import Relation.Nullary using (Dec; yes; no; ¬?)
@@ -146,13 +146,8 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
       {xs : List (Edge n)}
     → Available α xs
     → Σ[ t ∈ Fin n ] (α , t) ∈ xs
-  available/target {xs = []} ()
-  available/target {xs = (β , t) ∷ xs} (Any.here β≡α)
-    rewrite β≡α =
-    t , Any.here refl
-  available/target {xs = _ ∷ xs} (Any.there available)
-    with available/target available
-  ... | t , member = t , Any.there member
+  available/target available with find available
+  ... | (_ , t) , member , refl = t , member
 
   NoNewAfter :
     (G : Graph) → State G → Edge (size G) → Set
@@ -370,35 +365,26 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
 
   localConditionsWith? :
     (G : Graph) → BisimDec G → Dec (LocalConditions G)
-  localConditionsWith? G bisimT?
-    with deterministicConditions? G bisimT?
-       | recvConditions? G
-       | arityConditions? G
-       | sortConditions? G
-       | noNewBranchConditions? G
-       | diamondConditions? G bisimT?
-  ... | yes deterministic′ | yes recv′ | yes arity′
-      | yes sort′ | yes no-branch′ | yes diamond′ =
-    yes record
-      { deterministic = deterministic′
-      ; recv-coherent = recv′
-      ; same-arity = arity′
-      ; same-sort = sort′
-      ; no-new-branch = no-branch′
-      ; diamond = diamond′
-      }
-  ... | no ¬deterministic | _ | _ | _ | _ | _ =
-    no (¬deterministic ∘ deterministic)
-  ... | _ | no ¬recv | _ | _ | _ | _ =
-    no (¬recv ∘ recv-coherent)
-  ... | _ | _ | no ¬arity | _ | _ | _ =
-    no (¬arity ∘ same-arity)
-  ... | _ | _ | _ | no ¬sort | _ | _ =
-    no (¬sort ∘ same-sort)
-  ... | _ | _ | _ | _ | no ¬no-branch | _ =
-    no (¬no-branch ∘ no-new-branch)
-  ... | _ | _ | _ | _ | _ | no ¬diamond =
-    no (¬diamond ∘ diamond)
+  localConditionsWith? G bisimT? =
+    map′
+      (λ (deterministic′ , recv′ , arity′ , sort′ , no-branch′ , diamond′) →
+         record
+           { deterministic = deterministic′
+           ; recv-coherent = recv′
+           ; same-arity = arity′
+           ; same-sort = sort′
+           ; no-new-branch = no-branch′
+           ; diamond = diamond′
+           })
+      (λ c →
+         deterministic c , recv-coherent c , same-arity c , same-sort c
+         , no-new-branch c , diamond c)
+      (deterministicConditions? G bisimT?
+        ×? recvConditions? G
+        ×? arityConditions? G
+        ×? sortConditions? G
+        ×? noNewBranchConditions? G
+        ×? diamondConditions? G bisimT?)
 
   -- The matrix is computed once, as a bound argument.
   localConditions? : (G : Graph) → Dec (LocalConditions G)
@@ -420,10 +406,12 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     → _-<_>->_ {G} s α t′
     → BTheory._~_ (graphTheory G) t t′
   step-deterministic/sound {G = G} {s = s} correct conditions gr gr′ =
-    sound correct
+    Equivalence.to correct
       (allPairs/member
-        (λ _ _ → complete correct ~refl)
-        (λ same eq → complete correct (~sym (sound correct (same (sym eq)))))
+        (λ _ _ → Equivalence.from correct ~refl)
+        (λ same eq →
+          Equivalence.from correct
+            (~sym (Equivalence.to correct (same (sym eq)))))
         (deterministic conditions s)
         (step⇒listed gr)
         (step⇒listed gr′)
@@ -530,7 +518,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
               (diamond conditions s)
               (step⇒listed grα) (step⇒listed grβ)
               independent)
-    in v , w , grv , grw , sound correct vw
+    in v , w , grv , grw , Equivalence.to correct vw
 
   wellBehaved :
     (G : Graph) → BisimulationCorrect G → LocalConditions G
@@ -592,15 +580,13 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
   open SyncConditions
 
   syncConditions? : (G : Graph) → Dec (SyncConditions G)
-  syncConditions? G
-    with Fin.all? (λ s → All.all? balanced? (edges G s))
-       | noNewCommConditions? G
-  ... | yes balanced′ | yes no-new′ =
-    yes record { balanced = balanced′ ; no-new-comm = no-new′ }
-  ... | no ¬balanced | _ =
-    no (¬balanced ∘ balanced)
-  ... | _ | no ¬no-new =
-    no (¬no-new ∘ no-new-comm)
+  syncConditions? G =
+    map′
+      (λ (balanced′ , no-new′) →
+         record { balanced = balanced′ ; no-new-comm = no-new′ })
+      (λ c → balanced c , no-new-comm c)
+      (Fin.all? (λ s → All.all? balanced? (edges G s))
+        ×? noNewCommConditions? G)
 
   balanced/sound :
     ∀ {G s α t}

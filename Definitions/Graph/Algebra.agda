@@ -5,7 +5,8 @@ import Data.Fin as Fin
 open import Data.List using (List; []; _∷_; _++_)
 import Data.List as List
 open import Data.Nat using (ℕ; suc; _+_; _*_)
-open import Data.Product using (_×_; _,_)
+open import Data.Product using (_×_; _,_; map₂)
+open import Data.Fin.Relation.Unary.Top using (view; ‵fromℕ; ‵inject₁)
 open import Data.Vec using (Vec; []; _∷_; _∷ʳ_; lookup; tabulate)
   renaming (_++_ to _v++_)
 import Data.Vec as Vec
@@ -40,19 +41,12 @@ module Definitions.Graph.Algebra (N : ℕ) where
   open RootedGraph public
 
   private
-    mapEdge :
-      ∀ {A B : Set}
-      → (A → B)
-      → Action × A
-      → Action × B
-    mapEdge f (α , target) = α , f target
-
     mapTable :
       ∀ {A B : Set} {n}
       → (A → B)
       → Vec (List (Action × A)) n
       → Vec (List (Action × B)) n
-    mapTable f = Vec.map (List.map (mapEdge f))
+    mapTable f = Vec.map (List.map (map₂ f))
 
     leftRef : ∀ {δ m} n → Ref δ m → Ref δ (m + n)
     leftRef n (loop x) = loop x
@@ -102,7 +96,7 @@ module Definitions.Graph.Algebra (N : ℕ) where
       forest
         (m + n)
         ((α , leftRef n root)
-          ∷ List.map (mapEdge (rightRef m)) roots)
+          ∷ List.map (map₂ (rightRef m)) roots)
         (mapTable (leftRef n) table
           v++ mapTable (rightRef m) tables)
 
@@ -116,7 +110,7 @@ module Definitions.Graph.Algebra (N : ℕ) where
     openGraph
       (suc n)
       (node Fin.zero)
-      (List.map (mapEdge shiftRef) roots
+      (List.map (map₂ shiftRef) roots
         ∷ mapTable shiftRef table)
 
   infixr 8 _∙_
@@ -185,19 +179,6 @@ module Definitions.Graph.Algebra (N : ℕ) where
   --
   -- States are pairs of component states; (ended , ended) is `ended`.
   -- Components must be closed.
-  private
-    -- view a `Fin (suc n)` as either an inner node or the final index
-    data EndView : ∀ {n} → Fin (suc n) → Set where
-      isNode : ∀ {n} (s : Fin n) → EndView (inject₁ s)
-      isEnd  : ∀ {n} → EndView (fromℕ n)
-
-    endView : ∀ {n} (i : Fin (suc n)) → EndView i
-    endView {ℕ.zero}  Fin.zero    = isEnd
-    endView {suc n}   Fin.zero    = isNode Fin.zero
-    endView {suc n}   (Fin.suc i) with endView i
-    ... | isNode s = isNode (Fin.suc s)
-    ... | isEnd    = isEnd
-
   infixr 7 _∥_
 
   _∥_ : ∀ {δ} → OpenGraph 0 → OpenGraph 0 → OpenGraph δ
@@ -210,21 +191,21 @@ module Definitions.Graph.Algebra (N : ℕ) where
       P = m₂ + m₁ * suc m₂
 
       pair : Fin (suc m₁) → Fin (suc m₂) → Ref δ P
-      pair a b with combine a b | endView (combine a b)
-      ... | _ | isNode c = node c
-      ... | _ | isEnd    = ended
+      pair a b with combine a b | view (combine a b)
+      ... | _ | ‵inject₁ c = node c
+      ... | _ | ‵fromℕ     = ended
 
       leftMoves : Fin (suc m₁) → Fin (suc m₂) → List (Action × Ref δ P)
-      leftMoves a b with endView a
-      ... | isNode s =
-        List.map (mapEdge (λ r → pair (closedRef r) b)) (lookup t₁ s)
-      ... | isEnd = []
+      leftMoves a b with view a
+      ... | ‵inject₁ s =
+        List.map (map₂ (λ r → pair (closedRef r) b)) (lookup t₁ s)
+      ... | ‵fromℕ = []
 
       rightMoves : Fin (suc m₁) → Fin (suc m₂) → List (Action × Ref δ P)
-      rightMoves a b with endView b
-      ... | isNode s =
-        List.map (mapEdge (λ r → pair a (closedRef r))) (lookup t₂ s)
-      ... | isEnd = []
+      rightMoves a b with view b
+      ... | ‵inject₁ s =
+        List.map (map₂ (λ r → pair a (closedRef r))) (lookup t₂ s)
+      ... | ‵fromℕ = []
 
       build : Fin P → List (Action × Ref δ P)
       build p with remQuot {suc m₁} (suc m₂) (inject₁ p)

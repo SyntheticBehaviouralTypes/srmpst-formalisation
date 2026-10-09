@@ -5,14 +5,14 @@ open import Data.Fin.Subset.Properties using (_∈?_; x∈⁅x⁆; x∈⁅y⁆�
 open import Data.Maybe using (Maybe; just; nothing) renaming (map to mapᵐ)
 open import Data.Maybe.Properties using (just-injective)
 open import Data.Nat using (ℕ; suc)
-open import Data.Product using (_,_; _×_; ∃-syntax)
+open import Data.Product using (_,_; _×_; ∃-syntax; proj₂)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.Vec using (Vec; lookup; tabulate; map)
 import Data.Vec.Properties as VecP
 open import Relation.Binary.PropositionalEquality
   using (_≡_; _≢_; refl; sym; trans; cong)
 open import Relation.Nullary using (Dec; ¬_; ¬?; yes; no)
-open import Relation.Nullary.Decidable using (_×?_; _→?_)
+open import Relation.Nullary.Decidable using (_×?_; _→?_; dec-yes; dec-no)
 import Data.Fin.Properties as FinP
 open import Definitions.Expr using (Sort)
 
@@ -61,14 +61,6 @@ module Definitions.Actions (N : ℕ) where
   nchoices : Event → ℕ
   nchoices e = Choice.nchoices (Event.choice e)
 
-  private
-    nothing≢just : ∀ {A : Set} {x : A} → nothing ≢ just x
-    nothing≢just ()
-
-    maybe-cases : ∀ {A : Set} (m : Maybe A) → m ≡ nothing ⊎ ∃[ x ] m ≡ just x
-    maybe-cases nothing  = inj₁ refl
-    maybe-cases (just x) = inj₂ (x , refl)
-
   infix 4 _∈α_ _∉α_
 
   _∈α_ : Part → Action → Set
@@ -78,22 +70,23 @@ module Definitions.Actions (N : ℕ) where
   P ∉α α = ev α P ≡ nothing
 
   ∉α→¬∈α : ∀ {P α} → P ∉α α → ¬ P ∈α α
-  ∉α→¬∈α P∉ (e , eq) = nothing≢just (trans (sym P∉) eq)
+  ∉α→¬∈α P∉ (e , eq) with trans (sym P∉) eq
+  ... | ()
 
   ¬∈α→∉α : ∀ {P α} → ¬ P ∈α α → P ∉α α
-  ¬∈α→∉α {P} {α} ¬∈ with maybe-cases (ev α P)
-  ... | inj₁ eq = eq
-  ... | inj₂ p  = ⊥-elim (¬∈ p)
+  ¬∈α→∉α {P} {α} ¬∈ with ev α P
+  ... | nothing = refl
+  ... | just e  = ⊥-elim (¬∈ (e , refl))
 
   _∈α?_ : (P : Part) → (α : Action) → Dec (P ∈α α)
-  P ∈α? α with maybe-cases (ev α P)
-  ... | inj₁ eq = no (∉α→¬∈α {P} {α} eq)
-  ... | inj₂ p  = yes p
+  P ∈α? α with ev α P
+  ... | nothing = no λ { (_ , ()) }
+  ... | just e  = yes (e , refl)
 
   _∉α?_ : (P : Part) → (α : Action) → Dec (P ∉α α)
-  P ∉α? α with maybe-cases (ev α P)
-  ... | inj₁ eq = yes eq
-  ... | inj₂ p  = no (λ eq → ∉α→¬∈α {P} {α} eq p)
+  P ∉α? α with ev α P
+  ... | nothing = yes refl
+  ... | just _  = no λ ()
 
   -- A role of `Ps` takes part; no role of `Ps` does.
   _∈αˢ_ : PartSet → Action → Set
@@ -179,23 +172,15 @@ module Definitions.Actions (N : ℕ) where
 
   private
     at-sender : ∀ {P Qs c} → ⟶-at P Qs c P ≡ just ((! Qs) # c)
-    at-sender {P} with P ≟f P
-    ... | yes _  = refl
-    ... | no P≢P = ⊥-elim (P≢P refl)
+    at-sender {P} rewrite FinP.≟-≡-refl P = refl
 
     at-recv : ∀ {P Qs c R} → R ≢ P → R ∈ Qs → ⟶-at P Qs c R ≡ just ((？ P) # c)
-    at-recv {P} {Qs} {R = R} R≢P R∈ with R ≟f P
-    ... | yes R≡P = ⊥-elim (R≢P R≡P)
-    ... | no _ with R ∈? Qs
-    ...   | yes _  = refl
-    ...   | no R∉ = ⊥-elim (R∉ R∈)
+    at-recv {P} {Qs} {R = R} R≢P R∈
+      rewrite FinP.≟-≢ R≢P | proj₂ (dec-yes (R ∈? Qs) R∈) = refl
 
     at-other : ∀ {P Qs c R} → R ≢ P → R ∉ Qs → ⟶-at P Qs c R ≡ nothing
-    at-other {P} {Qs} {R = R} R≢P R∉ with R ≟f P
-    ... | yes R≡P = ⊥-elim (R≢P R≡P)
-    ... | no _ with R ∈? Qs
-    ...   | yes R∈ = ⊥-elim (R∉ R∈)
-    ...   | no _   = refl
+    at-other {P} {Qs} {R = R} R≢P R∉
+      rewrite FinP.≟-≢ R≢P | dec-no (R ∈? Qs) R∉ = refl
 
     at-inv : ∀ {P Qs c R e} → ⟶-at P Qs c R ≡ just e
            → (R ≡ P × e ≡ (! Qs) # c) ⊎ (R ≢ P × R ∈ Qs × e ≡ (？ P) # c)
@@ -203,7 +188,7 @@ module Definitions.Actions (N : ℕ) where
     ... | yes R≡P = inj₁ (R≡P , sym (just-injective eq))
     ... | no R≢P with R ∈? Qs
     ...   | yes R∈ = inj₂ (R≢P , R∈ , sym (just-injective eq))
-    ...   | no _   = ⊥-elim (nothing≢just eq)
+    at-inv () | no _ | no _
 
     ev-⟶ : ∀ {P Qs c} R → ev (P ⟶ Qs # c) R ≡ ⟶-at P Qs c R
     ev-⟶ {P} {Qs} {c} R = VecP.lookup∘tabulate (⟶-at P Qs c) R

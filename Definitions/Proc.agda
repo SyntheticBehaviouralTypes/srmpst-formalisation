@@ -6,18 +6,18 @@ open import Data.Fin
   using (Fin; zero; suc; punchIn; punchOut)
   renaming (_≟_ to _≟f_)
 import Data.Fin.Properties as FinP
-open import Data.Fin.Subset using (_∈_; Side; inside; outside)
+open import Data.Fin.Subset using (_∈_; Side; inside)
 open import Data.Fin.Subset.Properties using (_∈?_)
-open import Data.Empty using (⊥-elim)
-open import Data.Product using (∃-syntax; _×_; _,_)
+open import Data.Product using (∃-syntax; _×_; _,_; proj₂)
 open import Data.List using (List)
 import Data.List as L
 open import Data.Vec
   using (Vec; []; _∷_; _[_]=_; _[_]≔_; tabulate)
   renaming (lookup to lu)
 open import Data.Vec.Properties using (lookup∘tabulate; lookup⇒[]=; []=⇒lookup)
-open import Relation.Nullary using (Dec; yes; no; ¬_; ¬?)
-open import Relation.Nullary.Decidable using (_×?_)
+open import Relation.Nullary using (Dec; does; yes; no; ¬_; ¬?)
+open import Relation.Nullary.Decidable
+  using (_×?_; dec-true; dec-yes; dec-no)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; _≢_; refl; trans; sym; cong)
 
@@ -201,9 +201,7 @@ module Definitions.Proc (N : ℕ) where
     }
     where
       side : Fin K → Part → Side
-      side j R with own R ≟f j
-      ... | yes _ = inside
-      ... | no _  = outside
+      side j R = does (own R ≟f j)
 
       roles : Vec PartSet K
       roles = tabulate λ j → tabulate (side j)
@@ -211,10 +209,8 @@ module Definitions.Proc (N : ℕ) where
       side/self : ∀ R → lu (lu roles (own R)) R ≡ inside
       side/self R
         rewrite lookup∘tabulate (λ j → tabulate (side j)) (own R)
-              | lookup∘tabulate (side (own R)) R
-        with own R ≟f own R
-      ... | yes _ = refl
-      ... | no ne = ⊥-elim (ne refl)
+              | lookup∘tabulate (side (own R)) R =
+        dec-true (own R ≟f own R) refl
 
       side/inside : ∀ {j R} → side j R ≡ inside → own R ≡ j
       side/inside {j} {R} eq with own R ≟f j
@@ -262,9 +258,7 @@ module Definitions.Proc (N : ℕ) where
       trans (lookup∘tabulate (upd-at M j Pr Qs F) j) at
       where
         at : upd-at M j Pr Qs F j ≡ Pr
-        at with j ≟f j
-        ... | yes _  = refl
-        ... | no j≢j = ⊥-elim (j≢j refl)
+        at rewrite FinP.≟-≡-refl j = refl
 
     upd/recv :
       ∀ {M j Pr Qs F k}
@@ -273,11 +267,7 @@ module Definitions.Proc (N : ℕ) where
       trans (lookup∘tabulate (upd-at M j Pr Qs F) k) at
       where
         at : upd-at M j Pr Qs F k ≡ F k
-        at with k ≟f j
-        ... | yes k≡j = ⊥-elim (k≢j k≡j)
-        ... | no _ with receives? j Qs k
-        ...   | yes _ = refl
-        ...   | no ¬r = ⊥-elim (¬r r)
+        at rewrite FinP.≟-≢ k≢j | proj₂ (dec-yes (receives? j Qs k) r) = refl
 
     upd/other :
       ∀ {M j Pr Qs F l}
@@ -286,11 +276,7 @@ module Definitions.Proc (N : ℕ) where
       trans (lookup∘tabulate (upd-at M j Pr Qs F) l) at
       where
         at : upd-at M j Pr Qs F l ≡ lu M l
-        at with l ≟f j
-        ... | yes l≡j = ⊥-elim (l≢j l≡j)
-        ... | no _ with receives? j Qs l
-        ...   | yes r = ⊥-elim (¬r r)
-        ...   | no _  = refl
+        at rewrite FinP.≟-≢ l≢j | dec-no (receives? j Qs l) ¬r = refl
 
     -- Operational semantics.
 

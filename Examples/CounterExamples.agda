@@ -6,7 +6,8 @@
 
 module Examples.CounterExamples where
 
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin using (Fin)
+open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Data.List using ([]; _∷_)
 open import Data.Sum using (_⊎_)
@@ -16,7 +17,7 @@ open import Relation.Binary.PropositionalEquality using (_≡_)
 open import Data.Unit using (tt)
 open import Data.Bool using (true)
 open import Relation.Nullary using (Dec; ¬_)
-open import Relation.Nullary.Decidable using (toWitness; toWitnessFalse)
+open import Relation.Nullary.Decidable using (from-yes; from-no)
 
 open import Definitions.Expr using (s/bool; val; v/bool)
 open import Check
@@ -27,21 +28,21 @@ open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
 A B C : Fin 3
-A = zero
-B = suc zero
-C = suc (suc zero)
+A = 0F
+B = 1F
+C = 2F
 
 -- the two labels of the A→B choice (and of the B→C forwarding)
 lbl0 lbl1 : Fin 2
-lbl0 = zero
-lbl1 = suc zero
+lbl0 = 0F
+lbl1 = 1F
 
 -- s0 --A→B[0]--> s1 --B→C[0]--> ended
 -- s0 --A→B[1]--> s2 --B→C[1]--> ended    (`ended` is the DSL's unique end)
 round : OpenGraph 0
-round = openGraph 3 (node zero)
-  ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , node (suc zero))
-    ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , node (suc (suc zero)))
+round = openGraph 3 (node 0F)
+  ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , node 1F)
+    ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , node 2F)
     ∷ [] )                                                            -- s0
   v∷ ( ((B ⟶ ⁅ C ⁆ # mkChoice lbl0 s/bool) , ended) ∷ [] )             -- s1
   v∷ ( ((B ⟶ ⁅ C ⁆ # mkChoice lbl1 s/bool) , ended) ∷ [] )             -- s2
@@ -63,7 +64,7 @@ wtd/good : Dec (⊢ᵛ[ ⁅ C ⁆ ] p/C-good ∶ s₀)
 wtd/good = typecheck wbg ⁅ C ⁆ p/C-good
 
 C-good-well-typed : ⊢ᵛ[ ⁅ C ⁆ ] p/C-good ∶ s₀
-C-good-well-typed = toWitness {a? = wtd/good} _
+C-good-well-typed = from-yes wtd/good
 
 -- `C` waits for two sequential messages from `B` — but `B` only ever
 -- forwards *one* message to `C`, so this is ill-typed.
@@ -77,7 +78,7 @@ wtd/C2 : Dec (⊢ᵛ[ ⁅ C ⁆ ] p/C2 ∶ s₀)
 wtd/C2 = typecheck wbg ⁅ C ⁆ p/C2
 
 C2-illtyped : ¬ ⊢ᵛ[ ⁅ C ⁆ ] p/C2 ∶ s₀
-C2-illtyped = toWitnessFalse {a? = wtd/C2} _
+C2-illtyped = from-no wtd/C2
 
 -- `C` waits to receive from `A` first — but `A` never messages `C`
 -- directly, so this is ill-typed.
@@ -89,17 +90,17 @@ wtd/C3 : Dec (⊢ᵛ[ ⁅ C ⁆ ] p/C3 ∶ s₀)
 wtd/C3 = typecheck wbg ⁅ C ⁆ p/C3
 
 C3-illtyped : ¬ ⊢ᵛ[ ⁅ C ⁆ ] p/C3 ∶ s₀
-C3-illtyped = toWitnessFalse {a? = wtd/C3} _
+C3-illtyped = from-no wtd/C3
 
 -- Not `MessageGuarded`.
 p/C4 : Proc 0 0
-p/C4 = rec (v zero)
+p/C4 = rec (v 0F)
 
 wtd/C4 : Dec (⊢ᵛ[ ⁅ C ⁆ ] p/C4 ∶ s₀)
 wtd/C4 = typecheck wbg ⁅ C ⁆ p/C4
 
 C4-illtyped : ¬ ⊢ᵛ[ ⁅ C ⁆ ] p/C4 ∶ s₀
-C4-illtyped = toWitnessFalse {a? = wtd/C4} _
+C4-illtyped = from-no wtd/C4
 
 -- ══════════════════════════════════════════════════════════════════════
 --  Whole sessions, under every partition of the roles
@@ -113,15 +114,15 @@ p/B = B ⇐ A ？· (  (B ⇒ ⁅ C ⁆ ! lbl0 < val (v/bool true) >∙ ∅)
                 v∷ v[])
 
 own/AB∣C own/AC∣B own/A∣BC : Fin 3 → Fin 2
-own/AB∣C zero             = zero
-own/AB∣C (suc zero)       = zero
-own/AB∣C (suc (suc zero)) = suc zero
-own/AC∣B zero             = zero
-own/AC∣B (suc zero)       = suc zero
-own/AC∣B (suc (suc zero)) = zero
-own/A∣BC zero             = zero
-own/A∣BC (suc zero)       = suc zero
-own/A∣BC (suc (suc zero)) = suc zero
+own/AB∣C 0F = 0F
+own/AB∣C 1F = 0F
+own/AB∣C 2F = 1F
+own/AC∣B 0F = 0F
+own/AC∣B 1F = 1F
+own/AC∣B 2F = 0F
+own/A∣BC 0F = 0F
+own/A∣BC 1F = 1F
+own/A∣BC 2F = 1F
 
 -- {A} {B} {C}
 module A∣B∣C where
@@ -133,7 +134,7 @@ module A∣B∣C where
   M = p/A v∷ p/B v∷ p/C-good v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -150,7 +151,7 @@ module AB∣C where
   M = (B ⇒ ⁅ C ⁆ ! lbl1 < val (v/bool true) >∙ ∅) v∷ p/C-good v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -167,7 +168,7 @@ module AC∣B where
   M = (A ⇒ ⁅ B ⁆ ! lbl0 < val (v/bool true) >∙ (C ⇐ B ？· (∅ v∷ ∅ v∷ v[]))) v∷ p/B v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -184,7 +185,7 @@ module A∣BC where
   M = p/A v∷ (B ⇐ A ？· (∅ v∷ ∅ v∷ v[])) v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -194,7 +195,7 @@ module A∣BC where
 -- {A,B,C}: everything is internal.
 module ABC where
   Ρ : Assignment 1
-  Ρ = byOwner λ _ → zero
+  Ρ = byOwner λ _ → 0F
   open Over Ρ
   open Global Ρ using (_-[_]->ᵍ_)
 
@@ -202,7 +203,7 @@ module ABC where
   M = ∅ v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′

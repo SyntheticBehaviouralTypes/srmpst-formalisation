@@ -26,6 +26,7 @@ open import Data.Product using (Σ-syntax; ∃-syntax; _,_; _×_)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
 
 open import Data.Empty using (⊥)
+open import Relation.Unary using () renaming (∅ to ∅S)
 
 open import Data.Unit using (⊤; tt)
 
@@ -41,6 +42,8 @@ open import Data.Fin.Subset using () renaming (_∈_ to _∈ˢ_)
 
 open import Relation.Binary.Construct.Closure.ReflexiveTransitive
   using (Star; ε; _◅_)
+
+import Data.Vec.Relation.Binary.Pointwise.Inductive as Pointwise
 
 open import Definitions.Typing.Declarative
 
@@ -84,10 +87,10 @@ module Definitions.Typing.AlgNorm
     → Closed 𝒮
     → Advances P 𝒮
     → ∀ {u α v}
-    → WaitV P 𝒮 (λ _ → ⊥) u
+    → WaitV P 𝒮 ∅S u
     → u -< α >-> v
     → P ∉αˢ α
-    → WaitV P 𝒮 (λ _ → ⊥) v
+    → WaitV P 𝒮 ∅S v
 
   waitStep1 c adv (wv/leaf x) gr P∉α =
     wv/leaf (adv x gr P∉α)
@@ -102,9 +105,9 @@ module Definitions.Typing.AlgNorm
     → Closed 𝒮
     → Advances P 𝒮
     → ∀ {G s}
-    → WaitV P 𝒮 (λ _ → ⊥) G
+    → WaitV P 𝒮 ∅S G
     → G -[¬ P ]->* s
-    → WaitV P 𝒮 (λ _ → ⊥) s
+    → WaitV P 𝒮 ∅S s
 
   waitFollow c adv w ([] , tr/refl , []) = w
   waitFollow c adv w (_ ∷ αs , tr/step gr tr , P∉α ∷ allP) =
@@ -153,7 +156,7 @@ module Definitions.Typing.AlgNorm
   endChase :
     ∀ {P}{G}
     → P ∈T G
-    → WaitV P (EndL P) (λ _ → ⊥) G
+    → WaitV P (EndL P) ∅S G
     → ⊥
 
   endChase inT (wv/leaf x) = x inT
@@ -275,7 +278,7 @@ module Definitions.Typing.AlgNorm
     recA/closed :
       ∀ {P}{Pr : Proc γ (suc δ)} → Closed (RecA {P = P} Pr)
     recA/closed W~W′ td =
-      td/bisim (~ᵛ/∷ W~W′ ~ᵛ-refl) W~W′ td
+      td/bisim (W~W′ Pointwise.∷ ~ᵛ-refl) W~W′ td
 
     ---------------------------------------------------------------------
     ---------------------------------------------------------------------
@@ -323,7 +326,7 @@ module Definitions.Typing.AlgNorm
 
     mutual
 
-      walk : ∀ {G} → Γ & Δ ⊢p P ◂ Pr ∶ G → WaitV P L (λ _ → ⊥) G
+      walk : ∀ {G} → Γ & Δ ⊢p P ◂ Pr ∶ G → WaitV P L ∅S G
       walk (t/unskip tr eq td) = wait/~ c eq (waitFollow c adv (walk td) tr)
       walk (t/skip std)        = waitV/mono vof/nil (tree std)
       walk td@(t/send _ _ _ _ _) = wv/leaf (base td tt)
@@ -348,7 +351,7 @@ module Definitions.Typing.AlgNorm
       ∀ {I P Q Qs}{i : Fin (suc I)}{S E}{Pr : Proc γ δ}{G}
       → Γ ⊢e E ∶ S
       → Γ & Δ ⊢p P ◂ Q ⇒ Qs ! i < E >∙ Pr ∶ G
-      → WaitV P (SendL {Γ = Γ} {Δ = Δ} P Q Qs i S Pr) (λ _ → ⊥) G
+      → WaitV P (SendL {Γ = Γ} {Δ = Δ} P Q Qs i S Pr) ∅S G
     sendWait etd = Walk.walk _ sendL/closed sendL/adv base
       where
         base :
@@ -359,7 +362,7 @@ module Definitions.Typing.AlgNorm
     recvWait :
       ∀ {I P Q R}{Br : Vec (Proc (suc γ) δ) (suc I)}{G}
       → Γ & Δ ⊢p Q ◂ R ⇐ P ？· Br ∶ G
-      → WaitV Q (RecvL {Γ = Γ} {Δ = Δ} P Q R Br) (λ _ → ⊥) G
+      → WaitV Q (RecvL {Γ = Γ} {Δ = Δ} P Q R Br) ∅S G
     recvWait {Br = Br} =
       Walk.walk _ (recvL/closed {Br = Br}) (recvL/adv {Br = Br})
         λ { (t/recv R∈ foc gr conts) _ → R∈ , foc , (_ , _ , _ , gr) , conts }
@@ -367,7 +370,7 @@ module Definitions.Typing.AlgNorm
     varWait :
       ∀ {P}{X : Fin δ}{G}
       → Γ & Δ ⊢p P ◂ v X ∶ G
-      → WaitV P (Unskipped P (lu Δ X ~_)) (λ _ → ⊥) G
+      → WaitV P (Unskipped P (lu Δ X ~_)) ∅S G
     varWait =
       Walk.walk _ unskipped/~ unskipped/adv
         λ { (t/var eq) _ → _ , eq , _ , skip/refl , ~refl }
@@ -375,7 +378,7 @@ module Definitions.Typing.AlgNorm
     recWait :
       ∀ {P}{Pr : Proc γ (suc δ)}{G}
       → Γ & Δ ⊢p P ◂ rec Pr ∶ G
-      → WaitV P (Unskipped P (RecA {Γ = Γ} {Δ = Δ} {P = P} Pr)) (λ _ → ⊥) G
+      → WaitV P (Unskipped P (RecA {Γ = Γ} {Δ = Δ} {P = P} Pr)) ∅S G
     recWait {P = P} {Pr = Pr} =
       Walk.walk _ unskipped/~ unskipped/adv
         λ { (t/rec _ td) _ → _ , td , _ , skip/refl , ~refl }
@@ -383,7 +386,7 @@ module Definitions.Typing.AlgNorm
     sendEWait :
       ∀ {I P Q Qs}{i : Fin (suc I)}{E}{Pr : Proc γ δ}{G}
       → Γ & Δ ⊢p P ◂ Q ⇒ Qs ! i < E >∙ Pr ∶ G
-      → WaitV P (SendE {Γ = Γ} {Δ = Δ} P Q Qs i E Pr) (λ _ → ⊥) G
+      → WaitV P (SendE {Γ = Γ} {Δ = Δ} P Q Qs i E Pr) ∅S G
     sendEWait =
       Walk.walk _ sendE/closed sendE/adv
         λ { (t/send Q∈ _ gr etd td) _ → Q∈ , _ , _ , etd , gr , td }
@@ -391,19 +394,19 @@ module Definitions.Typing.AlgNorm
     recGWait :
       ∀ {P}{Pr : Proc γ (suc δ)}{G}
       → Γ & Δ ⊢p P ◂ rec Pr ∶ G
-      → WaitV P (RecG Pr) (λ _ → ⊥) G
+      → WaitV P (RecG Pr) ∅S G
     recGWait = Walk.walk _ recG/closed recG/adv λ { (t/rec guarded _) _ → guarded }
 
     ifEWait :
       ∀ {P E}{A B : Proc γ δ}{G}
       → Γ & Δ ⊢p P ◂ ifp E then A else B ∶ G
-      → WaitV P (IfE {Γ = Γ} E) (λ _ → ⊥) G
+      → WaitV P (IfE {Γ = Γ} E) ∅S G
     ifEWait = Walk.walk _ ifE/closed ifE/adv λ { (t/if etd _ _) _ → etd }
 
     endWait :
       ∀ {P}{G}
       → Γ & Δ ⊢p P ◂ ∅ ∶ G
-      → WaitV P (EndL P) (λ _ → ⊥) G
+      → WaitV P (EndL P) ∅S G
     endWait = Walk.walk _ endL/closed endL/adv λ { (t/end done) _ → done }
 
     ---------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 open import Data.Nat using (ℕ; suc)
 open import Data.Fin
-  using (Fin; zero; suc)
+  using (Fin; zero; suc; punchOut)
   renaming (_≟_ to _≟f_)
 open import Data.Vec
   using (Vec; []; _∷_; insertAt)
@@ -16,8 +16,8 @@ open import Data.Product using (_,_)
 open import Function using (_∘_)
 open import Relation.Nullary using (yes; no)
 open import Relation.Binary.PropositionalEquality
-  using (_≡_; refl; sym; subst)
-open import Utils.Vec using (lookup-not-insertAt)
+  using (_≡_; refl; sym; trans; cong; subst)
+open import Data.Fin.Properties using (punchIn-punchOut)
 open import Definitions.Typing.Declarative
 
 module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
@@ -377,14 +377,12 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
       ptd′
       (t/var {X = X′} eq)
       with X ≟f X′
-    ... | no ¬eq
-      rewrite lookup-not-insertAt
-                {V = Δ}
-                {a = G'}
-                X
-                X′
-                ¬eq =
-      t/var eq
+    ... | no ¬eq =
+      t/var
+        (subst (_~ _)
+          (trans (cong (lu (insertAt Δ X G')) (sym (punchIn-punchOut ¬eq)))
+                 (insertAt-punchIn Δ X G' (punchOut ¬eq)))
+          eq)
     ... | yes refl
       rewrite insertAt-lookup Δ X G' =
       td/bisim ~ᵛ-refl eq ptd′

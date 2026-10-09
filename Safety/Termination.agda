@@ -8,10 +8,10 @@ open import Data.Nat.Induction using (<-wellFounded)
 open import Induction.WellFounded using (Acc; acc)
 open import Data.Fin using (Fin; zero) renaming (_≟_ to _≟f_; suc to fsuc)
 open import Data.Vec
-  using (Vec; []; _∷_; _[_]=_; map; sum; tabulate)
+  using (Vec; []; _∷_; _[_]=_; map; sum; allFin)
   renaming (lookup to lu)
 open import Data.Vec.Properties
-  using ( []=⇒lookup; lookup⇒[]=; lookup∘tabulate
+  using ( []=⇒lookup; lookup⇒[]=; lookup-allFin
         ; lookup∘update; lookup∘update′ )
 open import Data.Product using (∃-syntax; _,_; _×_)
 open import Data.Sum using (inj₁; inj₂)
@@ -160,7 +160,6 @@ module Safety.Termination
 
   final-run :
     ∀ {M G} → ⊢ᴸ M ∶ G → done M → ∃[ M′ ] M τ⇒ M′ × finished M′
-  final-run ts d with final-run/aux (tabulate (λ j → j)) ts d
+  final-run ts d with final-run/aux (allFin K) ts d
   ... | M′ , r , ended =
-    M′ , r ,
-    λ j → subst (λ l → lu M′ l ≡ ∅) (lookup∘tabulate (λ l → l) j) (ended j)
+    M′ , r , λ j → subst (λ l → lu M′ l ≡ ∅) (lookup-allFin j) (ended j)

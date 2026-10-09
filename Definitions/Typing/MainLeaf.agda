@@ -10,7 +10,8 @@ open import Data.Product using (Σ-syntax; ∃-syntax; _,_; _×_)
 
 open import Data.Sum using (_⊎_; inj₁; inj₂)
 
-open import Data.Empty using (⊥; ⊥-elim)
+open import Data.Empty using (⊥-elim)
+open import Relation.Unary using () renaming (∅ to ∅S)
 
 open import Data.List.Relation.Unary.Any using (Any; here; there)
 
@@ -26,7 +27,7 @@ module Definitions.Typing.MainLeaf {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
     -- The `wv/step` nodes on the path, one per growth of the visited set.
     data Anc : Behavs → Set₁ where
 
-      anc/nil : Anc (λ _ → ⊥)
+      anc/nil : Anc ∅S
 
       anc/cons :
         ∀ {V s}
@@ -107,6 +108,6 @@ module Definitions.Typing.MainLeaf {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
 
   waitFind :
     ∀ {P}{L : Behavs}{G}
-    → WaitV P L (λ _ → ⊥) G
+    → WaitV P L ∅S G
     → ∃[ K ] L K
   waitFind = findLeaf anc/nil

@@ -6,7 +6,8 @@
 module Tests.Views where
 
 open import Data.Bool using (true; false)
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin using (Fin)
+open import Data.Fin.Patterns
 open import Data.Fin.Subset using (⁅_⁆; _∪_)
 open import Data.Vec using ([]; _∷_)
 open import Data.Product using (proj₁)
@@ -22,12 +23,12 @@ open import Definitions.Proc 3
 open import Check
 
 A B C : Fin 3
-A = zero
-B = suc zero
-C = suc (suc zero)
+A = 0F
+B = 1F
+C = 2F
 
 here : Fin 1
-here = zero
+here = 0F
 
 -- A → B → C → A.  Block {A,B}: `A→B` is internal.
 module RoundRobin where

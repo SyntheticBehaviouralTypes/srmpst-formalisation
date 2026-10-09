@@ -9,14 +9,15 @@
 module Tests.Quotient where
 
 open import Data.Bool using (Bool; true; false; if_then_else_)
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin using (Fin)
+open import Data.Fin.Patterns
 open import Data.Nat using (ℕ)
 open import Data.List using ([]; _∷_)
 open import Data.Vec using ([]; _∷_)
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Data.Product using (_,_)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl)
-open import Relation.Nullary.Decidable using (⌊_⌋; does)
+open import Relation.Nullary.Decidable using (⌊_⌋; does; True)
 
 open import Definitions.Expr using (s/bool; s/nat; s/unit; val; v/bool; v/nat; v/unit)
 
@@ -45,8 +46,8 @@ module Judge (N : ℕ) where
   -- Code for block `Ps`, at the initial state of its view (`typecheck`
   -- decides the view too).
   TC : (g : OpenGraph 0)
-       {p : T ⌊ wellBehaved? (underlying (compile g)) ⌋}
-       {q : T ⌊ synchronous? (underlying (compile g)) ⌋}
+       {p : True (wellBehaved? (underlying (compile g)))}
+       {q : True (synchronous? (underlying (compile g)))}
      → PartSet → Proc 0 0 → Bool
   TC g {p} {q} Ps Pr = does (typecheck (buildG g {p} {q}) Ps Pr)
 
@@ -62,16 +63,16 @@ module Three where
   open Judge 3
 
   A B C : Fin 3
-  A = zero
-  B = suc zero
-  C = suc (suc zero)
+  A = 0F
+  B = 1F
+  C = 2F
 
   here : Fin 1
-  here = zero
+  here = 0F
 
   lbl0 lbl1 : Fin 2
-  lbl0 = zero
-  lbl1 = suc zero
+  lbl0 = 0F
+  lbl1 = 1F
 
   AB AC BC : _
   AB = ⁅ A ⁆ ∪ ⁅ B ⁆
@@ -103,11 +104,11 @@ module Three where
     A′ = C
 
     oauth : OpenGraph 0
-    oauth = openGraph 4 (node zero)
-      ( ( ((S′ ⟶ ⁅ C′ ⁆ # mkChoice lbl0 s/nat) , node (suc zero))
-        ∷ ((S′ ⟶ ⁅ C′ ⁆ # mkChoice lbl1 s/nat) , node (suc (suc (suc zero))))
+    oauth = openGraph 4 (node 0F)
+      ( ( ((S′ ⟶ ⁅ C′ ⁆ # mkChoice lbl0 s/nat) , node 1F)
+        ∷ ((S′ ⟶ ⁅ C′ ⁆ # mkChoice lbl1 s/nat) , node 3F)
         ∷ [] )
-      v∷ ( ((C′ ⟶ ⁅ A′ ⁆ # mkChoice lbl0 s/nat) , node (suc (suc zero))) ∷ [] )
+      v∷ ( ((C′ ⟶ ⁅ A′ ⁆ # mkChoice lbl0 s/nat) , node 2F) ∷ [] )
       v∷ ( ((A′ ⟶ ⁅ S′ ⁆ # mkChoice here s/bool) , ended) ∷ [] )
       v∷ ( ((C′ ⟶ ⁅ A′ ⁆ # mkChoice lbl1 s/bool) , ended) ∷ [] )
       v∷ v[]
@@ -128,15 +129,15 @@ module Three where
     S = C
 
     rec2buy : OpenGraph 0
-    rec2buy = openGraph 6 (node zero)
-      (  ( ((A ⟶ ⁅ S ⁆ # mkChoice here s/nat) , node (suc zero)) ∷ [] )
-      v∷ ( ((S ⟶ ⁅ A ⁆ # mkChoice here s/nat) , node (suc (suc zero))) ∷ [] )
-      v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/nat) , node (suc (suc (suc (suc zero)))))
-         ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/unit) , node (suc (suc (suc zero))))
+    rec2buy = openGraph 6 (node 0F)
+      (  ( ((A ⟶ ⁅ S ⁆ # mkChoice here s/nat) , node 1F) ∷ [] )
+      v∷ ( ((S ⟶ ⁅ A ⁆ # mkChoice here s/nat) , node 2F) ∷ [] )
+      v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/nat) , node 4F)
+         ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/unit) , node 3F)
          ∷ [] )
       v∷ ( ((A ⟶ ⁅ S ⁆ # mkChoice lbl1 s/unit) , ended) ∷ [] )
-      v∷ ( ((B ⟶ ⁅ A ⁆ # mkChoice lbl0 s/nat) , node (suc (suc (suc (suc (suc zero))))))
-         ∷ ((B ⟶ ⁅ A ⁆ # mkChoice lbl1 s/unit) , node (suc (suc zero)))
+      v∷ ( ((B ⟶ ⁅ A ⁆ # mkChoice lbl0 s/nat) , node 5F)
+         ∷ ((B ⟶ ⁅ A ⁆ # mkChoice lbl1 s/unit) , node 2F)
          ∷ [] )
       v∷ ( ((A ⟶ ⁅ S ⁆ # mkChoice lbl0 s/unit) , ended) ∷ [] )
       v∷ v[]
@@ -194,9 +195,9 @@ module Three where
   -- Examples/CounterExamples.agda: A → B (choice), B → C (forward).
   module Forward where
     round : OpenGraph 0
-    round = openGraph 3 (node zero)
-      ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , node (suc zero))
-        ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , node (suc (suc zero)))
+    round = openGraph 3 (node 0F)
+      ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , node 1F)
+        ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , node 2F)
         ∷ [] )
       v∷ ( ((B ⟶ ⁅ C ⁆ # mkChoice lbl0 s/bool) , ended) ∷ [] )
       v∷ ( ((B ⟶ ⁅ C ⁆ # mkChoice lbl1 s/bool) , ended) ∷ [] )
@@ -268,19 +269,19 @@ module Four where
   open Judge 4
 
   here : Fin 1
-  here = zero
+  here = 0F
 
   lbl0 lbl1 : Fin 2
-  lbl0 = zero
-  lbl1 = suc zero
+  lbl0 = 0F
+  lbl1 = 1F
 
   -- Examples/RecMW.agda.
   module RecMW where
     M R W1 W2 : Fin 4
-    M  = zero
-    R  = suc zero
-    W1 = suc (suc zero)
-    W2 = suc (suc (suc zero))
+    M  = 0F
+    R  = 1F
+    W1 = 2F
+    W2 = 3F
 
     recmw : OpenGraph 0
     recmw =
@@ -288,7 +289,7 @@ module Four where
           (   ((M ⟶ ⁅ W2 ⁆ # mkChoice lbl0 s/nat) ∙ end)
             ∥ ((W1 ⟶ ⁅ R ⁆ # mkChoice here s/nat) ∙ end)
           ⨾ (W2 ⟶ ⁅ R ⁆ # mkChoice here s/nat) ∙
-            choice ((R ⟶ ⁅ M ⁆ # mkChoice lbl0 s/nat) ⇒ gvar zero)
+            choice ((R ⟶ ⁅ M ⁆ # mkChoice lbl0 s/nat) ⇒ gvar 0F)
                    ( ((R ⟶ ⁅ M ⁆ # mkChoice lbl1 s/bool) ⇒
                        ((M ⟶ ⁅ W1 ⁆ # mkChoice lbl1 s/bool) ∙
                         (M ⟶ ⁅ W2 ⁆ # mkChoice lbl1 s/bool) ∙ end))
@@ -308,13 +309,13 @@ module Four where
     mw1₁ =
       rec (M ⇒ ⁅ W2 ⁆ ! lbl0 < val (v/nat 0) >∙
            (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-            (M ⇐ R ？· (v zero
+            (M ⇐ R ？· (v 0F
                        ∷ (M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool true) >∙ ∅)
                        ∷ []))))
     mw1₂ =
       rec (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
            (M ⇒ ⁅ W2 ⁆ ! lbl0 < val (v/nat 0) >∙
-            (M ⇐ R ？· (v zero
+            (M ⇐ R ？· (v 0F
                        ∷ (M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool true) >∙ ∅)
                        ∷ []))))
 
@@ -323,12 +324,12 @@ module Four where
     mw2 =
       rec (M ⇒ ⁅ W1 ⁆ ! lbl0 < val (v/nat 0) >∙
            (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-            (M ⇐ R ？· (v zero
+            (M ⇐ R ？· (v 0F
                        ∷ (M ⇒ ⁅ W1 ⁆ ! lbl1 < val (v/bool true) >∙ ∅)
                        ∷ []))))
     w1r =
       rec (W1 ⇐ M ？·
-            ( (R ⇐ W2 ？· ((R ⇒ ⁅ M ⁆ ! lbl0 < val (v/nat 0) >∙ v zero) ∷ []))
+            ( (R ⇐ W2 ？· ((R ⇒ ⁅ M ⁆ ! lbl0 < val (v/nat 0) >∙ v 0F) ∷ []))
             ∷ ∅
             ∷ []))
 
@@ -338,14 +339,14 @@ module Four where
     w12₁ =
       rec (W1 ⇐ M ？·
             ( (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-               (W2 ⇐ M ？· ( (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙ v zero)
+               (W2 ⇐ M ？· ( (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙ v 0F)
                            ∷ ∅ ∷ [])))
             ∷ (W2 ⇐ M ？· (∅ ∷ ∅ ∷ []))
             ∷ []))
     w12₂ =
       rec (W1 ⇐ M ？·
             ( (W2 ⇐ M ？· ( (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-                             (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙ v zero))
+                             (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙ v 0F))
                            ∷ ∅ ∷ []))
             ∷ (W2 ⇐ M ？· (∅ ∷ ∅ ∷ []))
             ∷ []))
@@ -387,10 +388,10 @@ module Four where
     open import Definitions.Graph.View 4 using (viewGraph)
 
     A B C D : Fin 4
-    A = zero
-    B = suc zero
-    C = suc (suc zero)
-    D = suc (suc (suc zero))
+    A = 0F
+    B = 1F
+    C = 2F
+    D = 3F
 
     g : OpenGraph 0
     g = (A ⟶ ⁅ B ⁆ # mkChoice here s/unit) ∙
@@ -415,10 +416,10 @@ module Four where
   -- An internal choice, told to `R` by one message.
   module InternalChoice where
     P Q R S : Fin 4
-    P = zero
-    Q = suc zero
-    R = suc (suc zero)
-    S = suc (suc (suc zero))
+    P = 0F
+    Q = 1F
+    R = 2F
+    S = 3F
 
     told : OpenGraph 0
     told =
@@ -446,15 +447,15 @@ module Four where
   -- `P → Q . R → S`, as role-level synchronisation demands: both orders.
   module Square where
     P Q R S : Fin 4
-    P = zero
-    Q = suc zero
-    R = suc (suc zero)
-    S = suc (suc (suc zero))
+    P = 0F
+    Q = 1F
+    R = 2F
+    S = 3F
 
     square : OpenGraph 0
-    square = openGraph 3 (node zero)
-      ( ( ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) , node (suc zero))
-        ∷ ((R ⟶ ⁅ S ⁆ # mkChoice here s/unit) , node (suc (suc zero)))
+    square = openGraph 3 (node 0F)
+      ( ( ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) , node 1F)
+        ∷ ((R ⟶ ⁅ S ⁆ # mkChoice here s/unit) , node 2F)
         ∷ [] )
       v∷ ( ((R ⟶ ⁅ S ⁆ # mkChoice here s/unit) , ended) ∷ [] )
       v∷ ( ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) , ended) ∷ [] )
@@ -500,30 +501,30 @@ module Five where
   open Judge 5
 
   here : Fin 1
-  here = zero
+  here = 0F
 
   lbl0 lbl1 : Fin 2
-  lbl0 = zero
-  lbl1 = suc zero
+  lbl0 = 0F
+  lbl1 = 1F
 
   -- `(P → Q) ∥ (R → T . R → S)` under {P,S}.  `P→Q` and `R→S` are
   -- a mixed choice at state 2, which the idle `R→T` reaches from 0.
   module Race where
     P Q R S T : Fin 5
-    P = zero
-    Q = suc zero
-    R = suc (suc zero)
-    S = suc (suc (suc zero))
-    T = suc (suc (suc (suc zero)))
+    P = 0F
+    Q = 1F
+    R = 2F
+    S = 3F
+    T = 4F
 
     g : OpenGraph 0
-    g = openGraph 5 (node zero)
-      ( ( ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) , node (suc zero))
-        ∷ ((R ⟶ ⁅ T ⁆ # mkChoice here s/unit) , node (suc (suc zero)))
+    g = openGraph 5 (node 0F)
+      ( ( ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) , node 1F)
+        ∷ ((R ⟶ ⁅ T ⁆ # mkChoice here s/unit) , node 2F)
         ∷ [] )
-      v∷ ( ((R ⟶ ⁅ T ⁆ # mkChoice here s/unit) , node (suc (suc (suc zero)))) ∷ [] )
-      v∷ ( ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) , node (suc (suc (suc zero))))
-         ∷ ((R ⟶ ⁅ S ⁆ # mkChoice here s/unit) , node (suc (suc (suc (suc zero)))))
+      v∷ ( ((R ⟶ ⁅ T ⁆ # mkChoice here s/unit) , node 3F) ∷ [] )
+      v∷ ( ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) , node 3F)
+         ∷ ((R ⟶ ⁅ S ⁆ # mkChoice here s/unit) , node 4F)
          ∷ [] )
       v∷ ( ((R ⟶ ⁅ S ⁆ # mkChoice here s/unit) , ended) ∷ [] )
       v∷ ( ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) , ended) ∷ [] )
@@ -551,11 +552,11 @@ module Five where
   --   (P → S # 0 . S → R # 0  +  P → S # 1 . S → R # 1)  ∥  T → U
   module InternalThenIdle where
     P S R T U : Fin 5
-    P = zero
-    S = suc zero
-    R = suc (suc zero)
-    T = suc (suc (suc zero))
-    U = suc (suc (suc (suc zero)))
+    P = 0F
+    S = 1F
+    R = 2F
+    T = 3F
+    U = 4F
 
     g : OpenGraph 0
     g =

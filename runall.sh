@@ -43,6 +43,9 @@ NOTES:
     excluded and there are no special cases.  Measured 2026-10-07:
     478 s, 2.3 GB peak resident.
 
+    Every file is checked through agda-guard.sh, which kills Agda once it
+    uses more than AGDA_MEM_PERCENT (default 40) percent of physical memory.
+
     `wellBehaved?` witnesses must be `opaque`: a transparent one is re-evaluated
     at every use site.
 EOF
@@ -106,14 +109,19 @@ if [ $WITH_TESTS -eq 1 ]; then
     TO_CHECK+=("${TEST_ROOTS[@]}")
 fi
 
+GUARD="$(dirname "$0")/agda-guard.sh"
 errors=0
 
 for file in "${TO_CHECK[@]}"; do
-    out=$(agda $AGDA_FLAGS "$file" 2>&1)
+    # Memory-capped: see agda-guard.sh.
+    out=$("$GUARD" $AGDA_FLAGS "$file" 2>&1)
     status=$?
     echo "$out" | grep -v "^ *Checking"
 
     if [ $status -ne 0 ]; then
+        if [ $status -eq 137 ] || echo "$out" | grep -q "Heap exhausted"; then
+            echo "Memory cap exceeded: $file"
+        fi
         echo "Error processing file: $file"
         errors=$((errors + 1))
     fi

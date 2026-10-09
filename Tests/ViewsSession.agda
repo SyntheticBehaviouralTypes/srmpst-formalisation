@@ -5,13 +5,14 @@
 
 module Tests.ViewsSession where
 
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin using (Fin)
+open import Data.Fin.Patterns
 open import Data.Fin.Subset using (⁅_⁆; _∈_; inside; outside)
 open import Data.Vec using (Vec; []; _∷_; here; there; lookup)
 open import Data.Sum using (_⊎_)
 open import Data.Product using (∃-syntax; _×_)
 open import Data.List using (length)
-open import Relation.Nullary.Decidable using (toWitness)
+open import Relation.Nullary.Decidable using (from-yes)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl)
 
 open import Definitions.Common 3 using (PartSet)
@@ -24,12 +25,12 @@ open import Definitions.Proc 3
 open import Check
 
 A B C : Fin 3
-A = zero
-B = suc zero
-C = suc (suc zero)
+A = 0F
+B = 1F
+C = 2F
 
 here′ : Fin 1
-here′ = zero
+here′ = 0F
 
 round : OpenGraph 0
 round =
@@ -59,22 +60,22 @@ s₀ = initial (compile round)
           ∷ []
 
     owner : Fin 3 → Fin 2
-    owner zero             = zero
-    owner (suc zero)       = zero
-    owner (suc (suc zero)) = suc zero
+    owner 0F = 0F
+    owner 1F = 0F
+    owner 2F = 1F
 
     owner/∈ : ∀ R → R ∈ lookup roles (owner R)
-    owner/∈ zero             = here
-    owner/∈ (suc zero)       = there here
-    owner/∈ (suc (suc zero)) = there (there here)
+    owner/∈ 0F = here
+    owner/∈ 1F = there here
+    owner/∈ 2F = there (there here)
 
     ∈/owner : ∀ {j R} → R ∈ lookup roles j → owner R ≡ j
-    ∈/owner {zero}     {zero}             _                    = refl
-    ∈/owner {zero}     {suc zero}         _                    = refl
-    ∈/owner {zero}     {suc (suc zero)}   (there (there ()))
-    ∈/owner {suc zero} {zero}             ()
-    ∈/owner {suc zero} {suc zero}         (there ())
-    ∈/owner {suc zero} {suc (suc zero)}   _                    = refl
+    ∈/owner {0F} {0F} _ = refl
+    ∈/owner {0F} {1F} _ = refl
+    ∈/owner {0F} {2F} (there (there ()))
+    ∈/owner {1F} {0F} ()
+    ∈/owner {1F} {1F} (there ())
+    ∈/owner {1F} {2F} _ = refl
 
 -- ── The global witnesses, `opaque` (see `Tests/SkipBeforeVar.agda`) ────
 
@@ -99,7 +100,7 @@ M : Session
 M = p/AB ∷ p/C ∷ []
 
 M-typed : ⊢s[ Ρ ] M ∶ s₀
-M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+M-typed = from-yes (typecheckSession wbg Ρ M)
 
 M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
        → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′

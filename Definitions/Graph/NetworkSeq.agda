@@ -8,16 +8,18 @@
 open import Data.Empty using (⊥; ⊥-elim)
 import Data.Fin.Properties as FinP
 open import Data.List using (List; []; _∷_)
-open import Data.List.Membership.Propositional using (_∈_)
+open import Data.List.Membership.Propositional using (_∈_; find; lose)
 import Data.List.Membership.Propositional.Properties as MemP
 import Data.List.Relation.Unary.All as All
-open import Data.List.Relation.Unary.Any using (here; there)
+open import Data.List.Relation.Unary.Any using (here)
+import Data.List.Relation.Unary.Any as Any
+open import Data.List.Relation.Unary.Any.Properties using (¬Any[])
 open import Data.Nat using (ℕ)
 open import Data.Product
-  using (_×_; _,_; proj₁; proj₂; ∃-syntax; Σ-syntax)
+  using (_×_; _,_; proj₁; proj₂; ∃-syntax; Σ-syntax; map₂)
 open import Data.Sum using (inj₁; inj₂)
 open import Relation.Binary.PropositionalEquality
-  using (_≡_; _≢_; refl; sym; cong; subst)
+  using (_≡_; _≢_; refl; sym; subst)
 open import Relation.Nullary using (Dec; yes; no; ¬_)
 open import Relation.Nullary.Decidable using (map′; _→?_)
 
@@ -37,7 +39,7 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
     → NStep (n₁ ⨾ n₂) (live (inj₂ a)) α (seamTo n₁ n₂ t₀)
   stepSeq₁ {n₁} {n₂} {a} st =
     nlisted⇒step (n₁ ⨾ n₂) {s = live (inj₂ a)}
-      (MemP.∈-map⁺ (λ e → proj₁ e , seamTo n₁ n₂ (proj₂ e))
+      (MemP.∈-map⁺ (map₂ (seamTo n₁ n₂))
         (nstep⇒listed n₁ {s = live a} st))
 
   stepSeq₂ :
@@ -46,7 +48,7 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
     → NStep (n₁ ⨾ n₂) (live (inj₁ b)) α (injR b′)
   stepSeq₂ {n₁} {n₂} {b} st =
     nlisted⇒step (n₁ ⨾ n₂) {s = live (inj₁ b)}
-      (MemP.∈-map⁺ (λ e → proj₁ e , injR (proj₂ e))
+      (MemP.∈-map⁺ (map₂ injR)
         (nstep⇒listed n₂ {s = live b} st))
 
   sstep-inv₁ :
@@ -55,7 +57,7 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
     → Σ[ t₀ ∈ NState n₁ ]
         NStep n₁ (live a) α t₀ × t ≡ seamTo n₁ n₂ t₀
   sstep-inv₁ n₁ n₂ {a} st
-    with MemP.∈-map⁻ (λ e → proj₁ e , seamTo n₁ n₂ (proj₂ e))
+    with MemP.∈-map⁻ (map₂ (seamTo n₁ n₂))
            (nstep⇒listed (n₁ ⨾ n₂) {s = live (inj₂ a)} st)
   ... | (α₀ , t₀) , m₀ , refl =
     t₀ , nlisted⇒step n₁ {s = live a} m₀ , refl
@@ -66,7 +68,7 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
     → Σ[ b′ ∈ NState n₂ ]
         NStep n₂ (live b) α b′ × t ≡ injR b′
   sstep-inv₂ n₁ n₂ {b} st
-    with MemP.∈-map⁻ (λ e → proj₁ e , injR (proj₂ e))
+    with MemP.∈-map⁻ (map₂ injR)
            (nstep⇒listed (n₁ ⨾ n₂) {s = live (inj₁ b)} st)
   ... | (α₀ , b′) , m₀ , refl =
     b′ , nlisted⇒step n₂ {s = live b} m₀ , refl
@@ -83,10 +85,7 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
   steps? : ∀ n s → Dec (∃[ α ] ∃[ t ] NStep n s α t)
   steps? n s with nedges n s in eq
   ... | [] =
-    no λ { (_ , _ , st) → absurd (subst (_ ∈_) eq (nstep⇒listed n st)) }
-    where
-      absurd : ∀ {A : Set} {x : A} → x ∈ [] → ⊥
-      absurd ()
+    no λ { (_ , _ , st) → ¬Any[] (subst (_ ∈_) eq (nstep⇒listed n st)) }
   ... | (α , t) ∷ _ =
     yes (α , t , nlisted⇒step n (subst (_ ∈_) (sym eq) (here refl)))
 
@@ -111,15 +110,13 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
   findAction :
     ∀ {A : Set} (γ : Action) (xs : List (Action × A))
     → Dec (∃[ t ] (γ , t) ∈ xs)
-  findAction γ [] = no λ ()
-  findAction γ ((α , u) ∷ xs) with γ ≟Action α
-  ... | yes refl = yes (u , here refl)
-  ... | no γ≢α with findAction γ xs
-  ...   | yes (t , m) = yes (t , there m)
-  ...   | no ¬ex =
-    no λ where
-      (t , here eq)  → γ≢α (cong proj₁ eq)
-      (t , there m)  → ¬ex (t , m)
+  findAction {A} γ xs =
+    map′
+      (λ hit →
+         let (_ , t) , m , α≡γ = find {A = Action × A} hit
+         in t , subst (λ β → (β , t) ∈ xs) α≡γ m)
+      (λ (_ , m) → lose m refl)
+      (Any.any? (λ e → proj₁ e ≟Action γ) xs)
 
   -- An action at `n₂`'s start, independent of the seam-entering `β`, is
   -- available before the seam.

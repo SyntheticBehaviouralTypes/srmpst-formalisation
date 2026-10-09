@@ -17,7 +17,7 @@ open import Function using (_∘_)
 open import Function.Bundles using (Equivalence)
 open import Relation.Binary.Definitions using (DecidableEquality)
 open import Relation.Binary.PropositionalEquality
-  using (_≡_; refl; cong; cong₂; sym; trans)
+  using (_≡_; refl; cong; cong₂)
 open import Relation.Nullary using (Dec; yes; no; ¬?)
 open import Relation.Nullary.Decidable using (map′; _×?_; _→?_)
 
@@ -62,15 +62,10 @@ module Definitions.Graph.Action (N : ℕ) where
   choiceFromCode : ChoiceCode → Choice
   choiceFromCode (_ , i , S) = i < S >
 
-  choice-roundtrip : ∀ c → choiceFromCode (choiceCode c) ≡ c
-  choice-roundtrip _ = refl
-
+  -- `choiceFromCode` undoes `choiceCode` definitionally.
   choiceCode-injective :
     ∀ {c c′} → choiceCode c ≡ choiceCode c′ → c ≡ c′
-  choiceCode-injective {c} {c′} eq =
-    trans
-      (sym (choice-roundtrip c))
-      (trans (cong choiceFromCode eq) (choice-roundtrip c′))
+  choiceCode-injective = cong choiceFromCode
 
   _≟ChoiceCode_ : DecidableEquality ChoiceCode
   _≟ChoiceCode_ =

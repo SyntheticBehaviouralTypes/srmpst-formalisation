@@ -5,9 +5,7 @@
 -- Its steps are the view's (`view⇒`, `view⇐`).
 
 open import Data.Bool using (true)
-open import Data.Fin.Properties using (all?)
-open import Data.Fin.Subset using (_∈_)
-open import Data.Fin.Subset.Properties using (_∈?_)
+open import Utils.Bits using () renaming (_∈?_ to _∈ˢ?_)
 open import Data.List using (List; _++_; filter; concatMap; allFin)
 open import Data.List.Membership.Propositional
   using (find; lose) renaming (_∈_ to _∈L_)
@@ -18,7 +16,7 @@ open import Data.Nat using (ℕ; suc)
 open import Data.Product using (∃-syntax; _,_; _×_; proj₁)
 open import Data.Sum using (inj₁; inj₂)
 open import Data.Unit using (tt)
-open import Data.Vec using (Vec; lookup; tabulate)
+open import Data.Vec using (Vec; tabulate)
 import Data.Vec as Vec
 import Data.Vec.Properties as VecP
 open import Relation.Binary.Construct.Closure.ReflexiveTransitive
@@ -26,7 +24,7 @@ open import Relation.Binary.Construct.Closure.ReflexiveTransitive
 open import Relation.Binary.PropositionalEquality
   using (_≡_; sym; subst)
 open import Relation.Nullary using (Dec; ¬_; ¬?)
-open import Relation.Nullary.Decidable using (_×?_; _→?_; T?)
+open import Relation.Nullary.Decidable using (_×?_)
 
 import Definitions.View as View
 
@@ -43,28 +41,26 @@ module Definitions.Graph.View (N : ℕ) where
       n = size G
       module V = View (graphTheory G)
 
-    internal? : ∀ α → Dec (V.Internal Ps α)
-    internal? α = all? λ X → (X ∈α? α) →? (X ∈? Ps)
-
     -- `Ps` takes part, not internally.
     External : Action → Set
     External α = ¬ V.Internal Ps α × Ps ∈αˢ α
 
     external? : ∀ α → Dec (External α)
-    external? α = ¬? (internal? α) ×? (Ps ∈αˢ? α)
+    external? α = ¬? (V.internal? Ps α) ×? (Ps ∈αˢ? α)
 
     -- ══════════════════════════════════════════════════════════════════
     --  `Ps`'s internal edges, and what they reach
     -- ══════════════════════════════════════════════════════════════════
 
     Gτ : Graph
-    Gτ = graph n (Vec.map (filter (λ e → internal? (proj₁ e))) (outgoing G))
+    Gτ =
+      graph n (Vec.map (filter (λ e → V.internal? Ps (proj₁ e))) (outgoing G))
 
     edgeτ⇒ :
       ∀ {s α t} → _-<_>->_ {Gτ} s α t
       → _-<_>->_ {G} s α t × V.Internal Ps α
     edgeτ⇒ {s} gr
-      with ∈-filter⁻ (λ e → internal? (proj₁ e))
+      with ∈-filter⁻ (λ e → V.internal? Ps (proj₁ e))
              (subst (_ ∈L_) (VecP.lookup-map s _ (outgoing G))
                 (step⇒listed gr))
     ... | mem , int = listed⇒step mem , int
@@ -75,7 +71,7 @@ module Definitions.Graph.View (N : ℕ) where
     ⇒edgeτ {s} gr int =
       listed⇒step
         (subst (_ ∈L_) (sym (VecP.lookup-map s _ (outgoing G)))
-          (∈-filter⁺ (λ e → internal? (proj₁ e)) (step⇒listed gr) int))
+          (∈-filter⁺ (λ e → V.internal? Ps (proj₁ e)) (step⇒listed gr) int))
 
     path⇒τs :
       ∀ {s t k} → PathVia Gτ (λ _ → true) s t k
@@ -94,22 +90,20 @@ module Definitions.Graph.View (N : ℕ) where
     -- The states `Ps`'s internal steps reach from `s`.
     closure : State G → List (State G)
     closure s =
-      filter (λ u → T? (lookup (reachVia Gτ (λ _ → true) s) u)) (allFin n)
+      filter (_∈ˢ? reachVia Gτ (λ _ → true) s) (allFin n)
 
     closure⇒ : ∀ {s u} → u ∈L closure s → Star (V._-τ->_ Ps) s u
     closure⇒ {s} {u} mem =
       let _ , bit =
-            ∈-filter⁻ (λ u → T? (lookup (reachVia Gτ (λ _ → true) s) u))
-              {xs = allFin n} mem
-          _ , p = reachVia-sound Gτ _ s (T→≡true bit)
+            ∈-filter⁻ (_∈ˢ? reachVia Gτ (λ _ → true) s) {xs = allFin n} mem
+          _ , p = reachVia-sound Gτ _ s bit
       in path⇒τs p
 
     ⇒closure : ∀ {s u} → Star (V._-τ->_ Ps) s u → u ∈L closure s
     ⇒closure {s} {u} τs =
       let _ , p = τs⇒path τs
-      in ∈-filter⁺ (λ u → T? (lookup (reachVia Gτ (λ _ → true) s) u))
-           (∈-allFin u)
-           (≡true→T (reachVia-complete Gτ _ s p))
+      in ∈-filter⁺ (_∈ˢ? reachVia Gτ (λ _ → true) s)
+           (∈-allFin u) (reachVia-complete Gτ _ s p)
 
     -- ══════════════════════════════════════════════════════════════════
     --  The view graph

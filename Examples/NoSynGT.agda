@@ -6,7 +6,8 @@
 
 module Examples.NoSynGT where
 
-open import Data.Fin using (Fin; zero; suc)
+open import Data.Fin using (Fin)
+open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Data.List using ([]; _∷_)
 open import Data.Sum using (_⊎_)
@@ -15,7 +16,7 @@ open import Data.List using (length)
 open import Data.Unit using (tt)
 open import Data.Bool using (false)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl)
-open import Relation.Nullary.Decidable using (toWitness; does)
+open import Relation.Nullary.Decidable using (does; from-yes)
 
 open import Definitions.Expr using (s/unit; val; v/unit; v/nat; is-zero)
 open import Check
@@ -26,12 +27,12 @@ open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
 A B C : Fin 3
-A = zero
-B = suc zero
-C = suc (suc zero)
+A = 0F
+B = 1F
+C = 2F
 
 here : Fin 1
-here = zero
+here = 0F
 
 -- From s0, `A` messages `B` first or `C` first; both end in `ended`.
 nosyn : OpenGraph 0
@@ -63,15 +64,15 @@ p/C : Proc 0 0
 p/C = C ⇐ A ？· (∅ v∷ v[])
 
 own/AB∣C own/AC∣B own/A∣BC : Fin 3 → Fin 2
-own/AB∣C zero             = zero
-own/AB∣C (suc zero)       = zero
-own/AB∣C (suc (suc zero)) = suc zero
-own/AC∣B zero             = zero
-own/AC∣B (suc zero)       = suc zero
-own/AC∣B (suc (suc zero)) = zero
-own/A∣BC zero             = zero
-own/A∣BC (suc zero)       = suc zero
-own/A∣BC (suc (suc zero)) = suc zero
+own/AB∣C 0F = 0F
+own/AB∣C 1F = 0F
+own/AB∣C 2F = 1F
+own/AC∣B 0F = 0F
+own/AC∣B 1F = 1F
+own/AC∣B 2F = 0F
+own/A∣BC 0F = 0F
+own/A∣BC 1F = 1F
+own/A∣BC 2F = 1F
 
 -- {A} {B} {C}: one process per role.
 module A∣B∣C where
@@ -83,7 +84,7 @@ module A∣B∣C where
   M = p/A v∷ p/B v∷ p/C v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -100,7 +101,7 @@ module AB∣C where
   M = (A ⇒ ⁅ C ⁆ ! here < val v/unit >∙ ∅) v∷ p/C v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -117,7 +118,7 @@ module AC∣B where
   M = (A ⇒ ⁅ B ⁆ ! here < val v/unit >∙ ∅) v∷ p/B v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
@@ -143,7 +144,7 @@ module A∣BC where
 -- {A,B,C}: everything is internal.
 module ABC where
   Ρ : Assignment 1
-  Ρ = byOwner λ _ → zero
+  Ρ = byOwner λ _ → 0F
   open Over Ρ
   open Global Ρ using (_-[_]->ᵍ_)
 
@@ -151,7 +152,7 @@ module ABC where
   M = ∅ v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
-  M-typed = toWitness {a? = typecheckSession wbg Ρ M} _
+  M-typed = from-yes (typecheckSession wbg Ρ M)
 
   M-safe : ∀ {αs M′} → M =[ αs ]⇒* M′
          → ∃[ G′ ] s₀ -[ αs ]->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′

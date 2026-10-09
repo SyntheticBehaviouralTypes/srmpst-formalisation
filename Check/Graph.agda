@@ -4,13 +4,12 @@
 -- local view.  `WBGraph`'s evidence is Boolean, so `buildG g` needs no
 -- proof on a concrete graph.
 
-open import Data.Bool using (T)
 open import Data.Nat using (ℕ)
 open import Data.Product using (Σ-syntax; _,_; _×_; proj₁; proj₂)
 open import Data.Fin.Properties using (all?)
 open import Data.Vec using () renaming (lookup to lu)
 open import Relation.Nullary using (Dec)
-open import Relation.Nullary.Decidable using (⌊_⌋; toWitness)
+open import Relation.Nullary.Decidable using (toWitness; True)
 
 open import Definitions.Behav using (WellBehaved; Synchronous)
 open import Definitions.Typing.Declarative using (module Sessions)
@@ -30,7 +29,7 @@ module Check.Graph (N : ℕ) where
   WBGraph : Set
   WBGraph =
     Σ[ R ∈ RootedGraph ]
-      T ⌊ wellBehaved? (underlying R) ⌋ × T ⌊ synchronous? (underlying R) ⌋
+      True (wellBehaved? (underlying R)) × True (synchronous? (underlying R))
 
   wb-of : (WR : WBGraph) → WellBehaved (graphTheory (underlying (proj₁ WR)))
   wb-of WR = toWitness (proj₁ (proj₂ WR))
@@ -40,8 +39,8 @@ module Check.Graph (N : ℕ) where
 
   buildG :
     (OG : OpenGraph 0)
-    → {p : T ⌊ wellBehaved? (underlying (compile OG)) ⌋}
-    → {q : T ⌊ synchronous? (underlying (compile OG)) ⌋}
+    → {p : True (wellBehaved? (underlying (compile OG)))}
+    → {q : True (synchronous? (underlying (compile OG)))}
     → WBGraph
   buildG OG {p} {q} = compile OG , p , q
 

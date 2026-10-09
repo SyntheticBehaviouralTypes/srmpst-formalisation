@@ -8,6 +8,7 @@
 -- `follow`: every process's typing follows that step, by `Projection`.
 
 open import Data.Empty using (⊥; ⊥-elim)
+open import Relation.Unary using () renaming (∅ to ∅S)
 open import Data.Nat using (ℕ; suc)
 open import Data.Fin using (Fin; zero) renaming (_≟_ to _≟f_)
 import Data.Fin.Properties as FinP
@@ -451,7 +452,7 @@ module Safety.Preservation
 
         -- After a cycle: walk the `∈T` run, re-rooting the tree each step.
         ready-from-∈T :
-          ∀ {u} → Star Walk G₀ u → WaitV Ps 𝒮 (λ _ → ⊥) u → Ps VJ.∈T u
+          ∀ {u} → Star Walk G₀ u → WaitV Ps 𝒮 ∅S u → Ps VJ.∈T u
           → ∃[ G′ ] u -< α >->ᵍ G′
         ready-from-∈T walk (wv/leaf x) _ = leaf x
         ready-from-∈T walk (wv/cycle (_ , () , _) _) _
@@ -461,7 +462,7 @@ module Safety.Preservation
         ready-from-∈T walk top@(wv/step na _ kP)
           (_ , H , VJ.tr/step gr′ tr , there mem) =
           [ id , ⊥-elim ]′
-            (advance⊎ {X = λ _ → ⊥} id walk gr′ (na gr′) λ walk′ →
+            (advance⊎ {X = ∅S} id walk gr′ (na gr′) λ walk′ →
                inj₁ (ready-from-∈T walk′
                        (waitV/unfold-top c𝒮 top (λ w → w) (kP gr′))
                        (_ , H , tr , mem)))
