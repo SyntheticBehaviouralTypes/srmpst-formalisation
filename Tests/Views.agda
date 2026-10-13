@@ -19,7 +19,9 @@ open import Definitions.Graph.Decision 3 using (wellBehaved?)
 open import Definitions.Graph.View 3 using (viewGraph)
 open import Definitions.Graph.Algebra 3
 open import Definitions.Actions 3
-open import Definitions.Proc 3
+open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 3
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 open import Check
 
 A B C : Fin 3
@@ -27,16 +29,16 @@ A = 0F
 B = 1F
 C = 2F
 
-here : Fin 1
-here = 0F
+token : Fin 1
+token = 0F
 
 -- A → B → C → A.  Block {A,B}: `A→B` is internal.
 module RoundRobin where
   round : OpenGraph 0
   round =
-    (A ⟶ ⁅ B ⁆ # here < s/unit >) ∙
-    ((B ⟶ ⁅ C ⁆ # here < s/unit >) ∙
-     ((C ⟶ ⁅ A ⁆ # here < s/unit >) ∙ end))
+    A ⟶ ⁅ B ⁆ # token < s/unit > ∙
+    (B ⟶ ⁅ C ⁆ # token < s/unit > ∙
+     C ⟶ ⁅ A ⁆ # token < s/unit > ∙ end)
 
   wbg : WBGraph {N = 3}
   wbg = buildG round
@@ -48,10 +50,10 @@ module RoundRobin where
 
   -- `A→B` is hidden: the process of {A,B} sends at `B`, then receives at `A`.
   _ : does (typecheck wbg AB
-              (B ⇒ ⁅ C ⁆ ! here < val v/unit >∙ (A ⇐ C ？· (∅ ∷ []))))
+              (B ⇒ ⁅ C ⁆ ! token < val v/unit >∙ (A ⇐ C ？· ⟪ token ↦ ∅ ⟫)))
       ≡ true
   _ = refl
 
   -- Its internal step is no action of the code.
-  _ : does (typecheck wbg AB (A ⇒ ⁅ B ⁆ ! here < val v/unit >∙ ∅)) ≡ false
+  _ : does (typecheck wbg AB (A ⇒ ⁅ B ⁆ ! token < val v/unit >∙ ∅)) ≡ false
   _ = refl

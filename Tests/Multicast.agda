@@ -32,23 +32,25 @@ open import Definitions.Common 3 using (Part; PartSet)
 open import Definitions.Graph.Algebra 3
 open import Definitions.Graph.Decision 3 using (synchronous?)
 open import Definitions.Actions 3
-open import Definitions.Proc 3
+open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 3
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
 A B C : Fin 3
 A = 0F
 B = 1F
 C = 2F
 
--- the singleton index: pins `I = 0` for a non-branching send.
-here : Fin 1
-here = 0F
+-- `A`'s one message (a single label pins `I = 0`)
+announce : Fin 1
+announce = 0F
 
 BC CB : PartSet
 BC = ⁅ B ⁆ ∪ ⁅ C ⁆
 CB = ⁅ C ⁆ ∪ ⁅ B ⁆
 
 recv : Part → Proc 0 0
-recv R = R ⇐ A ？· (∅ V.∷ V.[])
+recv R = R ⇐ A ？· ⟪ announce ↦ ∅ ⟫
 
 -- ══════════════════════════════════════════════════════════════════════
 --  1–4: one multicast, then end
@@ -57,13 +59,13 @@ recv R = R ⇐ A ？· (∅ V.∷ V.[])
 module Once where
 
   g : OpenGraph 0
-  g = (A ⟶ BC # here < s/bool >) ∙ end
+  g = A ⟶ BC # announce < s/bool > ∙ end
 
   wbg : WBGraph {N = 3}
   wbg = buildG g
 
   send : PartSet → Proc 0 0
-  send Qs = A ⇒ Qs ! here < val (v/bool true) >∙ ∅
+  send Qs = A ⇒ Qs ! announce < val (v/bool true) >∙ ∅
 
   -- 1. accepted.
   accepted :
@@ -96,14 +98,14 @@ module NotSynchronous where
 
   -- A self-send: `A` is among its own receivers.
   self : OpenGraph 0
-  self = (A ⟶ ⁅ A ⁆ # here < s/bool >) ∙ end
+  self = A ⟶ ⁅ A ⁆ # announce < s/bool > ∙ end
 
   self-rejected : False (synchronous? (underlying (compile self)))
   self-rejected = tt
 
   -- An empty multicast: `A` sends to nobody.
   nobody : OpenGraph 0
-  nobody = (A ⟶ ⊥ # here < s/bool >) ∙ end
+  nobody = A ⟶ ⊥ # announce < s/bool > ∙ end
 
   nobody-rejected : False (synchronous? (underlying (compile nobody)))
   nobody-rejected = tt
@@ -111,7 +113,7 @@ module NotSynchronous where
   -- A lone receive: `A` receives from itself, and nobody sends.
   lone : Action
   lone =
-    just ((？ A) # here < s/bool >) V.∷ nothing V.∷ nothing V.∷ V.[]
+    just ((？ A) # announce < s/bool >) V.∷ nothing V.∷ nothing V.∷ V.[]
 
   lonely : OpenGraph 0
   lonely = lone ∙ end
@@ -126,16 +128,16 @@ module NotSynchronous where
 module Loop where
 
   g : OpenGraph 0
-  g = μ ((A ⟶ BC # here < s/bool >) ∙ var 0F)
+  g = μ λ X → A ⟶ BC # announce < s/bool > ∙ X
 
   wbg : WBGraph {N = 3}
   wbg = buildG g
 
   p/A : Proc 0 0
-  p/A = rec (A ⇒ BC ! here < val (v/bool true) >∙ v 0F)
+  p/A = rec λ X → A ⇒ BC ! announce < val (v/bool true) >∙ X
 
   p/R : Part → Proc 0 0
-  p/R R = rec (R ⇐ A ？· (v 0F V.∷ V.[]))
+  p/R R = rec λ X → R ⇐ A ？· ⟪ announce ↦ X ⟫
 
   looping :
     True (typecheckSession wbg singletons (p/A v∷ p/R B v∷ p/R C v∷ v[]))

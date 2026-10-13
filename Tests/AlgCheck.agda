@@ -28,6 +28,8 @@ import Check.TypeCheck
 module Ex6 where
 
   open import Definitions.Graph.Algebra 4
+  open import Definitions.Proc.Syntax 4 using (rec)
+  open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
   open import Definitions.Graph.Core 4 using (State; graphTheory)
   open import Definitions.Graph.Decision 4 using (wellBehaved?; synchronous?)
   open import Definitions.Actions 4
@@ -40,12 +42,14 @@ module Ex6 where
   D = 3F
 
   -- typed labels pin `nchoices`: an unsolved one blocks every decision
-  here : Fin 1
-  here = 0F
+  start step : Fin 1
+  start = 0F
+  step  = 0F
 
-  lbl0 lbl1 : Fin 2
-  lbl0 = 0F
-  lbl1 = 1F
+  -- `B` to `C`: round the loop again, or halt
+  again halt : Fin 2
+  again = 0F
+  halt  = 1F
 
   -- G=0  L=1  M=2  H=3   (4 = ended)
   --
@@ -53,13 +57,13 @@ module Ex6 where
   --                            --B⟶C⟨1⟩--> H --A⟶B--> H
   g : OpenGraph 0
   g =
-    (B ⟶ ⁅ D ⁆ # here < s/unit >) ∙
-    μ ( (A ⟶ ⁅ B ⁆ # here < s/unit >) ∙
-        choice
-          ((B ⟶ ⁅ C ⁆ # lbl0 < s/unit >) ⇒ var 0F)
-          ( ((B ⟶ ⁅ C ⁆ # lbl1 < s/unit >) ⇒
-              μ ((A ⟶ ⁅ B ⁆ # here < s/unit >) ∙ var 0F))
-          ∷ []) )
+    B ⟶ ⁅ D ⁆ # start < s/unit > ∙
+    μ λ X →
+      A ⟶ ⁅ B ⁆ # step < s/unit > ∙
+      ⟪ B ⟶ ⁅ C ⁆ # again < s/unit > ∙ X
+      ∣ B ⟶ ⁅ C ⁆ # halt < s/unit >  ∙
+          (μ λ Y → A ⟶ ⁅ B ⁆ # step < s/unit > ∙ Y)
+      ⟫
 
   Gr = underlying (compile g)
 
@@ -71,7 +75,7 @@ module Ex6 where
     sync : Typing.Synchronous (graphTheory Gr)
     sync = from-yes (synchronous? Gr)
 
-  open module M₆ = Typing.MPST wb hiding (Action; _⟶_#_; _<_>)
+  open module M₆ = Typing.MPST wb hiding (Action; _⟶_#_; _<_>; rec)
   open module K₆ = Check.Alg.AlgCheck 4 Gr wb using (alg?)
   open module T₆ = Check.TypeCheck.TypeCheck 4 Gr wb (Typing.Synchronous.bal sync)
     using (tc?)
@@ -83,7 +87,7 @@ module Ex6 where
   H = 3F
 
   prog : Proc 0 0
-  prog = rec (A ⇒ ⁅ B ⁆ ! (zero {0}) < val v/unit >∙ v 0F)
+  prog = rec λ X → A ⇒ ⁅ B ⁆ ! step < val v/unit >∙ X
 
   -- The anchor the checker has to find is `M`, which `G` does not reach:
   -- `M -[¬A]->* L` and the tree at `G` steps `G → L`.
@@ -102,7 +106,7 @@ module Ex6 where
   ended-not-at-G = tt
 
   -- An unguarded loop is rejected by `MessageGuarded`, with no search.
-  unguarded : False (tc? v[] v[] ⁅ A ⁆ (rec (v 0F)) G)
+  unguarded : False (tc? v[] v[] ⁅ A ⁆ (rec λ X → X) G)
   unguarded = tt
 
 -- ══════════════════════════════════════════════════════════════════════
@@ -123,11 +127,11 @@ module SkipVar where
   C = 2F
 
   -- typed labels pin `nchoices`: an unsolved one blocks every decision
-  here : Fin 1
-  here = 0F
+  tick : Fin 1
+  tick = 0F
 
   β : Action
-  β = B ⟶ ⁅ C ⁆ # here < s/unit >
+  β = B ⟶ ⁅ C ⁆ # tick < s/unit >
 
   -- s --β--> K --β--> ended;  `A` is active nowhere.
   g : OpenGraph 0

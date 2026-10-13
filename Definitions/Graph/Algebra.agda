@@ -2,19 +2,29 @@
 
 open import Data.Fin using (Fin; _↑ˡ_; _↑ʳ_; inject₁; fromℕ; combine; remQuot)
 import Data.Fin as Fin
+open import Data.Bool using (Bool; true; false; not; _∧_; if_then_else_)
+open import Data.Bool.ListAction using (any; all)
 open import Data.List using (List; []; _∷_; _++_)
 import Data.List as List
-open import Data.List.NonEmpty using (List⁺; _∷_; [_]; _⁺++⁺_)
-open import Data.Nat using (ℕ; suc; _+_; _*_)
-open import Data.Product using (_×_; _,_; map₂)
+open import Data.List.NonEmpty using (_∷_)
+open import Data.Maybe using (Maybe; just; nothing; is-just)
+import Data.Maybe as Maybe
+open import Data.Nat using (ℕ; zero; suc; _+_; _*_; _^_; _≤?_)
+open import Data.Product using (_×_; _,_; map₂; proj₁; proj₂)
+open import Function using (_∘_)
 open import Data.Fin.Relation.Unary.Top using (view; ‵fromℕ; ‵inject₁)
 open import Data.Vec using (Vec; []; _∷_; _∷ʳ_; lookup; tabulate)
   renaming (_++_ to _v++_)
 import Data.Vec as Vec
+open import Relation.Nullary.Decidable using (True)
+
+open import Utils.Branch using (Branch; branch; Branches; _↦_; Closes)
+open import Utils.Binder using (bound)
 
 module Definitions.Graph.Algebra (N : ℕ) where
 
-  open import Definitions.Actions N using (Action)
+  open import Definitions.Actions N using (Action; Event)
+  open import Definitions.Graph.Action N using (eqVec; eqMaybeEvent; eqFin)
   open import Definitions.Graph.Core N using (Graph; State; graph)
 
   -- A recursion variable (`loop`), a node (`node`), or the one shared
@@ -114,32 +124,165 @@ module Definitions.Graph.Algebra (N : ℕ) where
       (List.map (map₂ shiftRef) roots
         ∷ mapTable shiftRef table)
 
-  infixr 8 _∙_
-
-  _∙_ : ∀ {δ} → Action → OpenGraph δ → OpenGraph δ
-  α ∙ continuation = choice (α ⇒ continuation) []
-
-  -- ── branching ──
+  -- ── MPST sequencing ──
   --
-  --   ⟪ α₁ ↦ G₁
-  --   ∣ α₂ ↦ G₂
+  -- `mpst` is `choice`, plus the steps that may fire *under* the pending
+  -- choice (`step/tl/I` of the former global types): a step `β` sharing
+  -- no role with any branch's action, taken by every branch at once.  The
+  -- pending states are the tuples of branch residuals so reached; they
+  -- come first, so with no such step `mpst` builds exactly `choice`.
+  -- Steps out of a loop variable are not taken: the body is still open.
+  private
+    disjoint : ∀ {n} → Vec (Maybe Event) n → Vec (Maybe Event) n → Bool
+    disjoint []       []       = true
+    disjoint (a ∷ as) (b ∷ bs) = not (is-just a ∧ is-just b) ∧ disjoint as bs
+
+    eqAction : Action → Action → Bool
+    eqAction = eqVec eqMaybeEvent
+
+    eqRef : ∀ {δ n} → Ref δ n → Ref δ n → Bool
+    eqRef (loop x) (loop y) = eqFin x y
+    eqRef (node s) (node t) = eqFin s t
+    eqRef ended    ended    = true
+    eqRef _        _        = false
+
+    eqRefs : ∀ {δ n} → List (Ref δ n) → List (Ref δ n) → Bool
+    eqRefs []       []       = true
+    eqRefs (r ∷ rs) (s ∷ ss) = eqRef r s ∧ eqRefs rs ss
+    eqRefs _        _        = false
+
+    elem : ∀ {A : Set} → (A → A → Bool) → A → List A → Bool
+    elem eq x = any (eq x)
+
+    -- first occurrences, in order
+    nub : ∀ {A : Set} → (A → A → Bool) → List A → List A
+    nub {A} eq = go []
+      where
+        go : List A → List A → List A
+        go kept []       = kept
+        go kept (x ∷ xs) =
+          if elem eq x kept then go kept xs else go (kept ++ x ∷ []) xs
+
+    -- every way of picking one element from each list
+    picks : ∀ {A : Set} → List (List A) → List (List A)
+    picks []         = [] ∷ []
+    picks (xs ∷ xss) =
+      List.concatMap (λ x → List.map (x ∷_) (picks xss)) xs
+
+    indexOf :
+      ∀ {A : Set} → (A → A → Bool) → A → (xs : List A)
+      → Maybe (Fin (List.length xs))
+    indexOf eq y []       = nothing
+    indexOf eq y (x ∷ xs) =
+      if eq y x then just Fin.zero else Maybe.map Fin.suc (indexOf eq y xs)
+
+    module Pending
+      {δ m} (table : Vec (List (Action × Ref δ m)) m) (αs : List Action)
+      where
+
+      Tuple : Set
+      Tuple = List (Ref δ m)
+
+      out : Ref δ m → List (Action × Ref δ m)
+      out (node s) = lookup table s
+      out _        = []
+
+      after : Action → Ref δ m → List (Ref δ m)
+      after β r =
+        List.map proj₂ (List.filterᵇ (eqAction β ∘ proj₁) (out r))
+
+      -- the steps under the pending choice, out of the residuals `rs`
+      under : Tuple → List (Action × Tuple)
+      under []         = []
+      under rs@(r ∷ _) =
+        List.concatMap
+          (λ β → List.map (β ,_) (picks (List.map (after β) rs)))
+          (List.filterᵇ (λ β → all (disjoint β) αs)
+            (nub eqAction (List.map proj₁ (out r))))
+
+      -- breadth first; each pass retires one tuple, of at most
+      -- `(suc δ + m) ^ length αs`
+      explore : ℕ → List Tuple → List Tuple → List Tuple
+      explore zero    seen _          = seen
+      explore (suc k) seen []         = seen
+      explore (suc k) seen (rs ∷ todo) = explore k (seen ++ new) (todo ++ new)
+        where
+          new = nub eqRefs
+            (List.filterᵇ (λ ss → not (elem eqRefs ss seen))
+              (List.map proj₂ (under rs)))
+
+      reach : Tuple → List Tuple
+      reach rs =
+        explore (suc ((suc δ + m) ^ List.length αs)) (rs ∷ []) (rs ∷ [])
+
+      -- the graph, given the pending tuples `seen` (an argument, so that
+      -- normalisation computes them once)
+      pending : List (Action × Ref δ m) → List Tuple → OpenGraph δ
+      pending roots seen =
+        openGraph (t + m) (here (List.map proj₂ roots))
+          (Vec.map row (Vec.fromList seen) v++ mapTable (rightRef t) table)
+        where
+          t = List.length seen
+
+          here : Tuple → Ref δ (t + m)
+          here rs = Maybe.maybe (λ i → node (i ↑ˡ m)) ended
+                      (indexOf eqRefs rs seen)
+
+          row : Tuple → List (Action × Ref δ (t + m))
+          row rs =
+            List.zipWith (λ α r → α , rightRef t r) αs rs
+              ++ List.map (map₂ here) (under rs)
+
+  mpst : ∀ {δ} → Alternative δ → List (Alternative δ) → OpenGraph δ
+  mpst first rest with collect (first ∷ rest)
+  ... | forest m roots table
+    with Pending.under table (List.map proj₁ roots) (List.map proj₂ roots)
+  ...   | []    = choice first rest
+  ...   | _ ∷ _ =
+    Pending.pending table (List.map proj₁ roots) roots
+      (Pending.reach table (List.map proj₁ roots) (List.map proj₂ roots))
+
+  -- ── sequencing and branching ──
+  --
+  -- `α >> G`: `α`, then `G`.  `α ∙ G`: `α` before `G`'s steps that share
+  -- a role with it; `G`'s other steps may come first.  Inside
+  --
+  --   ⟪ α₁ ∙ G₁
+  --   ∣ α₂ ∙ G₂
   --   ⟫
   --
-  -- is `choice` over the branches, in order.
-  Branches : ℕ → Set
-  Branches δ = List⁺ (Alternative δ)
+  -- (`Utils.Branch`) `αᵢ ∙ Gᵢ` is a branch, and the whole is `mpst` over
+  -- the branches, in order.  Below `_⟶_#_` (4.5), so actions need no
+  -- parentheses.
+  infixr 4 _>>_ _∙_
 
-  infixr 4 _↦_
-  infixr 3 _∣_
+  _>>_ : ∀ {δ} → Action → OpenGraph δ → OpenGraph δ
+  α >> continuation = choice (α ⇒ continuation) []
 
-  _↦_ : ∀ {δ} → Action → OpenGraph δ → Branches δ
-  α ↦ continuation = [ α ⇒ continuation ]
+  -- What `α ∙ G` builds: a graph, or one branch of a `⟪ ⟫`.
+  record Prefix (δ : ℕ) (R : Set) : Set where
+    field prefix : Action → OpenGraph δ → R
 
-  _∣_ : ∀ {δ} → Branches δ → Branches δ → Branches δ
-  _∣_ = _⁺++⁺_
+  open Prefix {{...}}
 
-  ⟪_⟫ : ∀ {δ} → Branches δ → OpenGraph δ
-  ⟪ first ∷ rest ⟫ = choice first rest
+  _∙_ : ∀ {δ R} {{_ : Prefix δ R}} → Action → OpenGraph δ → R
+  _∙_ = prefix
+
+  instance
+    prefix/graph : ∀ {δ} → Prefix δ (OpenGraph δ)
+    prefix/graph = record { prefix = λ α continuation →
+      mpst (α ⇒ continuation) [] }
+
+    prefix/branch : ∀ {δ} → Prefix δ (Branches Action (OpenGraph δ))
+    prefix/branch = record { prefix = _↦_ }
+
+  instance
+    closes/choice : ∀ {δ} → Closes Action (OpenGraph δ) (OpenGraph δ)
+    closes/choice = record { close = λ where
+      (b ∷ bs) → mpst (alt b) (List.map alt bs) }
+      where
+        alt : ∀ {δ} → Branch Action (OpenGraph δ) → Alternative δ
+        alt (branch α continuation) = α ⇒ continuation
 
   private
     closeRef : ∀ {δ n} → Ref δ n → Ref (suc δ) n → Ref δ n
@@ -154,18 +297,25 @@ module Definitions.Graph.Algebra (N : ℕ) where
     closeLoop (node s) = node (Fin.suc s)
     closeLoop ended = ended
 
-  μ : ∀ {δ} → OpenGraph (suc δ) → OpenGraph δ
-  μ (openGraph n (loop Fin.zero) table) =
+  -- `μᵈ` binds `var 0F`; `μ λ X → G` binds `X` (`Utils.Binder`).
+  μᵈ : ∀ {δ} → OpenGraph (suc δ) → OpenGraph δ
+  μᵈ (openGraph n (loop Fin.zero) table) =
     openGraph
       (suc n)
       (node Fin.zero)
       ([] ∷ mapTable closeLoop table)
-  μ (openGraph n (loop (Fin.suc x)) table) =
+  μᵈ (openGraph n (loop (Fin.suc x)) table) =
     openGraph n (loop x) (mapTable (closeRef (loop x)) table)
-  μ (openGraph n (node root) table) =
+  μᵈ (openGraph n (node root) table) =
     openGraph n (node root) (mapTable (closeRef (node root)) table)
-  μ (openGraph n ended table) =
+  μᵈ (openGraph n ended table) =
     openGraph n ended (mapTable (closeRef ended) table)
+
+  Loop : ℕ → Set
+  Loop δ = ∀ {m} {p : True (suc δ ≤? m)} → OpenGraph m
+
+  μ : ∀ {δ} → (Loop δ → OpenGraph (suc δ)) → OpenGraph δ
+  μ {δ} body = μᵈ (body (λ {m} {p} → var (bound δ p)))
 
   -- ── compilation ──
   --

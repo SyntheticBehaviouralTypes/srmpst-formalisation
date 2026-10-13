@@ -24,25 +24,24 @@ open import Check
 open import Definitions.Graph.Algebra 3
 open import Data.Fin.Subset using (⁅_⁆)
 open import Definitions.Actions 3
-open import Definitions.Proc 3
+open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 3
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
 A B C : Fin 3
 A = 0F
 B = 1F
 C = 2F
 
-here : Fin 1
-here = 0F
+notify : Fin 1
+notify = 0F
 
 -- From s0, `A` messages `B` first or `C` first; both end in `ended`.
 nosyn : OpenGraph 0
 nosyn =
-  choice
-    ((A ⟶ ⁅ B ⁆ # here < s/unit >) ⇒
-      ((A ⟶ ⁅ C ⁆ # here < s/unit >) ∙ end))
-    ( ((A ⟶ ⁅ C ⁆ # here < s/unit >) ⇒
-        ((A ⟶ ⁅ B ⁆ # here < s/unit >) ∙ end))
-    ∷ [])
+  ⟪ A ⟶ ⁅ B ⁆ # notify < s/unit > ∙ A ⟶ ⁅ C ⁆ # notify < s/unit > ∙ end
+  ∣ A ⟶ ⁅ C ⁆ # notify < s/unit > ∙ A ⟶ ⁅ B ⁆ # notify < s/unit > ∙ end
+  ⟫
 
 wbg : WBGraph {N = 3}
 wbg = buildG nosyn {p = tt}
@@ -54,14 +53,16 @@ open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module
 p/A : Proc 0 0
 p/A =
   ifp is-zero (val (v/nat 0))
-    then (A ⇒ ⁅ B ⁆ ! here < val v/unit >∙ (A ⇒ ⁅ C ⁆ ! here < val v/unit >∙ ∅))
-    else (A ⇒ ⁅ C ⁆ ! here < val v/unit >∙ (A ⇒ ⁅ B ⁆ ! here < val v/unit >∙ ∅))
+    then (A ⇒ ⁅ B ⁆ ! notify < val v/unit >∙
+          (A ⇒ ⁅ C ⁆ ! notify < val v/unit >∙ ∅))
+    else (A ⇒ ⁅ C ⁆ ! notify < val v/unit >∙
+          (A ⇒ ⁅ B ⁆ ! notify < val v/unit >∙ ∅))
 
 p/B : Proc 0 0
-p/B = B ⇐ A ？· (∅ v∷ v[])
+p/B = B ⇐ A ？· ⟪ notify ↦ ∅ ⟫
 
 p/C : Proc 0 0
-p/C = C ⇐ A ？· (∅ v∷ v[])
+p/C = C ⇐ A ？· ⟪ notify ↦ ∅ ⟫
 
 own/AB∣C own/AC∣B own/A∣BC : Fin 3 → Fin 2
 own/AB∣C 0F = 0F
@@ -98,7 +99,7 @@ module AB∣C where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (A ⇒ ⁅ C ⁆ ! here < val v/unit >∙ ∅) v∷ p/C v∷ v[]
+  M = (A ⇒ ⁅ C ⁆ ! notify < val v/unit >∙ ∅) v∷ p/C v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
   M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -115,7 +116,7 @@ module AC∣B where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (A ⇒ ⁅ B ⁆ ! here < val v/unit >∙ ∅) v∷ p/B v∷ v[]
+  M = (A ⇒ ⁅ B ⁆ ! notify < val v/unit >∙ ∅) v∷ p/B v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
   M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -132,8 +133,8 @@ module A∣BC where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M₁ M₂ : Session
-  M₁ = p/A v∷ (B ⇐ A ？· ((C ⇐ A ？· (∅ v∷ v[])) v∷ v[])) v∷ v[]
-  M₂ = p/A v∷ (C ⇐ A ？· ((B ⇐ A ？· (∅ v∷ v[])) v∷ v[])) v∷ v[]
+  M₁ = p/A v∷ (B ⇐ A ？· ⟪ notify ↦ C ⇐ A ？· ⟪ notify ↦ ∅ ⟫ ⟫) v∷ v[]
+  M₂ = p/A v∷ (C ⇐ A ？· ⟪ notify ↦ B ⇐ A ？· ⟪ notify ↦ ∅ ⟫ ⟫) v∷ v[]
 
   _ : does (typecheckSession wbg Ρ M₁) ≡ false
   _ = refl

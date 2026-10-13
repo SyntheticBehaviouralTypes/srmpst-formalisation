@@ -1,6 +1,6 @@
 {-# OPTIONS --guardedness #-}
 
--- Forced rejections of the unguarded `rec (v 0)` on tiny graphs, which
+-- Forced rejections of the unguarded `rec λ X → X` on tiny graphs, which
 -- must be cheap.
 
 module Tests.Perf01_TinyRejections where
@@ -19,15 +19,17 @@ open import Check
 import Definitions.Typing as Typing
 
 -- Pins `nchoices = 0`; a bare `0F` leaves it unsolved.
-here : Fin 1
-here = 0F
+bit : Fin 1
+bit = 0F
 
 open import Data.Fin.Subset using (⁅_⁆)
 
 -- A single state with no edges at all.
 module MinimalGraph where
   open import Definitions.Graph.Algebra 1
-  open import Definitions.Proc 1
+  open import Definitions.Proc 1 hiding (rec; _⇐_？·_)
+  open import Definitions.Proc.Syntax 1
+  open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
   A : Fin 1
   A = 0F
@@ -37,8 +39,8 @@ module MinimalGraph where
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
-  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] rec (v 0F) ∶ initial (proj₁ wbg))
-  wtd = typecheck wbg ⁅ A ⁆ (rec (v 0F))
+  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec λ X → X) ∶ initial (proj₁ wbg))
+  wtd = typecheck wbg ⁅ A ⁆ ((rec λ X → X))
 
   _ : False wtd
   _ = _
@@ -47,19 +49,21 @@ module MinimalGraph where
 module Size2Linear where
   open import Definitions.Graph.Algebra 2
   open import Definitions.Actions 2
-  open import Definitions.Proc 2
+  open import Definitions.Proc 2 hiding (rec; _⇐_？·_)
+  open import Definitions.Proc.Syntax 2
+  open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
   A B : Fin 2
   A = 0F
   B = 1F
 
   wbg : WBGraph {N = 2}
-  wbg = buildG ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ end)
+  wbg = buildG (A ⟶ ⁅ B ⁆ # bit < s/bool > ∙ end)
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
-  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] rec (v 0F) ∶ initial (proj₁ wbg))
-  wtd = typecheck wbg ⁅ A ⁆ (rec (v 0F))
+  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec λ X → X) ∶ initial (proj₁ wbg))
+  wtd = typecheck wbg ⁅ A ⁆ ((rec λ X → X))
 
   _ : False wtd
   _ = _
@@ -69,7 +73,9 @@ module Size2Linear where
 module Size3Linear where
   open import Definitions.Graph.Algebra 3
   open import Definitions.Actions 3
-  open import Definitions.Proc 3
+  open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+  open import Definitions.Proc.Syntax 3
+  open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
   A B C : Fin 3
   A = 0F
@@ -77,18 +83,18 @@ module Size3Linear where
   C = 2F
 
   wbg : WBGraph {N = 3}
-  wbg = buildG ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ ((B ⟶ ⁅ C ⁆ # here < s/bool >) ∙ end))
+  wbg = buildG (A ⟶ ⁅ B ⁆ # bit < s/bool > ∙ B ⟶ ⁅ C ⁆ # bit < s/bool > ∙ end)
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
-  wtdA : Dec (⊢ᵛ[ ⁅ A ⁆ ] rec (v 0F) ∶ initial (proj₁ wbg))
-  wtdA = typecheck wbg ⁅ A ⁆ (rec (v 0F))
+  wtdA : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec λ X → X) ∶ initial (proj₁ wbg))
+  wtdA = typecheck wbg ⁅ A ⁆ ((rec λ X → X))
 
   _ : False wtdA
   _ = _
 
-  wtdC : Dec (⊢ᵛ[ ⁅ C ⁆ ] rec (v 0F) ∶ initial (proj₁ wbg))
-  wtdC = typecheck wbg ⁅ C ⁆ (rec (v 0F))
+  wtdC : Dec (⊢ᵛ[ ⁅ C ⁆ ] (rec λ X → X) ∶ initial (proj₁ wbg))
+  wtdC = typecheck wbg ⁅ C ⁆ ((rec λ X → X))
 
   _ : False wtdC
   _ = _
@@ -98,7 +104,9 @@ module Size3Linear where
 module Size2LinearUninvolved where
   open import Definitions.Graph.Algebra 3
   open import Definitions.Actions 3
-  open import Definitions.Proc 3
+  open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+  open import Definitions.Proc.Syntax 3
+  open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
   A B C : Fin 3
   A = 0F
@@ -106,12 +114,12 @@ module Size2LinearUninvolved where
   C = 2F
 
   wbg : WBGraph {N = 3}
-  wbg = buildG ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ end)
+  wbg = buildG (A ⟶ ⁅ B ⁆ # bit < s/bool > ∙ end)
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
-  wtd : Dec (⊢ᵛ[ ⁅ C ⁆ ] rec (v 0F) ∶ initial (proj₁ wbg))
-  wtd = typecheck wbg ⁅ C ⁆ (rec (v 0F))
+  wtd : Dec (⊢ᵛ[ ⁅ C ⁆ ] (rec λ X → X) ∶ initial (proj₁ wbg))
+  wtd = typecheck wbg ⁅ C ⁆ ((rec λ X → X))
 
   _ : False wtd
   _ = _
@@ -120,29 +128,31 @@ module Size2LinearUninvolved where
 module Size2Choice where
   open import Definitions.Graph.Algebra 2
   open import Definitions.Actions 2
-  open import Definitions.Proc 2
+  open import Definitions.Proc 2 hiding (rec; _⇐_？·_)
+  open import Definitions.Proc.Syntax 2
+  open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
   A B : Fin 2
   A = 0F
   B = 1F
 
-  lbl0 lbl1 : Fin 2
-  lbl0 = 0F
-  lbl1 = 1F
+  left right : Fin 2
+  left  = 0F
+  right = 1F
 
   round : OpenGraph 0
   round =
-    choice ((A ⟶ ⁅ B ⁆ # lbl0 < s/bool >) ⇒ end)
-           ( ((A ⟶ ⁅ B ⁆ # lbl1 < s/bool >) ⇒ end)
-           ∷ [])
+    ⟪ A ⟶ ⁅ B ⁆ # left < s/bool >  ∙ end
+    ∣ A ⟶ ⁅ B ⁆ # right < s/bool > ∙ end
+    ⟫
 
   wbg : WBGraph {N = 2}
   wbg = buildG round {p = tt}
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
-  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] rec (v 0F) ∶ initial (proj₁ wbg))
-  wtd = typecheck wbg ⁅ A ⁆ (rec (v 0F))
+  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec λ X → X) ∶ initial (proj₁ wbg))
+  wtd = typecheck wbg ⁅ A ⁆ ((rec λ X → X))
 
   _ : False wtd
   _ = _
@@ -152,31 +162,32 @@ module Size2Choice where
 module Size3Choice where
   open import Definitions.Graph.Algebra 3
   open import Definitions.Actions 3
-  open import Definitions.Proc 3
+  open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+  open import Definitions.Proc.Syntax 3
+  open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
   A B C : Fin 3
   A = 0F
   B = 1F
   C = 2F
 
-  lbl0 lbl1 : Fin 2
-  lbl0 = 0F
-  lbl1 = 1F
+  left right : Fin 2
+  left  = 0F
+  right = 1F
 
   round : OpenGraph 0
   round =
-    choice ((A ⟶ ⁅ B ⁆ # lbl0 < s/bool >) ⇒ end)
-           ( ((A ⟶ ⁅ B ⁆ # lbl1 < s/bool >) ⇒
-               ((B ⟶ ⁅ C ⁆ # here < s/bool >) ∙ end))
-           ∷ [])
+    ⟪ A ⟶ ⁅ B ⁆ # left < s/bool >  ∙ end
+    ∣ A ⟶ ⁅ B ⁆ # right < s/bool > ∙ B ⟶ ⁅ C ⁆ # bit < s/bool > ∙ end
+    ⟫
 
   wbg : WBGraph {N = 3}
   wbg = buildG round {p = tt}
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
-  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] rec (v 0F) ∶ initial (proj₁ wbg))
-  wtd = typecheck wbg ⁅ A ⁆ (rec (v 0F))
+  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec λ X → X) ∶ initial (proj₁ wbg))
+  wtd = typecheck wbg ⁅ A ⁆ ((rec λ X → X))
 
   _ : False wtd
   _ = _

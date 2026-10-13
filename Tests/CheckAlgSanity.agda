@@ -34,14 +34,14 @@ module ∈T?-sanity where
   C = 2F
 
   -- typed labels pin `nchoices`: an unsolved one blocks every decision
-  here : Fin 1
-  here = 0F
+  tick : Fin 1
+  tick = 0F
 
   -- s0 --A⟶B<unit>--> s1 --A⟶B<unit>--> ended
   g : OpenGraph 0
   g =
-    (A ⟶ ⁅ B ⁆ # here < s/unit >) ∙
-    (A ⟶ ⁅ B ⁆ # here < s/unit >) ∙ end
+    A ⟶ ⁅ B ⁆ # tick < s/unit > ∙
+    A ⟶ ⁅ B ⁆ # tick < s/unit > ∙ end
 
   Gr = underlying (compile g)
 
@@ -90,14 +90,14 @@ module unskip?-sanity where
   C = 2F
 
   -- typed labels pin `nchoices`: an unsolved one blocks every decision
-  here : Fin 1
-  here = 0F
+  tick : Fin 1
+  tick = 0F
 
   -- s0 --B⟶C--> s1 --A⟶B--> ended
   g : OpenGraph 0
   g =
-    (B ⟶ ⁅ C ⁆ # here < s/unit >) ∙
-    (A ⟶ ⁅ B ⁆ # here < s/unit >) ∙ end
+    B ⟶ ⁅ C ⁆ # tick < s/unit > ∙
+    A ⟶ ⁅ B ⁆ # tick < s/unit > ∙ end
 
   Gr = underlying (compile g)
 
@@ -143,13 +143,13 @@ module Wait?-sanity where
   C = 2F
 
   -- typed labels pin `nchoices`: an unsolved one blocks every decision
-  here : Fin 1
-  here = 0F
+  tick : Fin 1
+  tick = 0F
 
   g : OpenGraph 0
   g =
-    (B ⟶ ⁅ C ⁆ # here < s/unit >) ∙
-    (A ⟶ ⁅ B ⁆ # here < s/unit >) ∙ end
+    B ⟶ ⁅ C ⁆ # tick < s/unit > ∙
+    A ⟶ ⁅ B ⁆ # tick < s/unit > ∙ end
 
   Gr = underlying (compile g)
 

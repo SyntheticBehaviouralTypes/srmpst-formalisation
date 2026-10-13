@@ -41,11 +41,11 @@ C = 2F
 
 -- a typed label pins `nchoices`: an unsolved one blocks every decision on
 -- the graph.
-l0 : Fin 1
-l0 = 0F
+tick : Fin 1
+tick = 0F
 
 β : Action
-β = B ⟶ ⁅ C ⁆ # l0 < s/unit >
+β = B ⟶ ⁅ C ⁆ # tick < s/unit >
 
 g : OpenGraph 0
 g = β ∙ β ∙ end   -- s --β--> K --β--> ended

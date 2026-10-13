@@ -25,28 +25,31 @@ open import Check
 open import Definitions.Graph.Algebra 3
 open import Data.Fin.Subset using (⁅_⁆)
 open import Definitions.Actions 3
-open import Definitions.Proc 3
+open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 3
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
 A B C : Fin 3
 A = 0F
 B = 1F
 C = 2F
 
--- the two labels of the A→B choice (and of the B→C forwarding)
-lbl0 lbl1 : Fin 2
-lbl0 = 0F
-lbl1 = 1F
+-- `A`'s choice to `B`, forwarded by `B` to `C`
+accept reject : Fin 2
+accept = 0F
+reject = 1F
+
+-- a message from `A` straight to `C`, which the protocol never sends
+direct : Fin 1
+direct = 0F
 
 -- s0 --A→B[0]--> s1 --B→C[0]--> ended
 -- s0 --A→B[1]--> s2 --B→C[1]--> ended    (`ended` is the DSL's unique end)
 round : OpenGraph 0
 round =
-  choice
-    ((A ⟶ ⁅ B ⁆ # lbl0 < s/bool >) ⇒
-      ((B ⟶ ⁅ C ⁆ # lbl0 < s/bool >) ∙ end))
-    ( ((A ⟶ ⁅ B ⁆ # lbl1 < s/bool >) ⇒
-        ((B ⟶ ⁅ C ⁆ # lbl1 < s/bool >) ∙ end))
-    ∷ [])
+  ⟪ A ⟶ ⁅ B ⁆ # accept < s/bool > ∙ B ⟶ ⁅ C ⁆ # accept < s/bool > ∙ end
+  ∣ A ⟶ ⁅ B ⁆ # reject < s/bool > ∙ B ⟶ ⁅ C ⁆ # reject < s/bool > ∙ end
+  ⟫
 
 wbg : WBGraph {N = 3}
 wbg = buildG round {p = tt}
@@ -57,7 +60,7 @@ open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_; ⊢s[_]_∶_
 
 -- the well-typed reference: `C` receives `B`'s (2-ary) forward, then ends
 p/C-good : Proc 0 0
-p/C-good = C ⇐ B ？· (∅ v∷ ∅ v∷ v[])
+p/C-good = C ⇐ B ？· ⟪ accept ↦ ∅ ∣ reject ↦ ∅ ⟫
 
 wtd/good : Dec (⊢ᵛ[ ⁅ C ⁆ ] p/C-good ∶ s₀)
 wtd/good = typecheck wbg ⁅ C ⁆ p/C-good
@@ -69,9 +72,9 @@ C-good-well-typed = from-yes wtd/good
 -- forwards *one* message to `C`, so this is ill-typed.
 p/C2 : Proc 0 0
 p/C2 = C ⇐ B ？·
-         (  C ⇐ B ？· (∅ v∷ ∅ v∷ v[])
-         v∷ C ⇐ B ？· (∅ v∷ ∅ v∷ v[])
-         v∷ v[])
+         ⟪ accept ↦ C ⇐ B ？· ⟪ accept ↦ ∅ ∣ reject ↦ ∅ ⟫
+         ∣ reject ↦ C ⇐ B ？· ⟪ accept ↦ ∅ ∣ reject ↦ ∅ ⟫
+         ⟫
 
 wtd/C2 : Dec (⊢ᵛ[ ⁅ C ⁆ ] p/C2 ∶ s₀)
 wtd/C2 = typecheck wbg ⁅ C ⁆ p/C2
@@ -82,8 +85,7 @@ C2-illtyped = from-no wtd/C2
 -- `C` waits to receive from `A` first — but `A` never messages `C`
 -- directly, so this is ill-typed.
 p/C3 : Proc 0 0
-p/C3 = C ⇐ A ？·
-         (C ⇐ B ？· (∅ v∷ ∅ v∷ v[]) v∷ v[])
+p/C3 = C ⇐ A ？· ⟪ direct ↦ C ⇐ B ？· ⟪ accept ↦ ∅ ∣ reject ↦ ∅ ⟫ ⟫
 
 wtd/C3 : Dec (⊢ᵛ[ ⁅ C ⁆ ] p/C3 ∶ s₀)
 wtd/C3 = typecheck wbg ⁅ C ⁆ p/C3
@@ -93,7 +95,7 @@ C3-illtyped = from-no wtd/C3
 
 -- Not `MessageGuarded`.
 p/C4 : Proc 0 0
-p/C4 = rec (v 0F)
+p/C4 = rec λ X → X
 
 wtd/C4 : Dec (⊢ᵛ[ ⁅ C ⁆ ] p/C4 ∶ s₀)
 wtd/C4 = typecheck wbg ⁅ C ⁆ p/C4
@@ -105,12 +107,12 @@ C4-illtyped = from-no wtd/C4
 --  Whole sessions, under every partition of the roles
 -- ══════════════════════════════════════════════════════════════════════
 
--- `A` picks label 0; `B` forwards whichever it gets.
+-- `A` picks `accept`; `B` forwards whichever it gets.
 p/A p/B : Proc 0 0
-p/A = A ⇒ ⁅ B ⁆ ! lbl0 < val (v/bool true) >∙ ∅
-p/B = B ⇐ A ？· (  (B ⇒ ⁅ C ⁆ ! lbl0 < val (v/bool true) >∙ ∅)
-                v∷ (B ⇒ ⁅ C ⁆ ! lbl1 < val (v/bool true) >∙ ∅)
-                v∷ v[])
+p/A = A ⇒ ⁅ B ⁆ ! accept < val (v/bool true) >∙ ∅
+p/B = B ⇐ A ？· ⟪ accept ↦ B ⇒ ⁅ C ⁆ ! accept < val (v/bool true) >∙ ∅
+                ∣ reject ↦ B ⇒ ⁅ C ⁆ ! reject < val (v/bool true) >∙ ∅
+                ⟫
 
 own/AB∣C own/AC∣B own/A∣BC : Fin 3 → Fin 2
 own/AB∣C 0F = 0F
@@ -147,7 +149,7 @@ module AB∣C where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (B ⇒ ⁅ C ⁆ ! lbl1 < val (v/bool true) >∙ ∅) v∷ p/C-good v∷ v[]
+  M = (B ⇒ ⁅ C ⁆ ! reject < val (v/bool true) >∙ ∅) v∷ p/C-good v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
   M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -164,7 +166,10 @@ module AC∣B where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (A ⇒ ⁅ B ⁆ ! lbl0 < val (v/bool true) >∙ (C ⇐ B ？· (∅ v∷ ∅ v∷ v[]))) v∷ p/B v∷ v[]
+  M = (A ⇒ ⁅ B ⁆ ! accept < val (v/bool true) >∙
+         (C ⇐ B ？· ⟪ accept ↦ ∅ ∣ reject ↦ ∅ ⟫))
+    v∷ p/B
+    v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
   M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -181,7 +186,7 @@ module A∣BC where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = p/A v∷ (B ⇐ A ？· (∅ v∷ ∅ v∷ v[])) v∷ v[]
+  M = p/A v∷ (B ⇐ A ？· ⟪ accept ↦ ∅ ∣ reject ↦ ∅ ⟫) v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
   M-typed = from-yes (typecheckSession wbg Ρ M)

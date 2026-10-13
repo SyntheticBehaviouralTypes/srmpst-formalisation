@@ -21,14 +21,17 @@ open import Check
 open import Definitions.Graph.Algebra 2
 open import Data.Fin.Subset using (⁅_⁆)
 open import Definitions.Actions 2
-open import Definitions.Proc 2
+open import Definitions.Proc 2 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 2
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
 A B : Fin 2
 A = 0F
 B = 1F
 
-here : Fin 1
-here = 0F
+ping pong : Fin 1
+ping = 0F
+pong = 0F
 
 -- {A,B}: one process.
 Ρ/AB : Assignment 1
@@ -38,8 +41,8 @@ module NonRecursive where
   -- A --bool--> B --nat--> A, end
   ping-pong : OpenGraph 0
   ping-pong =
-    (A ⟶ ⁅ B ⁆ # here < s/bool >) ∙
-    ((B ⟶ ⁅ A ⁆ # here < s/nat >) ∙ end)
+    A ⟶ ⁅ B ⁆ # ping < s/bool > ∙
+    B ⟶ ⁅ A ⁆ # pong < s/nat > ∙ end
 
   wbg : WBGraph {N = 2}
   wbg = buildG ping-pong
@@ -55,8 +58,8 @@ module NonRecursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ (A ⇐ B ？· (∅ ∷ [])))
-      ∷ (B ⇐ A ？· ((B ⇒ ⁅ A ⁆ ! here < val (v/nat 0) >∙ ∅) ∷ []))
+    M = (A ⇒ ⁅ B ⁆ ! ping < val (v/bool true) >∙ (A ⇐ B ？· ⟪ pong ↦ ∅ ⟫))
+      ∷ (B ⇐ A ？· ⟪ ping ↦ B ⇒ ⁅ A ⁆ ! pong < val (v/nat 0) >∙ ∅ ⟫)
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
@@ -88,7 +91,7 @@ module Recursive where
   -- μ (A --bool--> B --nat--> loop)
   ping-pong : OpenGraph 0
   ping-pong =
-    μ ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ ((B ⟶ ⁅ A ⁆ # here < s/nat >) ∙ var 0F))
+    μ λ X → A ⟶ ⁅ B ⁆ # ping < s/bool > ∙ B ⟶ ⁅ A ⁆ # pong < s/nat > ∙ X
 
   wbg : WBGraph {N = 2}
   wbg = buildG ping-pong
@@ -104,8 +107,9 @@ module Recursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = rec (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ (A ⇐ B ？· (v 0F ∷ [])))
-      ∷ rec (B ⇐ A ？· ((B ⇒ ⁅ A ⁆ ! here < val (v/nat 0) >∙ v 0F) ∷ []))
+    M = (rec λ X → A ⇒ ⁅ B ⁆ ! ping < val (v/bool true) >∙
+                    (A ⇐ B ？· ⟪ pong ↦ X ⟫))
+      ∷ (rec λ X → B ⇐ A ？· ⟪ ping ↦ B ⇒ ⁅ A ⁆ ! pong < val (v/nat 0) >∙ X ⟫)
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀

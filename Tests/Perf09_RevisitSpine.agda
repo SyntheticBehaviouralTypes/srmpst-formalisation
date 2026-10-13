@@ -24,29 +24,32 @@ import Definitions.Typing as Typing
 open import Definitions.Graph.Algebra 3
 open import Data.Fin.Subset using (⁅_⁆)
 open import Definitions.Actions 3
-open import Definitions.Proc 3
+open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 3
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
 A B C : Fin 3
 A = 0F
 B = 1F
 C = 2F
 
-here : Fin 1
-here = 0F
+ack result : Fin 1
+ack    = 0F
+result = 0F
 
-lbl0 lbl1 : Fin 2
-lbl0 = 0F
-lbl1 = 1F
+-- `A` to `B`: go round again, or be done
+again done : Fin 2
+again = 0F
+done  = 1F
 
 -- states: 0 = u, 1 = t, 2 = ℓ, plus the DSL's distinguished end
+-- (u → t → u, and u → ℓ)
 g : OpenGraph 0
 g =
-  μ (choice
-      ((A ⟶ ⁅ B ⁆ # lbl0 < s/bool >) ⇒
-        ((B ⟶ ⁅ A ⁆ # here < s/bool >) ∙ var 0F))        -- u → t → u
-      ( ((A ⟶ ⁅ B ⁆ # lbl1 < s/bool >) ⇒
-          ((A ⟶ ⁅ C ⁆ # here < s/bool >) ∙ end))         -- u → ℓ
-      ∷ []))
+  μ λ X →
+    ⟪ A ⟶ ⁅ B ⁆ # again < s/bool > ∙ B ⟶ ⁅ A ⁆ # ack < s/bool > ∙ X
+    ∣ A ⟶ ⁅ B ⁆ # done < s/bool >  ∙ A ⟶ ⁅ C ⁆ # result < s/bool > ∙ end
+    ⟫
 
 wbg : WBGraph {N = 3}
 wbg = buildG g {p = tt}
@@ -55,7 +58,7 @@ open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
 -- C waits for A's message — deliverable only through the revisiting spine
 p : Proc 0 0
-p = C ⇐ A ？· (∅ v∷ v[])
+p = C ⇐ A ？· ⟪ result ↦ ∅ ⟫
 
 wtd : Dec (⊢ᵛ[ ⁅ C ⁆ ] p ∶ initial (proj₁ wbg))
 wtd = typecheck wbg ⁅ C ⁆ p

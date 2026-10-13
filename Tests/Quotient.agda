@@ -59,7 +59,9 @@ module Three where
   open import Definitions.Graph.Algebra 3
   open import Data.Fin.Subset using (⁅_⁆; _∪_)
   open import Definitions.Actions 3
-  open import Definitions.Proc 3
+  open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+  open import Definitions.Proc.Syntax 3
+  open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
   open Judge 3
 
   A B C : Fin 3
@@ -67,12 +69,29 @@ module Three where
   B = 1F
   C = 2F
 
-  here : Fin 1
-  here = 0F
+  -- labels of the protocols below, by their example
+  token auth item price notify announce value : Fin 1
+  token    = 0F
+  auth     = 0F
+  item     = 0F
+  price    = 0F
+  notify   = 0F
+  announce = 0F
+  value    = 0F
 
-  lbl0 lbl1 : Fin 2
-  lbl0 = 0F
-  lbl1 = 1F
+  login passwd split yes buy accept asNat cancel quit no reject asBool : Fin 2
+  login  = 0F
+  passwd = 0F
+  split  = 0F
+  yes    = 0F
+  buy    = 0F
+  accept = 0F
+  asNat  = 0F
+  cancel = 1F
+  quit   = 1F
+  no     = 1F
+  reject = 1F
+  asBool = 1F
 
   AB AC BC : _
   AB = ⁅ A ⁆ ∪ ⁅ B ⁆
@@ -83,9 +102,9 @@ module Three where
   module RoundRobin where
     round : OpenGraph 0
     round =
-      (A ⟶ ⁅ B ⁆ # here < s/bool >) ∙
-      ((B ⟶ ⁅ C ⁆ # here < s/bool >) ∙
-       ((C ⟶ ⁅ A ⁆ # here < s/bool >) ∙ end))
+      A ⟶ ⁅ B ⁆ # token < s/bool > ∙
+      (B ⟶ ⁅ C ⁆ # token < s/bool > ∙
+       C ⟶ ⁅ A ⁆ # token < s/bool > ∙ end)
 
     _ : orig round ≡ ok
     _ = refl
@@ -105,13 +124,10 @@ module Three where
 
     oauth : OpenGraph 0
     oauth =
-      choice
-        ((S′ ⟶ ⁅ C′ ⁆ # lbl0 < s/nat >) ⇒
-          ((C′ ⟶ ⁅ A′ ⁆ # lbl0 < s/nat >) ∙
-           (A′ ⟶ ⁅ S′ ⁆ # here < s/bool >) ∙ end))
-        ( ((S′ ⟶ ⁅ C′ ⁆ # lbl1 < s/nat >) ⇒
-            ((C′ ⟶ ⁅ A′ ⁆ # lbl1 < s/bool >) ∙ end))
-        ∷ [])
+      ⟪ S′ ⟶ ⁅ C′ ⁆ # login < s/nat >  ∙ C′ ⟶ ⁅ A′ ⁆ # passwd < s/nat > ∙
+                                         A′ ⟶ ⁅ S′ ⁆ # auth < s/bool > ∙ end
+      ∣ S′ ⟶ ⁅ C′ ⁆ # cancel < s/nat > ∙ C′ ⟶ ⁅ A′ ⁆ # quit < s/bool > ∙ end
+      ⟫
 
     _ : orig oauth ≡ ok
     _ = refl
@@ -122,28 +138,25 @@ module Three where
     _ : view oauth BC ≡ ok
     _ = refl
 
-  -- Examples/Rec2Buy.agda (A, B, S): `B` and `S` never talk to each other.
+  -- Examples/Rec2Buy.agda (A, B, S): `S` quotes both buyers.
   module Rec2Buy where
     S : Fin 3
     S = C
 
     rec2buy : OpenGraph 0
     rec2buy =
-      (A ⟶ ⁅ S ⁆ # here < s/nat >) ∙
-      (S ⟶ ⁅ A ⁆ # here < s/nat >) ∙
-      μ (choice
-          ((A ⟶ ⁅ B ⁆ # lbl0 < s/nat >) ⇒
-            choice
-              ((B ⟶ ⁅ A ⁆ # lbl0 < s/nat >) ⇒
-                ((A ⟶ ⁅ S ⁆ # lbl0 < s/unit >) ∙ end))
-              ( ((B ⟶ ⁅ A ⁆ # lbl1 < s/unit >) ⇒ var 0F)
-              ∷ []))
-          ( ((A ⟶ ⁅ B ⁆ # lbl1 < s/unit >) ⇒
-              ((A ⟶ ⁅ S ⁆ # lbl1 < s/unit >) ∙ end))
-          ∷ []))
+      A ⟶ ⁅ S ⁆ # item < s/nat > ∙
+      S ⟶ AB # price < s/nat > ∙
+      μ λ X →
+        ⟪ A ⟶ ⁅ B ⁆ # split < s/nat >   ∙
+            ⟪ B ⟶ ⁅ A ⁆ # yes < s/nat > ∙ A ⟶ ⁅ S ⁆ # buy < s/unit > ∙ end
+            ∣ B ⟶ ⁅ A ⁆ # no < s/unit > ∙ X
+            ⟫
+        ∣ A ⟶ ⁅ B ⁆ # cancel < s/unit > ∙ A ⟶ ⁅ S ⁆ # quit < s/unit > ∙ end
+        ⟫
 
     -- {A,B}: the `A⟶B`, `B⟶A` loop is an internal τ-cycle; its exits are
-    -- `A⟶S` buy / no.
+    -- `A⟶S` buy / quit.
     _ : orig rec2buy ≡ ok
     _ = refl
     _ : view rec2buy AB ≡ ok
@@ -157,22 +170,19 @@ module Three where
   module NoSynGT where
     nosyn : OpenGraph 0
     nosyn =
-      choice
-        ((A ⟶ ⁅ B ⁆ # here < s/unit >) ⇒
-          ((A ⟶ ⁅ C ⁆ # here < s/unit >) ∙ end))
-        ( ((A ⟶ ⁅ C ⁆ # here < s/unit >) ⇒
-            ((A ⟶ ⁅ B ⁆ # here < s/unit >) ∙ end))
-        ∷ [])
+      ⟪ A ⟶ ⁅ B ⁆ # notify < s/unit > ∙ A ⟶ ⁅ C ⁆ # notify < s/unit > ∙ end
+      ∣ A ⟶ ⁅ C ⁆ # notify < s/unit > ∙ A ⟶ ⁅ B ⁆ # notify < s/unit > ∙ end
+      ⟫
 
     -- {A,B}: `A→B` is internal; `A` sends to `C`, before or after it.
     ab : Proc 0 0
-    ab = A ⇒ ⁅ C ⁆ ! here < val v/unit >∙ ∅
+    ab = A ⇒ ⁅ C ⁆ ! notify < val v/unit >∙ ∅
 
     -- {B,C}: two receives from `A` at different own roles; `A` decides the
     -- order, the code has to commit to one.
     bc₁ bc₂ : Proc 0 0
-    bc₁ = B ⇐ A ？· ((C ⇐ A ？· (∅ ∷ [])) ∷ [])
-    bc₂ = C ⇐ A ？· ((B ⇐ A ？· (∅ ∷ [])) ∷ [])
+    bc₁ = B ⇐ A ？· ⟪ notify ↦ C ⇐ A ？· ⟪ notify ↦ ∅ ⟫ ⟫
+    bc₂ = C ⇐ A ？· ⟪ notify ↦ B ⇐ A ？· ⟪ notify ↦ ∅ ⟫ ⟫
 
     _ : orig nosyn ≡ ok
     _ = refl
@@ -195,17 +205,15 @@ module Three where
   module Forward where
     round : OpenGraph 0
     round =
-      choice
-        ((A ⟶ ⁅ B ⁆ # lbl0 < s/bool >) ⇒
-          ((B ⟶ ⁅ C ⁆ # lbl0 < s/bool >) ∙ end))
-        ( ((A ⟶ ⁅ B ⁆ # lbl1 < s/bool >) ⇒
-            ((B ⟶ ⁅ C ⁆ # lbl1 < s/bool >) ∙ end))
-        ∷ [])
+      ⟪ A ⟶ ⁅ B ⁆ # accept < s/bool > ∙ B ⟶ ⁅ C ⁆ # accept < s/bool > ∙ end
+      ∣ A ⟶ ⁅ B ⁆ # reject < s/bool > ∙ B ⟶ ⁅ C ⁆ # reject < s/bool > ∙ end
+      ⟫
 
     -- {A,C}: one label of the choice (a sender may send fewer), then the
     -- forward from `B`, at both.
     ac : Proc 0 0
-    ac = A ⇒ ⁅ B ⁆ ! lbl0 < val (v/bool true) >∙ (C ⇐ B ？· (∅ ∷ ∅ ∷ []))
+    ac = A ⇒ ⁅ B ⁆ ! accept < val (v/bool true) >∙
+         (C ⇐ B ？· ⟪ accept ↦ ∅ ∣ reject ↦ ∅ ⟫)
 
     _ : orig round ≡ ok
     _ = refl
@@ -222,7 +230,7 @@ module Three where
   -- Tests/Multicast.agda, Once: A ⟶ {B, C}.
   module Multicast where
     g : OpenGraph 0
-    g = (A ⟶ (⁅ B ⁆ ∪ ⁅ C ⁆) # here < s/bool >) ∙ end
+    g = (A ⟶ (⁅ B ⁆ ∪ ⁅ C ⁆) # announce < s/bool >) ∙ end
 
     _ : orig g ≡ ok
     _ = refl
@@ -237,18 +245,15 @@ module Three where
   module LabelSorts where
     g : OpenGraph 0
     g =
-      choice
-        ((A ⟶ ⁅ C ⁆ # lbl0 < s/unit >) ⇒
-          ((A ⟶ ⁅ B ⁆ # here < s/nat >) ∙ end))
-        ( ((A ⟶ ⁅ C ⁆ # lbl1 < s/unit >) ⇒
-            ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ end))
-        ∷ [])
+      ⟪ A ⟶ ⁅ C ⁆ # asNat < s/unit >  ∙ A ⟶ ⁅ B ⁆ # value < s/nat > ∙ end
+      ∣ A ⟶ ⁅ C ⁆ # asBool < s/unit > ∙ A ⟶ ⁅ B ⁆ # value < s/bool > ∙ end
+      ⟫
 
     _ : orig g ≡ ok
     _ = refl
     _ : view g AB ≡ ok
     _ = refl
-    -- `A⟶C` is internal, so {A,C}'s view sends `A⟶B` with label `here` at
+    -- `A⟶C` is internal, so {A,C}'s view sends `A⟶B` with label `value` at
     -- sort nat and at sort bool: non-deterministic, and no order helps.
     _ : view g AC ≡ notWB
     _ = refl
@@ -260,18 +265,26 @@ module Three where
 -- ══════════════════════════════════════════════════════════════════════
 
 module Four where
-  open import Definitions.Graph.Algebra 4 renaming (var to gvar)
+  open import Definitions.Graph.Algebra 4
   open import Data.Fin.Subset using (⁅_⁆; _∪_)
   open import Definitions.Actions 4
-  open import Definitions.Proc 4
+  open import Definitions.Proc 4 hiding (rec; _⇐_？·_)
+  open import Definitions.Proc.Syntax 4
+  open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
   open Judge 4
 
-  here : Fin 1
-  here = 0F
+  report relay ping pong : Fin 1
+  report = 0F
+  relay  = 0F
+  ping   = 0F
+  pong   = 0F
 
-  lbl0 lbl1 : Fin 2
-  lbl0 = 0F
-  lbl1 = 1F
+  datum continue left stop right : Fin 2
+  datum    = 0F
+  continue = 0F
+  left     = 0F
+  stop     = 1F
+  right    = 1F
 
   -- Examples/RecMW.agda.
   module RecMW where
@@ -283,15 +296,15 @@ module Four where
 
     recmw : OpenGraph 0
     recmw =
-      μ ( (M ⟶ ⁅ W1 ⁆ # lbl0 < s/nat >) ∙
-          (   ((M ⟶ ⁅ W2 ⁆ # lbl0 < s/nat >) ∙ end)
-            ∥ ((W1 ⟶ ⁅ R ⁆ # here < s/nat >) ∙ end)
-          ⨾ (W2 ⟶ ⁅ R ⁆ # here < s/nat >) ∙
-            choice ((R ⟶ ⁅ M ⁆ # lbl0 < s/nat >) ⇒ gvar 0F)
-                   ( ((R ⟶ ⁅ M ⁆ # lbl1 < s/bool >) ⇒
-                       ((M ⟶ ⁅ W1 ⁆ # lbl1 < s/bool >) ∙
-                        (M ⟶ ⁅ W2 ⁆ # lbl1 < s/bool >) ∙ end))
-                   ∷ []) ) )
+      μ λ X →
+        M ⟶ ⁅ W1 ⁆ # datum < s/nat > ∙
+        M ⟶ ⁅ W2 ⁆ # datum < s/nat > ∙
+        W1 ⟶ ⁅ R ⁆ # report < s/nat > ∙
+        W2 ⟶ ⁅ R ⁆ # report < s/nat > ∙
+        ⟪ R ⟶ ⁅ M ⁆ # continue < s/nat > ∙ X
+        ∣ R ⟶ ⁅ M ⁆ # stop < s/bool >    ∙ M ⟶ ⁅ W1 ⁆ # stop < s/bool > ∙
+                                           M ⟶ ⁅ W2 ⁆ # stop < s/bool > ∙ end
+        ⟫
 
     MW1 MW2 MR W1W2 W1R W2R : _
     MW1  = ⁅ M ⁆ ∪ ⁅ W1 ⁆
@@ -305,49 +318,60 @@ module Four where
     -- different own roles, in either order.
     mw1₁ mw1₂ : Proc 0 0
     mw1₁ =
-      rec (M ⇒ ⁅ W2 ⁆ ! lbl0 < val (v/nat 0) >∙
-           (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-            (M ⇐ R ？· (v 0F
-                       ∷ (M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool true) >∙ ∅)
-                       ∷ []))))
+      rec λ X →
+        M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 0) >∙
+        (W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
+         (M ⇐ R ？· ⟪ continue ↦ X
+                    ∣ stop     ↦ M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool true) >∙ ∅
+                    ⟫))
     mw1₂ =
-      rec (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-           (M ⇒ ⁅ W2 ⁆ ! lbl0 < val (v/nat 0) >∙
-            (M ⇐ R ？· (v 0F
-                       ∷ (M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool true) >∙ ∅)
-                       ∷ []))))
+      rec λ X →
+        W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
+        (M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 0) >∙
+         (M ⇐ R ？· ⟪ continue ↦ X
+                    ∣ stop     ↦ M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool true) >∙ ∅
+                    ⟫))
 
     -- Controls without a race: {M,W2} and {W1,R}.
     mw2 w1r : Proc 0 0
     mw2 =
-      rec (M ⇒ ⁅ W1 ⁆ ! lbl0 < val (v/nat 0) >∙
-           (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-            (M ⇐ R ？· (v 0F
-                       ∷ (M ⇒ ⁅ W1 ⁆ ! lbl1 < val (v/bool true) >∙ ∅)
-                       ∷ []))))
+      rec λ X →
+        M ⇒ ⁅ W1 ⁆ ! datum < val (v/nat 0) >∙
+        (W2 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
+         (M ⇐ R ？· ⟪ continue ↦ X
+                    ∣ stop     ↦ M ⇒ ⁅ W1 ⁆ ! stop < val (v/bool true) >∙ ∅
+                    ⟫))
     w1r =
-      rec (W1 ⇐ M ？·
-            ( (R ⇐ W2 ？· ((R ⇒ ⁅ M ⁆ ! lbl0 < val (v/nat 0) >∙ v 0F) ∷ []))
-            ∷ ∅
-            ∷ []))
+      rec λ X →
+        W1 ⇐ M ？·
+          ⟪ datum ↦ R ⇐ W2 ？·
+                      ⟪ report ↦ R ⇒ ⁅ M ⁆ ! continue < val (v/nat 0) >∙ X ⟫
+          ∣ stop  ↦ ∅
+          ⟫
 
     -- {W1,W2}: after `M→W1`, `M→W2` (received by `W2`) races `W1→R` (sent
     -- by `W1`): a mixed choice, in either order.
     w12₁ w12₂ : Proc 0 0
     w12₁ =
-      rec (W1 ⇐ M ？·
-            ( (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-               (W2 ⇐ M ？· ( (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙ v 0F)
-                           ∷ ∅ ∷ [])))
-            ∷ (W2 ⇐ M ？· (∅ ∷ ∅ ∷ []))
-            ∷ []))
+      rec λ X →
+        W1 ⇐ M ？·
+          ⟪ datum ↦ W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
+                    (W2 ⇐ M ？·
+                      ⟪ datum ↦ W2 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙ X
+                      ∣ stop  ↦ ∅
+                      ⟫)
+          ∣ stop  ↦ W2 ⇐ M ？· ⟪ datum ↦ ∅ ∣ stop ↦ ∅ ⟫
+          ⟫
     w12₂ =
-      rec (W1 ⇐ M ？·
-            ( (W2 ⇐ M ？· ( (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-                             (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙ v 0F))
-                           ∷ ∅ ∷ []))
-            ∷ (W2 ⇐ M ？· (∅ ∷ ∅ ∷ []))
-            ∷ []))
+      rec λ X →
+        W1 ⇐ M ？·
+          ⟪ datum ↦ W2 ⇐ M ？·
+                      ⟪ datum ↦ W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
+                                (W2 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙ X)
+                      ∣ stop  ↦ ∅
+                      ⟫
+          ∣ stop  ↦ W2 ⇐ M ？· ⟪ datum ↦ ∅ ∣ stop ↦ ∅ ⟫
+          ⟫
 
     _ : orig recmw ≡ ok
     _ = refl
@@ -392,15 +416,15 @@ module Four where
     D = 3F
 
     g : OpenGraph 0
-    g = (A ⟶ ⁅ B ⁆ # here < s/unit >) ∙
-        (B ⟶ ⁅ C ⁆ # here < s/unit >) ∙
-        (C ⟶ ⁅ D ⁆ # here < s/unit >) ∙ end
+    g = A ⟶ ⁅ B ⁆ # relay < s/unit > ∙
+        B ⟶ ⁅ C ⁆ # relay < s/unit > ∙
+        C ⟶ ⁅ D ⁆ # relay < s/unit > ∙ end
 
     BC : _
     BC = ⁅ B ⁆ ∪ ⁅ C ⁆
 
     bc : Proc 0 0
-    bc = B ⇐ A ？· ((C ⇒ ⁅ D ⁆ ! here < val v/unit >∙ ∅) ∷ [])
+    bc = B ⇐ A ？· ⟪ relay ↦ C ⇒ ⁅ D ⁆ ! relay < val v/unit >∙ ∅ ⟫
 
     _ : orig g ≡ ok
     _ = refl
@@ -421,19 +445,16 @@ module Four where
 
     told : OpenGraph 0
     told =
-      choice
-        ((P ⟶ ⁅ Q ⁆ # lbl0 < s/unit >) ⇒
-          ((Q ⟶ ⁅ R ⁆ # lbl0 < s/unit >) ∙ end))
-        ( ((P ⟶ ⁅ Q ⁆ # lbl1 < s/unit >) ⇒
-            ((Q ⟶ ⁅ R ⁆ # lbl1 < s/unit >) ∙ end))
-        ∷ [])
+      ⟪ P ⟶ ⁅ Q ⁆ # left < s/unit >  ∙ Q ⟶ ⁅ R ⁆ # left < s/unit > ∙ end
+      ∣ P ⟶ ⁅ Q ⁆ # right < s/unit > ∙ Q ⟶ ⁅ R ⁆ # right < s/unit > ∙ end
+      ⟫
 
     PQ : _
     PQ = ⁅ P ⁆ ∪ ⁅ Q ⁆
 
     -- {P,Q}: the internal choice is made by the send that tells `R`.
     pq : Proc 0 0
-    pq = Q ⇒ ⁅ R ⁆ ! lbl1 < val v/unit >∙ ∅
+    pq = Q ⇒ ⁅ R ⁆ ! right < val v/unit >∙ ∅
 
     _ : orig told ≡ ok
     _ = refl
@@ -451,9 +472,7 @@ module Four where
     S = 3F
 
     square : OpenGraph 0
-    square =
-        ((P ⟶ ⁅ Q ⁆ # here < s/unit >) ∙ end)
-      ∥ ((R ⟶ ⁅ S ⁆ # here < s/unit >) ∙ end)
+    square = P ⟶ ⁅ Q ⁆ # ping < s/unit > ∙ R ⟶ ⁅ S ⁆ # pong < s/unit > ∙ end
 
     PS QR : _
     PS = ⁅ P ⁆ ∪ ⁅ S ⁆
@@ -461,10 +480,10 @@ module Four where
 
     -- A mixed choice at state 0 for both blocks, in either order.
     ps₁ ps₂ qr₁ qr₂ : Proc 0 0
-    ps₁ = P ⇒ ⁅ Q ⁆ ! here < val v/unit >∙ (S ⇐ R ？· (∅ ∷ []))
-    ps₂ = S ⇐ R ？· ((P ⇒ ⁅ Q ⁆ ! here < val v/unit >∙ ∅) ∷ [])
-    qr₁ = Q ⇐ P ？· ((R ⇒ ⁅ S ⁆ ! here < val v/unit >∙ ∅) ∷ [])
-    qr₂ = R ⇒ ⁅ S ⁆ ! here < val v/unit >∙ (Q ⇐ P ？· (∅ ∷ []))
+    ps₁ = P ⇒ ⁅ Q ⁆ ! ping < val v/unit >∙ (S ⇐ R ？· ⟪ pong ↦ ∅ ⟫)
+    ps₂ = S ⇐ R ？· ⟪ pong ↦ P ⇒ ⁅ Q ⁆ ! ping < val v/unit >∙ ∅ ⟫
+    qr₁ = Q ⇐ P ？· ⟪ ping ↦ R ⇒ ⁅ S ⁆ ! pong < val v/unit >∙ ∅ ⟫
+    qr₂ = R ⇒ ⁅ S ⁆ ! pong < val v/unit >∙ (Q ⇐ P ？· ⟪ ping ↦ ∅ ⟫)
 
     _ : orig square ≡ ok
     _ = refl
@@ -490,15 +509,20 @@ module Five where
   open import Definitions.Graph.Algebra 5
   open import Data.Fin.Subset using (⁅_⁆; _∪_)
   open import Definitions.Actions 5
-  open import Definitions.Proc 5
+  open import Definitions.Proc 5 hiding (rec; _⇐_？·_)
+  open import Definitions.Proc.Syntax 5
+  open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
   open Judge 5
 
-  here : Fin 1
-  here = 0F
+  ping warm pong idle : Fin 1
+  ping = 0F
+  warm = 0F
+  pong = 0F
+  idle = 0F
 
-  lbl0 lbl1 : Fin 2
-  lbl0 = 0F
-  lbl1 = 1F
+  left right : Fin 2
+  left  = 0F
+  right = 1F
 
   -- `(P → Q) ∥ (R → T . R → S)` under {P,S}.  `P→Q` and `R→S` are
   -- a mixed choice at state 1, which the idle `R→T` reaches from 0.
@@ -512,17 +536,17 @@ module Five where
 
     g : OpenGraph 0
     g =
-        ((P ⟶ ⁅ Q ⁆ # here < s/unit >) ∙ end)
-      ∥ ((R ⟶ ⁅ T ⁆ # here < s/unit >) ∙
-         (R ⟶ ⁅ S ⁆ # here < s/unit >) ∙ end)
+        (P ⟶ ⁅ Q ⁆ # ping < s/unit > ∙ end)
+      ∥ (R ⟶ ⁅ T ⁆ # warm < s/unit > ∙
+         R ⟶ ⁅ S ⁆ # pong < s/unit > ∙ end)
 
     PS : _
     PS = ⁅ P ⁆ ∪ ⁅ S ⁆
 
     -- Both orders are rejected by `Focus` at state 0.
     ps₁ ps₂ : Proc 0 0
-    ps₁ = P ⇒ ⁅ Q ⁆ ! here < val v/unit >∙ (S ⇐ R ？· (∅ ∷ []))
-    ps₂ = S ⇐ R ？· ((P ⇒ ⁅ Q ⁆ ! here < val v/unit >∙ ∅) ∷ [])
+    ps₁ = P ⇒ ⁅ Q ⁆ ! ping < val v/unit >∙ (S ⇐ R ？· ⟪ pong ↦ ∅ ⟫)
+    ps₂ = S ⇐ R ？· ⟪ pong ↦ P ⇒ ⁅ Q ⁆ ! ping < val v/unit >∙ ∅ ⟫
 
     _ : orig g ≡ ok
     _ = refl
@@ -545,13 +569,10 @@ module Five where
 
     g : OpenGraph 0
     g =
-      ( choice
-          ((P ⟶ ⁅ S ⁆ # lbl0 < s/unit >) ⇒
-            ((S ⟶ ⁅ R ⁆ # lbl0 < s/unit >) ∙ end))
-          ( ((P ⟶ ⁅ S ⁆ # lbl1 < s/unit >) ⇒
-              ((S ⟶ ⁅ R ⁆ # lbl1 < s/unit >) ∙ end))
-          ∷ []) )
-      ∥ ((T ⟶ ⁅ U ⁆ # here < s/unit >) ∙ end)
+        ⟪ P ⟶ ⁅ S ⁆ # left < s/unit >  ∙ S ⟶ ⁅ R ⁆ # left < s/unit > ∙ end
+        ∣ P ⟶ ⁅ S ⁆ # right < s/unit > ∙ S ⟶ ⁅ R ⁆ # right < s/unit > ∙ end
+        ⟫
+      ∥ (T ⟶ ⁅ U ⁆ # idle < s/unit > ∙ end)
 
     PS : _
     PS = ⁅ P ⁆ ∪ ⁅ S ⁆
@@ -559,7 +580,7 @@ module Five where
     -- {P,S}: the internal choice is made by the send that tells `R`;
     -- `T→U` is an outsider's step.
     ps : Proc 0 0
-    ps = S ⇒ ⁅ R ⁆ ! lbl0 < val v/unit >∙ ∅
+    ps = S ⇒ ⁅ R ⁆ ! left < val v/unit >∙ ∅
 
     _ : orig g ≡ ok
     _ = refl

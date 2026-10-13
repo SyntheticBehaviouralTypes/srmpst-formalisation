@@ -21,15 +21,17 @@ open import Check
 open import Definitions.Graph.Algebra 3
 open import Data.Fin.Subset using (⁅_⁆)
 open import Definitions.Actions 3
-open import Definitions.Proc 3
+open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 3
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
 A B C : Fin 3
 A = 0F
 B = 1F
 C = 2F
 
-here : Fin 1
-here = 0F
+token : Fin 1
+token = 0F
 
 -- The partitions with two blocks, as owner maps.
 own/AB∣C own/AC∣B own/A∣BC : Fin 3 → Fin 2
@@ -47,9 +49,9 @@ module NonRecursive where
   -- A --bool--> B --bool--> C --bool--> A, end
   round : OpenGraph 0
   round =
-    (A ⟶ ⁅ B ⁆ # here < s/bool >) ∙
-    ((B ⟶ ⁅ C ⁆ # here < s/bool >) ∙
-     ((C ⟶ ⁅ A ⁆ # here < s/bool >) ∙ end))
+    A ⟶ ⁅ B ⁆ # token < s/bool > ∙
+    (B ⟶ ⁅ C ⁆ # token < s/bool > ∙
+     C ⟶ ⁅ A ⁆ # token < s/bool > ∙ end)
 
   wbg : WBGraph {N = 3}
   wbg = buildG round
@@ -59,9 +61,9 @@ module NonRecursive where
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module Global)
 
   p/A p/B p/C : Proc 0 0
-  p/A = A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ (A ⇐ C ？· (∅ ∷ []))
-  p/B = B ⇐ A ？· ((B ⇒ ⁅ C ⁆ ! here < val (v/bool true) >∙ ∅) ∷ [])
-  p/C = C ⇐ B ？· ((C ⇒ ⁅ A ⁆ ! here < val (v/bool true) >∙ ∅) ∷ [])
+  p/A = A ⇒ ⁅ B ⁆ ! token < val (v/bool true) >∙ (A ⇐ C ？· ⟪ token ↦ ∅ ⟫)
+  p/B = B ⇐ A ？· ⟪ token ↦ B ⇒ ⁅ C ⁆ ! token < val (v/bool true) >∙ ∅ ⟫
+  p/C = C ⇐ B ？· ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < val (v/bool true) >∙ ∅ ⟫
 
   -- {A} {B} {C}: one process per role.
   module A∣B∣C where
@@ -87,7 +89,9 @@ module NonRecursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = (B ⇒ ⁅ C ⁆ ! here < val (v/bool true) >∙ (A ⇐ C ？· (∅ ∷ []))) ∷ p/C ∷ []
+    M = (B ⇒ ⁅ C ⁆ ! token < val (v/bool true) >∙ (A ⇐ C ？· ⟪ token ↦ ∅ ⟫))
+      ∷ p/C
+      ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
     M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -104,7 +108,9 @@ module NonRecursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ (C ⇐ B ？· (∅ ∷ []))) ∷ p/B ∷ []
+    M = (A ⇒ ⁅ B ⁆ ! token < val (v/bool true) >∙ (C ⇐ B ？· ⟪ token ↦ ∅ ⟫))
+      ∷ p/B
+      ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
     M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -121,7 +127,9 @@ module NonRecursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = p/A ∷ (B ⇐ A ？· ((C ⇒ ⁅ A ⁆ ! here < val (v/bool true) >∙ ∅) ∷ [])) ∷ []
+    M = p/A
+      ∷ (B ⇐ A ？· ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < val (v/bool true) >∙ ∅ ⟫)
+      ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
     M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -153,9 +161,10 @@ module Recursive where
   -- μ (A --bool--> B --bool--> C --bool--> loop)
   round : OpenGraph 0
   round =
-    μ ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙
-       ((B ⟶ ⁅ C ⁆ # here < s/bool >) ∙
-        ((C ⟶ ⁅ A ⁆ # here < s/bool >) ∙ var 0F)))
+    μ λ X →
+      A ⟶ ⁅ B ⁆ # token < s/bool > ∙
+      B ⟶ ⁅ C ⁆ # token < s/bool > ∙
+      C ⟶ ⁅ A ⁆ # token < s/bool > ∙ X
 
   wbg : WBGraph {N = 3}
   wbg = buildG round
@@ -165,12 +174,12 @@ module Recursive where
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module Global)
 
   p/A p/B p/C : Proc 0 0
-  p/A = rec (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙
-              (A ⇐ C ？· (v 0F ∷ [])))
-  p/B = rec (B ⇐ A ？·
-              ((B ⇒ ⁅ C ⁆ ! here < val (v/bool true) >∙ v 0F) ∷ []))
-  p/C = rec (C ⇐ B ？·
-              ((C ⇒ ⁅ A ⁆ ! here < val (v/bool true) >∙ v 0F) ∷ []))
+  p/A = rec λ X → A ⇒ ⁅ B ⁆ ! token < val (v/bool true) >∙
+                  (A ⇐ C ？· ⟪ token ↦ X ⟫)
+  p/B = rec λ X → B ⇐ A ？· ⟪ token ↦ B ⇒ ⁅ C ⁆ ! token < val (v/bool true) >∙
+                                      X ⟫
+  p/C = rec λ X → C ⇐ B ？· ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < val (v/bool true) >∙
+                                      X ⟫
 
   -- {A} {B} {C}
   module A∣B∣C where
@@ -196,7 +205,10 @@ module Recursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = rec (B ⇒ ⁅ C ⁆ ! here < val (v/bool true) >∙ (A ⇐ C ？· (v 0F ∷ []))) ∷ p/C ∷ []
+    M = (rec λ X → B ⇒ ⁅ C ⁆ ! token < val (v/bool true) >∙
+                   (A ⇐ C ？· ⟪ token ↦ X ⟫))
+      ∷ p/C
+      ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
     M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -213,7 +225,10 @@ module Recursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = rec (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ (C ⇐ B ？· (v 0F ∷ []))) ∷ p/B ∷ []
+    M = (rec λ X → A ⇒ ⁅ B ⁆ ! token < val (v/bool true) >∙
+                   (C ⇐ B ？· ⟪ token ↦ X ⟫))
+      ∷ p/B
+      ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
     M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -230,7 +245,10 @@ module Recursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = p/A ∷ rec (B ⇐ A ？· ((C ⇒ ⁅ A ⁆ ! here < val (v/bool true) >∙ v 0F) ∷ [])) ∷ []
+    M = p/A
+      ∷ (rec λ X → B ⇐ A ？·
+                     ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < val (v/bool true) >∙ X ⟫)
+      ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
     M-typed = from-yes (typecheckSession wbg Ρ M)

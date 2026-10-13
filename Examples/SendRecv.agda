@@ -21,15 +21,17 @@ open import Check
 
 open import Definitions.Graph.Algebra 2
 open import Definitions.Actions 2
-open import Definitions.Proc 2
+open import Definitions.Proc 2 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 2
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
 A B : Fin 2
 A = 0F
 B = 1F
 
--- Pins `I = 0` for a non-branching send.
-here : Fin 1
-here = 0F
+-- The one message: a flag.
+flag : Fin 1
+flag = 0F
 
 -- {A,B}: one process.
 Ρ/AB : Assignment 1
@@ -38,7 +40,7 @@ here = 0F
 module NonRecursive where
   -- A --bool--> B, end
   sendrecv : OpenGraph 0
-  sendrecv = (A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ end
+  sendrecv = A ⟶ ⁅ B ⁆ # flag < s/bool > ∙ end
 
   wbg : WBGraph {N = 2}
   wbg = buildG sendrecv
@@ -54,7 +56,9 @@ module NonRecursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ ∅) ∷ (B ⇐ A ？· (∅ ∷ [])) ∷ []
+    M = (A ⇒ ⁅ B ⁆ ! flag < val (v/bool true) >∙ ∅)
+      ∷ (B ⇐ A ？· ⟪ flag ↦ ∅ ⟫)
+      ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
     M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -84,7 +88,7 @@ module NonRecursive where
 module Recursive where
   -- μ (A --bool--> loop)
   sendrecv : OpenGraph 0
-  sendrecv = μ ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ var 0F)
+  sendrecv = μ λ X → A ⟶ ⁅ B ⁆ # flag < s/bool > ∙ X
 
   wbg : WBGraph {N = 2}
   wbg = buildG sendrecv
@@ -100,8 +104,8 @@ module Recursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = rec (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ v 0F)
-      ∷ rec (B ⇐ A ？· (v 0F ∷ []))
+    M = (rec λ X → A ⇒ ⁅ B ⁆ ! flag < val (v/bool true) >∙ X)
+      ∷ (rec λ X → B ⇐ A ？· ⟪ flag ↦ X ⟫)
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
@@ -142,9 +146,9 @@ module RecursiveUnfoldOnce where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙
-           (rec (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ v 0F)))
-      ∷ rec (B ⇐ A ？· (v 0F ∷ []))
+    M = (A ⇒ ⁅ B ⁆ ! flag < val (v/bool true) >∙
+           (rec λ X → A ⇒ ⁅ B ⁆ ! flag < val (v/bool true) >∙ X))
+      ∷ (rec λ X → B ⇐ A ？· ⟪ flag ↦ X ⟫)
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀

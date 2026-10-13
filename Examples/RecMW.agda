@@ -24,10 +24,12 @@ open import Definitions.Expr
   using (s/bool; s/nat; val; v/nat; v/bool; is-zero; var)
 open import Check hiding (base; _∥_; _⨾_)
 
-open import Definitions.Graph.Algebra 4 renaming (var to gvar)
+open import Definitions.Graph.Algebra 4 hiding (var)
 open import Data.Fin.Subset using (⁅_⁆)
 open import Definitions.Actions 4
-open import Definitions.Proc 4
+open import Definitions.Proc 4 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 4
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
 M R W1 W2 : Fin 4
 M  = 0F
@@ -35,26 +37,29 @@ R  = 1F
 W1 = 2F
 W2 = 3F
 
-here : Fin 1
-here = 0F
+-- `W` to `R`
+report : Fin 1
+report = 0F
 
--- M→W datum/stop ([nat, bool]); R→M continue/stop ([nat, bool])
-lbl0 lbl1 : Fin 2
-lbl0 = 0F
-lbl1 = 1F
+-- `M` to `W`: a datum, or stop; `R` to `M`: continue, or stop
+datum continue stop : Fin 2
+datum    = 0F
+continue = 0F
+stop     = 1F
 
--- One round: `M→W1`, then `M→W2 ∥ W1→R`, then `W2→R`; `R` loops or stops.
+-- One round: `M→W1`, `M→W2`, `W1→R`, `W2→R`; `R` loops or stops.  `M→W2`
+-- and `W1→R` share no role, so `∙` lets them come in either order.
 recmw : OpenGraph 0
 recmw =
-  μ ( (M ⟶ ⁅ W1 ⁆ # lbl0 < s/nat >) ∙
-      (   ((M ⟶ ⁅ W2 ⁆ # lbl0 < s/nat >) ∙ end)
-        ∥ ((W1 ⟶ ⁅ R ⁆ # here < s/nat >) ∙ end)
-      ⨾ (W2 ⟶ ⁅ R ⁆ # here < s/nat >) ∙
-        choice ((R ⟶ ⁅ M ⁆ # lbl0 < s/nat >) ⇒ gvar 0F)
-               ( ((R ⟶ ⁅ M ⁆ # lbl1 < s/bool >) ⇒
-                   ((M ⟶ ⁅ W1 ⁆ # lbl1 < s/bool >) ∙
-                    (M ⟶ ⁅ W2 ⁆ # lbl1 < s/bool >) ∙ end))
-               ∷ []) ) )
+  μ λ X →
+    M ⟶ ⁅ W1 ⁆ # datum < s/nat > ∙
+    M ⟶ ⁅ W2 ⁆ # datum < s/nat > ∙
+    W1 ⟶ ⁅ R ⁆ # report < s/nat > ∙
+    W2 ⟶ ⁅ R ⁆ # report < s/nat > ∙
+    ⟪ R ⟶ ⁅ M ⁆ # continue < s/nat > ∙ X
+    ∣ R ⟶ ⁅ M ⁆ # stop < s/bool >    ∙ M ⟶ ⁅ W1 ⁆ # stop < s/bool > ∙
+                                       M ⟶ ⁅ W2 ⁆ # stop < s/bool > ∙ end
+    ⟫
 
 wbg : WBGraph {N = 4}
 wbg = buildG recmw {p = tt}
@@ -66,32 +71,34 @@ open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module
 -- ── One process per role ──────────────────────────────────────────────
 
 p/M : Proc 0 0
-p/M = rec (M ⇒ ⁅ W1 ⁆ ! lbl0 < val (v/nat 0) >∙
-          (M ⇒ ⁅ W2 ⁆ ! lbl0 < val (v/nat 1) >∙
-          (M ⇐ R ？·
-            (  v 0F
-            v∷ (M ⇒ ⁅ W1 ⁆ ! lbl1 < val (v/bool false) >∙
-                (M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool false) >∙ ∅))
-            v∷ v[]))))
+p/M = rec λ X →
+        M ⇒ ⁅ W1 ⁆ ! datum < val (v/nat 0) >∙
+        (M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 1) >∙
+        (M ⇐ R ？·
+          ⟪ continue ↦ X
+          ∣ stop     ↦ M ⇒ ⁅ W1 ⁆ ! stop < val (v/bool false) >∙
+                       (M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool false) >∙ ∅)
+          ⟫))
 
 p/R : Proc 0 0
-p/R = rec (R ⇐ W1 ？·
-            (  (R ⇐ W2 ？·
-                 (  (ifp is-zero (var 0F)
-                     then (R ⇒ ⁅ M ⁆ ! lbl1 < val (v/bool true) >∙ ∅)
-                     else (R ⇒ ⁅ M ⁆ ! lbl0 < var 1F >∙ v 0F))
-                 v∷ v[]))
-            v∷ v[]))
+p/R = rec λ X →
+        R ⇐ W1 ？·
+          ⟪ report ↦
+              R ⇐ W2 ？·
+                ⟪ report ↦ ifp is-zero (var 0F)
+                           then (R ⇒ ⁅ M ⁆ ! stop < val (v/bool true) >∙ ∅)
+                           else (R ⇒ ⁅ M ⁆ ! continue < var 1F >∙ X)
+                ⟫
+          ⟫
 
 -- both workers run the same shape: receive a datum, then loop reporting to
 -- `R` until `M` says stop
 p/W : Fin 4 → Proc 0 0
 p/W W = W ⇐ M ？·
-        (  (rec (W ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-                 (W ⇐ M ？·
-                   (v 0F v∷ ∅ v∷ v[]))))
-        v∷ ∅
-        v∷ v[])
+        ⟪ datum ↦ (rec λ X → W ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
+                             (W ⇐ M ？· ⟪ datum ↦ X ∣ stop ↦ ∅ ⟫))
+        ∣ stop  ↦ ∅
+        ⟫
 
 -- {M} {R} {W1} {W2}
 -- (Sessions are named `Ms`: `M` is a role.)
@@ -123,94 +130,131 @@ module M∣R∣W1∣W2 where
 -- {M,W1}: `M→W1` is internal; then `M→W2` and `W1→R` are two sends by
 -- different own roles, enabled together: `Focus` refuses either order.
 mw1₁ mw1₂ : Proc 0 0
-mw1₁ = rec (M ⇒ ⁅ W2 ⁆ ! lbl0 < val (v/nat 0) >∙
-            (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-             (M ⇐ R ？· (v 0F v∷ (M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool true) >∙ ∅) v∷ v[]))))
-mw1₂ = rec (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-            (M ⇒ ⁅ W2 ⁆ ! lbl0 < val (v/nat 0) >∙
-             (M ⇐ R ？· (v 0F v∷ (M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool true) >∙ ∅) v∷ v[]))))
+mw1₁ = rec λ X →
+         M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 0) >∙
+         (W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
+          (M ⇐ R ？·
+            ⟪ continue ↦ X
+            ∣ stop     ↦ M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool true) >∙ ∅
+            ⟫))
+mw1₂ = rec λ X →
+         W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
+         (M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 0) >∙
+          (M ⇐ R ？·
+            ⟪ continue ↦ X
+            ∣ stop     ↦ M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool true) >∙ ∅
+            ⟫))
 
 -- {M,W2}: `M→W2` is internal; `W1→R` is none of its business.
 mw2 : Proc 0 0
-mw2 = rec (M ⇒ ⁅ W1 ⁆ ! lbl0 < val (v/nat 0) >∙
-           (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-            (M ⇐ R ？· (v 0F v∷ (M ⇒ ⁅ W1 ⁆ ! lbl1 < val (v/bool true) >∙ ∅) v∷ v[]))))
+mw2 = rec λ X →
+        M ⇒ ⁅ W1 ⁆ ! datum < val (v/nat 0) >∙
+        (W2 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
+         (M ⇐ R ？·
+           ⟪ continue ↦ X
+           ∣ stop     ↦ M ⇒ ⁅ W1 ⁆ ! stop < val (v/bool true) >∙ ∅
+           ⟫))
 
 -- {R,W1}: `W1→R` is internal; the block always continues.
 w1r : Proc 0 0
-w1r = rec (W1 ⇐ M ？·
-            (  (R ⇐ W2 ？· ((R ⇒ ⁅ M ⁆ ! lbl0 < val (v/nat 0) >∙ v 0F) v∷ v[]))
-            v∷ ∅
-            v∷ v[]))
+w1r = rec λ X →
+        W1 ⇐ M ？·
+          ⟪ datum ↦ R ⇐ W2 ？·
+                        ⟪ report ↦ R ⇒ ⁅ M ⁆ ! continue < val (v/nat 0) >∙ X ⟫
+          ∣ stop  ↦ ∅
+          ⟫
 
 -- {M,R}: after `M→W1`, `M` may send `M→W2` while `R` may receive `W1→R`:
 -- `Focus` refuses either order.  (`R→M` is internal: here, stop.)
 mr₁ mr₂ : Proc 0 0
-mr₁ = M ⇒ ⁅ W1 ⁆ ! lbl0 < val (v/nat 0) >∙
-      (M ⇒ ⁅ W2 ⁆ ! lbl0 < val (v/nat 0) >∙
-       (R ⇐ W1 ？· ((R ⇐ W2 ？·
-         ((M ⇒ ⁅ W1 ⁆ ! lbl1 < val (v/bool true) >∙
-           (M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool true) >∙ ∅)) v∷ v[])) v∷ v[])))
-mr₂ = M ⇒ ⁅ W1 ⁆ ! lbl0 < val (v/nat 0) >∙
-      (R ⇐ W1 ？· ((M ⇒ ⁅ W2 ⁆ ! lbl0 < val (v/nat 0) >∙
-       (R ⇐ W2 ？·
-         ((M ⇒ ⁅ W1 ⁆ ! lbl1 < val (v/bool true) >∙
-           (M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool true) >∙ ∅)) v∷ v[]))) v∷ v[]))
+mr₁ = M ⇒ ⁅ W1 ⁆ ! datum < val (v/nat 0) >∙
+      (M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 0) >∙
+       (R ⇐ W1 ？·
+         ⟪ report ↦ R ⇐ W2 ？·
+                      ⟪ report ↦ M ⇒ ⁅ W1 ⁆ ! stop < val (v/bool true) >∙
+                                 (M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool true) >∙ ∅)
+                      ⟫
+         ⟫))
+mr₂ = M ⇒ ⁅ W1 ⁆ ! datum < val (v/nat 0) >∙
+      (R ⇐ W1 ？·
+        ⟪ report ↦ M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 0) >∙
+                   (R ⇐ W2 ？·
+                     ⟪ report ↦ M ⇒ ⁅ W1 ⁆ ! stop < val (v/bool true) >∙
+                                (M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool true) >∙ ∅)
+                     ⟫)
+        ⟫)
 
 -- {R,W2}: after `M→W1`, `W2` may receive `M→W2` while `R` may receive
 -- `W1→R` (from different senders): `Focus` refuses either order.
 rw2₁ rw2₂ : Proc 0 0
-rw2₁ = rec (W2 ⇐ M ？·
-             (  (R ⇐ W1 ？· ((R ⇒ ⁅ M ⁆ ! lbl0 < val (v/nat 0) >∙ v 0F) v∷ v[]))
-             v∷ ∅
-             v∷ v[]))
-rw2₂ = rec (R ⇐ W1 ？·
-             (  (W2 ⇐ M ？· ((R ⇒ ⁅ M ⁆ ! lbl0 < val (v/nat 0) >∙ v 0F) v∷ ∅ v∷ v[]))
-             v∷ v[]))
+rw2₁ = rec λ X →
+         W2 ⇐ M ？·
+           ⟪ datum ↦ R ⇐ W1 ？·
+                         ⟪ report ↦ R ⇒ ⁅ M ⁆ ! continue < val (v/nat 0) >∙ X ⟫
+           ∣ stop  ↦ ∅
+           ⟫
+rw2₂ = rec λ X →
+         R ⇐ W1 ？·
+           ⟪ report ↦ W2 ⇐ M ？·
+                        ⟪ datum ↦ R ⇒ ⁅ M ⁆ ! continue < val (v/nat 0) >∙ X
+                        ∣ stop  ↦ ∅
+                        ⟫
+           ⟫
 
 -- {W1,W2}: after `M→W1`, `W2` may receive `M→W2` while `W1` may send
 -- `W1→R`: a mixed choice, refused in either order.
 w12₁ w12₂ : Proc 0 0
-w12₁ = rec (W1 ⇐ M ？·
-             (  (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-                  (W2 ⇐ M ？· ((W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙ v 0F) v∷ ∅ v∷ v[])))
-             v∷ (W2 ⇐ M ？· (∅ v∷ ∅ v∷ v[]))
-             v∷ v[]))
-w12₂ = rec (W1 ⇐ M ？·
-             (  (W2 ⇐ M ？· ((W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-                               (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙ v 0F))
-                             v∷ ∅ v∷ v[]))
-             v∷ (W2 ⇐ M ？· (∅ v∷ ∅ v∷ v[]))
-             v∷ v[]))
+w12₁ = rec λ X →
+         W1 ⇐ M ？·
+           ⟪ datum ↦ W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
+                     (W2 ⇐ M ？·
+                       ⟪ datum ↦ W2 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙ X
+                       ∣ stop  ↦ ∅
+                       ⟫)
+           ∣ stop  ↦ W2 ⇐ M ？· ⟪ datum ↦ ∅ ∣ stop ↦ ∅ ⟫
+           ⟫
+w12₂ = rec λ X →
+         W1 ⇐ M ？·
+           ⟪ datum ↦ W2 ⇐ M ？·
+                       ⟪ datum ↦ W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
+                                 (W2 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙ X)
+                       ∣ stop  ↦ ∅
+                       ⟫
+           ∣ stop  ↦ W2 ⇐ M ？· ⟪ datum ↦ ∅ ∣ stop ↦ ∅ ⟫
+           ⟫
 
 -- {M,R,W1}: `M→W1`, `W1→R`, `R→M` are internal; the block sends `M→W2`,
 -- hears `W2→R`, and (internally) stops.
 mrw1 : Proc 0 0
-mrw1 = M ⇒ ⁅ W2 ⁆ ! lbl0 < val (v/nat 0) >∙
-       (R ⇐ W2 ？· ((M ⇒ ⁅ W2 ⁆ ! lbl1 < val (v/bool false) >∙ ∅) v∷ v[]))
+mrw1 = M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 0) >∙
+       (R ⇐ W2 ？· ⟪ report ↦ M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool false) >∙ ∅ ⟫)
 
 -- {M,R,W2}: symmetrically, with `W1` outside.
 mrw2 : Proc 0 0
-mrw2 = M ⇒ ⁅ W1 ⁆ ! lbl0 < val (v/nat 0) >∙
-       (R ⇐ W1 ？· ((M ⇒ ⁅ W1 ⁆ ! lbl1 < val (v/bool false) >∙ ∅) v∷ v[]))
+mrw2 = M ⇒ ⁅ W1 ⁆ ! datum < val (v/nat 0) >∙
+       (R ⇐ W1 ？· ⟪ report ↦ M ⇒ ⁅ W1 ⁆ ! stop < val (v/bool false) >∙ ∅ ⟫)
 
 -- {M,W1,W2}: `M`'s sends are internal; the workers report in turn, and the
 -- block follows `R`'s decision.
 mw12 : Proc 0 0
-mw12 = rec (W1 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-             (W2 ⇒ ⁅ R ⁆ ! here < val (v/nat 0) >∙
-              (M ⇐ R ？· (v 0F v∷ ∅ v∷ v[]))))
+mw12 = rec λ X →
+         W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
+         (W2 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
+          (M ⇐ R ？· ⟪ continue ↦ X ∣ stop ↦ ∅ ⟫))
 
 -- {R,W1,W2}: the reports are internal; the workers hear `M`, `R` stops.
 rw12 : Proc 0 0
 rw12 = W1 ⇐ M ？·
-         (  (W2 ⇐ M ？·
-              (  (R ⇒ ⁅ M ⁆ ! lbl1 < val (v/bool true) >∙
-                   (W1 ⇐ M ？· (∅ v∷ (W2 ⇐ M ？· (∅ v∷ ∅ v∷ v[])) v∷ v[])))
-              v∷ ∅
-              v∷ v[]))
-         v∷ ∅
-         v∷ v[])
+         ⟪ datum ↦ W2 ⇐ M ？·
+                     ⟪ datum ↦ R ⇒ ⁅ M ⁆ ! stop < val (v/bool true) >∙
+                               (W1 ⇐ M ？·
+                                 ⟪ datum ↦ ∅
+                                 ∣ stop  ↦ W2 ⇐ M ？· ⟪ datum ↦ ∅ ∣ stop ↦ ∅ ⟫
+                                 ⟫)
+                     ∣ stop  ↦ ∅
+                     ⟫
+         ∣ stop  ↦ ∅
+         ⟫
 
 -- ── Owner maps: M, R, W1, W2 ↦ block ──────────────────────────────────
 

@@ -67,15 +67,24 @@ module Tests.WaitNotSkip where
     e : St
     z : St
 
-  -- Arity `suc i` at `g i`; label 0 continues the chain, label 1 exits to `e`.
+  -- At `g i`, `Q`'s choice has `suc (suc i)` labels: `continue i` goes on
+  -- along the chain, `exit i` leaves it for `e`.
+  continue exit : ∀ i → Fin (suc (suc i))
+  continue i = zero
+  exit     i = suc zero
+
+  -- `P`'s one message, at `e`
+  poke : Fin 1
+  poke = zero
+
   aA : ℕ → Action
-  aA i = Q ⟶ ⁅ R ⁆ # (zero {suc i} < s/unit >)
+  aA i = Q ⟶ ⁅ R ⁆ # continue i < s/unit >
 
   bA : ℕ → Action
-  bA i = Q ⟶ ⁅ R ⁆ # (suc (zero {i}) < s/unit >)
+  bA i = Q ⟶ ⁅ R ⁆ # exit i < s/unit >
 
   pA : Action
-  pA = P ⟶ ⁅ Q ⁆ # (zero {0} < s/unit >)
+  pA = P ⟶ ⁅ Q ⁆ # poke < s/unit >
 
   data _⇒_⇒_ : St → Action → St → Set where
     sA : ∀ i → g i ⇒ aA i ⇒ g (suc i)

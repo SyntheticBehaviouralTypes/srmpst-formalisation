@@ -9,7 +9,7 @@
 --  │ A⟶C # 1<unit>       A⟶B # 0<bool>       B⟶C # 0<bool>
 --  └───────────────► s₂ ───────────────► t₂ ───────────────► ended
 --
--- `p/B` forwards what it received: `C ! here < var 0F >∙ ∅`.
+-- `p/B` forwards what it received: `C ! value < var 0F >∙ ∅`.
 
 module Tests.LabelSortsForward where
 
@@ -31,29 +31,31 @@ import Definitions.Typing as Typing
 open import Definitions.Graph.Algebra 3 renaming (var to gvar)
 open import Data.Fin.Subset using (⁅_⁆)
 open import Definitions.Actions 3
-open import Definitions.Proc 3
+open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 3
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
 A B C : Fin 3
 A = 0F
 B = 1F
 C = 2F
 
-here : Fin 1
-here = 0F
+-- `A` to `B` (and `B` to `C`): the one label, at either sort
+value : Fin 1
+value = 0F
 
-lbl0 lbl1 : Fin 2
-lbl0 = 0F
-lbl1 = 1F
+-- `A` to `C`: which sort `B` gets
+asNat asBool : Fin 2
+asNat  = 0F
+asBool = 1F
 
 g : OpenGraph 0
 g =
-  choice
-    ((A ⟶ ⁅ C ⁆ # lbl0 < s/unit >) ⇒
-      ((A ⟶ ⁅ B ⁆ # here < s/nat >) ∙
-       (B ⟶ ⁅ C ⁆ # here < s/nat >) ∙ end))
-    ( ((A ⟶ ⁅ C ⁆ # lbl1 < s/unit >) ⇒
-        ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ (B ⟶ ⁅ C ⁆ # here < s/bool >) ∙ end))
-    ∷ [])
+  ⟪ A ⟶ ⁅ C ⁆ # asNat < s/unit >  ∙ A ⟶ ⁅ B ⁆ # value < s/nat > ∙
+                                    B ⟶ ⁅ C ⁆ # value < s/nat > ∙ end
+  ∣ A ⟶ ⁅ C ⁆ # asBool < s/unit > ∙ A ⟶ ⁅ B ⁆ # value < s/bool > ∙
+                                    B ⟶ ⁅ C ⁆ # value < s/bool > ∙ end
+  ⟫
 
 wbg : WBGraph {N = 3}
 wbg = buildG g {p = tt}
@@ -63,21 +65,21 @@ open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_)
 p/A : Proc 0 0
 p/A =
   ifp val (v/bool true)
-  then (A ⇒ ⁅ C ⁆ ! lbl0 < val v/unit >∙
-         (A ⇒ ⁅ B ⁆ ! here < val (v/nat 0) >∙ ∅))
-  else (A ⇒ ⁅ C ⁆ ! lbl1 < val v/unit >∙
-         (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ ∅))
+  then (A ⇒ ⁅ C ⁆ ! asNat < val v/unit >∙
+         (A ⇒ ⁅ B ⁆ ! value < val (v/nat 0) >∙ ∅))
+  else (A ⇒ ⁅ C ⁆ ! asBool < val v/unit >∙
+         (A ⇒ ⁅ B ⁆ ! value < val (v/bool true) >∙ ∅))
 
 -- USES the bound variable, at two different sorts, in one derivation
 p/B : Proc 0 0
-p/B = B ⇐ A ？· ((B ⇒ ⁅ C ⁆ ! here < var 0F >∙ ∅) v∷ v[])
+p/B = B ⇐ A ？· ⟪ value ↦ B ⇒ ⁅ C ⁆ ! value < var 0F >∙ ∅ ⟫
 
 p/C : Proc 0 0
 p/C =
   C ⇐ A ？·
-    (  (C ⇐ B ？· (∅ v∷ v[]))
-    v∷ (C ⇐ B ？· (∅ v∷ v[]))
-    v∷ v[])
+    ⟪ asNat  ↦ C ⇐ B ？· ⟪ value ↦ ∅ ⟫
+    ∣ asBool ↦ C ⇐ B ？· ⟪ value ↦ ∅ ⟫
+    ⟫
 
 M : Over.Session singletons
 M = p/A v∷ p/B v∷ p/C v∷ v[]

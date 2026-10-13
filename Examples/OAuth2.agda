@@ -24,15 +24,18 @@ open import Check
 open import Definitions.Graph.Algebra 3
 open import Data.Fin.Subset using (⁅_⁆)
 open import Definitions.Actions 3
-open import Definitions.Proc 3
+open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 3
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
 S C A : Fin 3
 S = 0F
 C = 1F
 A = 2F
 
-here : Fin 1
-here = 0F
+-- `A`'s verdict to `S`
+auth : Fin 1
+auth = 0F
 
 -- the S→C choice: login/cancel (both carry a nat)
 login cancel : Fin 2
@@ -48,13 +51,10 @@ quit   = 1F
 -- s0 --S→C[cancel]--> s3 --C→A[quit]----------------------> ended
 oauth : OpenGraph 0
 oauth =
-  choice
-    ((S ⟶ ⁅ C ⁆ # login < s/nat >) ⇒
-      ((C ⟶ ⁅ A ⁆ # passwd < s/nat >) ∙
-       (A ⟶ ⁅ S ⁆ # here < s/bool >) ∙ end))
-    ( ((S ⟶ ⁅ C ⁆ # cancel < s/nat >) ⇒
-        ((C ⟶ ⁅ A ⁆ # quit < s/bool >) ∙ end))
-    ∷ [])
+  ⟪ S ⟶ ⁅ C ⁆ # login < s/nat >  ∙ C ⟶ ⁅ A ⁆ # passwd < s/nat > ∙
+                                    A ⟶ ⁅ S ⁆ # auth < s/bool > ∙ end
+  ∣ S ⟶ ⁅ C ⁆ # cancel < s/nat > ∙ C ⟶ ⁅ A ⁆ # quit < s/bool > ∙ end
+  ⟫
 
 wbg : WBGraph {N = 3}
 wbg = buildG oauth {p = tt}
@@ -70,16 +70,16 @@ p/S = S ⇒ ⁅ C ⁆ ! cancel < val (v/nat 0) >∙ ∅
 -- the client covers both offers: forward the password, or tell `A` to quit
 p/C : Proc 0 0
 p/C = C ⇐ S ？·
-        (  (C ⇒ ⁅ A ⁆ ! passwd < val (v/nat 0) >∙ ∅)
-        v∷ (C ⇒ ⁅ A ⁆ ! quit < val (v/bool true) >∙ ∅)
-        v∷ v[])
+        ⟪ login  ↦ C ⇒ ⁅ A ⁆ ! passwd < val (v/nat 0) >∙ ∅
+        ∣ cancel ↦ C ⇒ ⁅ A ⁆ ! quit < val (v/bool true) >∙ ∅
+        ⟫
 
 -- the auth service: authorize towards `S`, or stop
 p/A : Proc 0 0
 p/A = A ⇐ C ？·
-        (  (A ⇒ ⁅ S ⁆ ! here < val (v/bool true) >∙ ∅)
-        v∷ ∅
-        v∷ v[])
+        ⟪ passwd ↦ A ⇒ ⁅ S ⁆ ! auth < val (v/bool true) >∙ ∅
+        ∣ quit   ↦ ∅
+        ⟫
 
 -- {S} {C} {A}: one process per role.
 module S∣C∣A where
@@ -119,7 +119,9 @@ module SC∣A where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (C ⇒ ⁅ A ⁆ ! passwd < val (v/nat 0) >∙ (S ⇐ A ？· (∅ v∷ v[]))) v∷ p/A v∷ v[]
+  M = (C ⇒ ⁅ A ⁆ ! passwd < val (v/nat 0) >∙ (S ⇐ A ？· ⟪ auth ↦ ∅ ⟫))
+    v∷ p/A
+    v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
   M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -136,7 +138,10 @@ module SA∣C where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (S ⇒ ⁅ C ⁆ ! cancel < val (v/nat 0) >∙ (A ⇐ C ？· (∅ v∷ ∅ v∷ v[]))) v∷ p/C v∷ v[]
+  M = (S ⇒ ⁅ C ⁆ ! cancel < val (v/nat 0) >∙
+         (A ⇐ C ？· ⟪ passwd ↦ ∅ ∣ quit ↦ ∅ ⟫))
+    v∷ p/C
+    v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
   M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -153,7 +158,12 @@ module S∣CA where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = p/S v∷ (C ⇐ S ？· ((A ⇒ ⁅ S ⁆ ! here < val (v/bool true) >∙ ∅) v∷ ∅ v∷ v[])) v∷ v[]
+  M = p/S
+    v∷ (C ⇐ S ？·
+         ⟪ login  ↦ A ⇒ ⁅ S ⁆ ! auth < val (v/bool true) >∙ ∅
+         ∣ cancel ↦ ∅
+         ⟫)
+    v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
   M-typed = from-yes (typecheckSession wbg Ρ M)

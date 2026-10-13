@@ -16,11 +16,14 @@ open import Definitions.Expr using (s/unit; val; v/unit)
 open import Check
 import Definitions.Typing as Typing
 
-open import Definitions.Graph.Algebra 7 using (OpenGraph; end; _∙_; μ; var; initial)
+open import Definitions.Graph.Algebra 7
+  using (OpenGraph; end; _∙_; prefix/graph; μ; initial)
 open import Definitions.Graph.Network 7 using (Net; base; _∥_; _⨾_; present)
 open import Data.Fin.Subset using (⁅_⁆)
 open import Definitions.Actions 7
-open import Definitions.Proc 7
+open import Definitions.Proc 7 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 7
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
 S A1 B1 C1 A2 B2 C2 : Fin 7
 S  = 0F
@@ -31,16 +34,16 @@ A2 = 4F
 B2 = 5F
 C2 = 6F
 
-here : Fin 1
-here = 0F
+item : Fin 1
+item = 0F
 
 private
   itm : Fin 7 → Fin 7 → _
-  itm P Q = P ⟶ ⁅ Q ⁆ # here < s/unit >
+  itm P Q = P ⟶ ⁅ Q ⁆ # item < s/unit >
 
 -- one worker pipeline loop: `Ai` feeds `Bi`, which feeds `Ci`, forever
 pipeTail : Fin 7 → Fin 7 → Fin 7 → OpenGraph 0
-pipeTail Ai Bi Ci = μ (itm Ai Bi ∙ itm Bi Ci ∙ var 0F)
+pipeTail Ai Bi Ci = μ λ X → itm Ai Bi ∙ itm Bi Ci ∙ X
 
 -- `S` seeds `A1`, then the first pipeline runs in parallel with `S`
 -- seeding `A2` and the second pipeline.
@@ -54,21 +57,21 @@ wnet : WBNet indepw
 wnet = base ⨾ (base ∥ (base ⨾ base))
 
 p/S : Proc 0 0
-p/S = S ⇒ ⁅ A1 ⁆ ! here < val v/unit >∙ (S ⇒ ⁅ A2 ⁆ ! here < val v/unit >∙ ∅)
+p/S = S ⇒ ⁅ A1 ⁆ ! item < val v/unit >∙ (S ⇒ ⁅ A2 ⁆ ! item < val v/unit >∙ ∅)
 
 -- Pipeline stages; each takes its own role first.
 p/A : Fin 7 → Fin 7 → Proc 0 0
 p/A A B = A ⇐ S ？·
-            (  (A ⇒ ⁅ B ⁆ ! here < val v/unit >∙
-                (rec (A ⇒ ⁅ B ⁆ ! here < val v/unit >∙ v 0F)))
-            v∷ v[])
+            ⟪ item ↦ A ⇒ ⁅ B ⁆ ! item < val v/unit >∙
+                     (rec λ X → A ⇒ ⁅ B ⁆ ! item < val v/unit >∙ X)
+            ⟫
 
 p/B : Fin 7 → Fin 7 → Fin 7 → Proc 0 0
-p/B B A C = rec (B ⇐ A ？·
-                  ((B ⇒ ⁅ C ⁆ ! here < val v/unit >∙ v 0F) v∷ v[]))
+p/B B A C =
+  rec λ X → B ⇐ A ？· ⟪ item ↦ B ⇒ ⁅ C ⁆ ! item < val v/unit >∙ X ⟫
 
 p/C : Fin 7 → Fin 7 → Proc 0 0
-p/C C B = rec (C ⇐ B ？· (v 0F v∷ v[]))
+p/C C B = rec λ X → C ⇐ B ？· ⟪ item ↦ X ⟫
 
 open import Safety (wb-net wnet) (sync-net wnet) using (⊢s[_]_∶_)
 

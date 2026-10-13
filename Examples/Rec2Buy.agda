@@ -22,44 +22,54 @@ open import Definitions.Expr
   using (s/nat; s/unit; val; v/nat; v/unit; is-zero; var)
 open import Check
 
-open import Definitions.Graph.Algebra 3 renaming (var to gvar)
+open import Definitions.Graph.Algebra 3 hiding (var)
 open import Utils.SetLit using (⁅_⁆; _；_)
 open import Definitions.Actions 3
-open import Definitions.Proc 3
+open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 3
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
 A B S : Fin 3
 A = 0F
 B = 1F
 S = 2F
 
-here : Fin 1
-here = 0F
+item price : Fin 1
+item  = 0F
+price = 0F
 
-lbl0 lbl1 : Fin 2
-lbl0 = 0F
-lbl1 = 1F
+-- `A` to `B`: propose a split, or cancel
+split cancel : Fin 2
+split  = 0F
+cancel = 1F
 
--- A→S item(nat) . S→{A,B} price(nat) .
--- μ (  A→B split(nat)  . (B→A yes(nat) . A→S buy(unit) . end
---                        + B→A no(unit) . loop)
---    + A→B cancel(unit) . A→S no(unit) . end )
+-- `B` to `A`: accept the split, or not
+yes no : Fin 2
+yes = 0F
+no  = 1F
+
+-- `A` to `S`: buy, or quit
+buy quit : Fin 2
+buy  = 0F
+quit = 1F
+
+-- `A` asks for an item, `S` quotes both buyers, then `A` proposes splits
+-- until `B` says `yes` (then `A` buys) or `A` cancels (then quits); a `no`
+-- from `B` loops.
 rec2buy : OpenGraph 0
 rec2buy =
-  (A ⟶ ⁅ S ⁆ # here < s/nat >) ∙
-  (S ⟶ ⁅ A ； B ⁆ # here < s/nat >) ∙
-  μ (choice
-      ((A ⟶ ⁅ B ⁆ # lbl0 < s/nat >) ⇒
-        choice
-          ((B ⟶ ⁅ A ⁆ # lbl0 < s/nat >) ⇒
-            ((A ⟶ ⁅ S ⁆ # lbl0 < s/unit >) ∙ end))
-          ( ((B ⟶ ⁅ A ⁆ # lbl1 < s/unit >) ⇒ gvar 0F)
-          ∷ []))
-      ( ((A ⟶ ⁅ B ⁆ # lbl1 < s/unit >) ⇒
-          ((A ⟶ ⁅ S ⁆ # lbl1 < s/unit >) ∙ end))
-      ∷ []))
+  A ⟶ ⁅ S ⁆ # item < s/nat > ∙
+  S ⟶ ⁅ A ； B ⁆ # price < s/nat > ∙
+  μ λ X →
+    ⟪ A ⟶ ⁅ B ⁆ # split < s/nat >   ∙
+        ⟪ B ⟶ ⁅ A ⁆ # yes < s/nat > ∙ A ⟶ ⁅ S ⁆ # buy < s/unit > ∙ end
+        ∣ B ⟶ ⁅ A ⁆ # no < s/unit > ∙ X
+        ⟫
+    ∣ A ⟶ ⁅ B ⁆ # cancel < s/unit > ∙ A ⟶ ⁅ S ⁆ # quit < s/unit > ∙ end
+    ⟫
 
 wbg : WBGraph {N = 3}
-wbg = buildG rec2buy {p = tt}
+wbg = buildG rec2buy
 
 s₀ = initial (proj₁ wbg)
 
@@ -67,37 +77,41 @@ open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module
 
 p/A : Proc 0 0
 p/A =
-  A ⇒ ⁅ S ⁆ ! here < val (v/nat 0) >∙
+  A ⇒ ⁅ S ⁆ ! item < val (v/nat 0) >∙
   (A ⇐ S ？·
-    ( rec (ifp is-zero (var 0F)
-           then (A ⇒ ⁅ B ⁆ ! lbl0 < val (v/nat 0) >∙
-                 (A ⇐ B ？·
-                   (  (A ⇒ ⁅ S ⁆ ! lbl0 < val v/unit >∙ ∅)
-                   v∷ v 0F
-                   v∷ v[])))
-           else (A ⇒ ⁅ B ⁆ ! lbl1 < val v/unit >∙
-                 (A ⇒ ⁅ S ⁆ ! lbl1 < val v/unit >∙ ∅)))
-    v∷ v[]))
+    ⟪ price ↦
+        (rec λ X →
+          ifp is-zero (var 0F)
+          then (A ⇒ ⁅ B ⁆ ! split < val (v/nat 0) >∙
+                (A ⇐ B ？·
+                  ⟪ yes ↦ A ⇒ ⁅ S ⁆ ! buy < val v/unit >∙ ∅
+                  ∣ no  ↦ X
+                  ⟫))
+          else (A ⇒ ⁅ B ⁆ ! cancel < val v/unit >∙
+                (A ⇒ ⁅ S ⁆ ! quit < val v/unit >∙ ∅)))
+    ⟫)
 
 -- `B` hears the price (`var 1F` in the loop) before judging a split
 -- (`var 0F`).
 p/B : Proc 0 0
 p/B =
   B ⇐ S ？·
-    (  rec (B ⇐ A ？·
-             (  (ifp is-zero (var 0F)
-                 then (B ⇒ ⁅ A ⁆ ! lbl0 < val (v/nat 0) >∙ ∅)
-                 else (B ⇒ ⁅ A ⁆ ! lbl1 < val v/unit >∙ v 0F))
-             v∷ ∅
-             v∷ v[]))
-    v∷ v[])
+    ⟪ price ↦
+        (rec λ X →
+          B ⇐ A ？·
+            ⟪ split  ↦ ifp is-zero (var 0F)
+                       then (B ⇒ ⁅ A ⁆ ! yes < val (v/nat 0) >∙ ∅)
+                       else (B ⇒ ⁅ A ⁆ ! no < val v/unit >∙ X)
+            ∣ cancel ↦ ∅
+            ⟫)
+    ⟫
 
 p/S : Proc 0 0
 p/S =
   S ⇐ A ？·
-    (  (S ⇒ ⁅ A ； B ⁆ ! here < val (v/nat 0) >∙
-        (S ⇐ A ？· (∅ v∷ ∅ v∷ v[])))
-    v∷ v[])
+    ⟪ item ↦ S ⇒ ⁅ A ； B ⁆ ! price < val (v/nat 0) >∙
+             (S ⇐ A ？· ⟪ buy ↦ ∅ ∣ quit ↦ ∅ ⟫)
+    ⟫
 
 -- {A} {B} {S}: one process per role.
 module A∣B∣S where
@@ -130,15 +144,15 @@ own/A∣BS 1F = 1F
 own/A∣BS 2F = 1F
 
 -- {A,B} {S}: the split/no loop is an internal cycle; its exits are the
--- two final sends to `S` (here: `no`, after an internal cancel).
+-- two final sends to `S` (here: `quit`, after an internal cancel).
 module AB∣S where
   Ρ = byOwner own/AB∣S
   open Over Ρ
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (A ⇒ ⁅ S ⁆ ! here < val (v/nat 0) >∙
-         (A ⇐ S ？· ((A ⇒ ⁅ S ⁆ ! lbl1 < val v/unit >∙ ∅) v∷ v[])))
+  M = (A ⇒ ⁅ S ⁆ ! item < val (v/nat 0) >∙
+         (A ⇐ S ？· ⟪ price ↦ A ⇒ ⁅ S ⁆ ! quit < val v/unit >∙ ∅ ⟫))
     v∷ p/S
     v∷ v[]
 
@@ -158,8 +172,8 @@ module AS∣B where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (S ⇒ ⁅ A ； B ⁆ ! here < val (v/nat 0) >∙
-         (A ⇒ ⁅ B ⁆ ! lbl1 < val v/unit >∙ ∅))
+  M = (S ⇒ ⁅ A ； B ⁆ ! price < val (v/nat 0) >∙
+         (A ⇒ ⁅ B ⁆ ! cancel < val v/unit >∙ ∅))
     v∷ p/B
     v∷ v[]
 
@@ -182,12 +196,14 @@ module A∣BS where
   M : Session
   M = p/A
     v∷ (S ⇐ A ？·
-         (  (S ⇒ ⁅ A ； B ⁆ ! here < val (v/nat 0) >∙
+         ⟪ item ↦
+             S ⇒ ⁅ A ； B ⁆ ! price < val (v/nat 0) >∙
              (B ⇐ A ？·
-               (  (B ⇒ ⁅ A ⁆ ! lbl0 < val (v/nat 0) >∙ (S ⇐ A ？· (∅ v∷ ∅ v∷ v[])))
-               v∷ (S ⇐ A ？· (∅ v∷ ∅ v∷ v[]))
-               v∷ v[])))
-         v∷ v[]))
+               ⟪ split  ↦ B ⇒ ⁅ A ⁆ ! yes < val (v/nat 0) >∙
+                          (S ⇐ A ？· ⟪ buy ↦ ∅ ∣ quit ↦ ∅ ⟫)
+               ∣ cancel ↦ S ⇐ A ？· ⟪ buy ↦ ∅ ∣ quit ↦ ∅ ⟫
+               ⟫)
+         ⟫)
     v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀

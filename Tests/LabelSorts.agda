@@ -34,28 +34,29 @@ import Definitions.Typing as Typing
 open import Definitions.Graph.Algebra 3 renaming (var to gvar)
 open import Data.Fin.Subset using (⁅_⁆)
 open import Definitions.Actions 3
-open import Definitions.Proc 3
+open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 3
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 
 A B C : Fin 3
 A = 0F
 B = 1F
 C = 2F
 
-here : Fin 1
-here = 0F
+-- `A` to `B` (and `B` to `C`): the one label, at either sort
+value : Fin 1
+value = 0F
 
-lbl0 lbl1 : Fin 2
-lbl0 = 0F
-lbl1 = 1F
+-- `A` to `C`: which sort `B` gets
+asNat asBool : Fin 2
+asNat  = 0F
+asBool = 1F
 
 g : OpenGraph 0
 g =
-  choice
-    ((A ⟶ ⁅ C ⁆ # lbl0 < s/unit >) ⇒
-      ((A ⟶ ⁅ B ⁆ # here < s/nat >) ∙ end))
-    ( ((A ⟶ ⁅ C ⁆ # lbl1 < s/unit >) ⇒
-        ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ end))
-    ∷ [])
+  ⟪ A ⟶ ⁅ C ⁆ # asNat < s/unit >  ∙ A ⟶ ⁅ B ⁆ # value < s/nat > ∙ end
+  ∣ A ⟶ ⁅ C ⁆ # asBool < s/unit > ∙ A ⟶ ⁅ B ⁆ # value < s/bool > ∙ end
+  ⟫
 
 wbg : WBGraph {N = 3}
 wbg = buildG g {p = tt}
@@ -66,20 +67,20 @@ open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_)
 p/A : Proc 0 0
 p/A =
   ifp val (v/bool true)
-  then (A ⇒ ⁅ C ⁆ ! lbl0 < val v/unit >∙
-         (A ⇒ ⁅ B ⁆ ! here < val (v/nat 0) >∙ ∅))
-  else (A ⇒ ⁅ C ⁆ ! lbl1 < val v/unit >∙
-         (A ⇒ ⁅ B ⁆ ! here < val (v/bool true) >∙ ∅))
+  then (A ⇒ ⁅ C ⁆ ! asNat < val v/unit >∙
+         (A ⇒ ⁅ B ⁆ ! value < val (v/nat 0) >∙ ∅))
+  else (A ⇒ ⁅ C ⁆ ! asBool < val v/unit >∙
+         (A ⇒ ⁅ B ⁆ ! value < val (v/bool true) >∙ ∅))
 
 p/C : Proc 0 0
-p/C = C ⇐ A ？· (∅ v∷ ∅ v∷ v[])
+p/C = C ⇐ A ？· ⟪ asNat ↦ ∅ ∣ asBool ↦ ∅ ⟫
 
 -- ══════════════════════════════════════════════════════════════════════
 --  Accepted: the branch ignores its bound variable, so both sorts are fine
 -- ══════════════════════════════════════════════════════════════════════
 
 p/B : Proc 0 0
-p/B = B ⇐ A ？·(∅ v∷ v[])
+p/B = B ⇐ A ？· ⟪ value ↦ ∅ ⟫
 
 M/good : Over.Session singletons
 M/good = p/A v∷ p/B v∷ p/C v∷ v[]
@@ -97,7 +98,7 @@ well-typed = from-yes wtd/good
 -- The branch body needs `var 0F ∶ s/nat`, so the `s/bool` leaf rejects.
 
 p/B′ : Proc 0 0
-p/B′ = B ⇐ A ？·((ifp is-zero (var 0F) then ∅ else ∅) v∷ v[])
+p/B′ = B ⇐ A ？· ⟪ value ↦ ifp is-zero (var 0F) then ∅ else ∅ ⟫
 
 M/bad : Over.Session singletons
 M/bad = p/A v∷ p/B′ v∷ p/C v∷ v[]

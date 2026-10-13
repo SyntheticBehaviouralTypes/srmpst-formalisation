@@ -21,7 +21,9 @@ open import Definitions.Behav using (WellBehaved; Synchronous)
 open import Definitions.Graph.Core 3 using (graphTheory)
 open import Definitions.Graph.Algebra 3
 open import Definitions.Actions 3
-open import Definitions.Proc 3
+open import Definitions.Proc 3 hiding (rec; _⇐_？·_)
+open import Definitions.Proc.Syntax 3
+open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
 open import Check
 
 A B C : Fin 3
@@ -29,14 +31,14 @@ A = 0F
 B = 1F
 C = 2F
 
-here′ : Fin 1
-here′ = 0F
+token : Fin 1
+token = 0F
 
 round : OpenGraph 0
 round =
-  (A ⟶ ⁅ B ⁆ # here′ < s/unit >) ∙
-  ((B ⟶ ⁅ C ⁆ # here′ < s/unit >) ∙
-   ((C ⟶ ⁅ A ⁆ # here′ < s/unit >) ∙ end))
+  A ⟶ ⁅ B ⁆ # token < s/unit > ∙
+  (B ⟶ ⁅ C ⁆ # token < s/unit > ∙
+   C ⟶ ⁅ A ⁆ # token < s/unit > ∙ end)
 
 wbg : WBGraph {N = 3}
 wbg = buildG round
@@ -93,8 +95,8 @@ open Global Ρ using (_-[_]->ᵍ_)
 -- ── The session ───────────────────────────────────────────────────────
 
 p/AB p/C : Proc 0 0
-p/AB = B ⇒ ⁅ C ⁆ ! here′ < val v/unit >∙ (A ⇐ C ？· (∅ ∷ []))
-p/C  = C ⇐ B ？· ((C ⇒ ⁅ A ⁆ ! here′ < val v/unit >∙ ∅) ∷ [])
+p/AB = B ⇒ ⁅ C ⁆ ! token < val v/unit >∙ (A ⇐ C ？· ⟪ token ↦ ∅ ⟫)
+p/C  = C ⇐ B ？· ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < val v/unit >∙ ∅ ⟫
 
 M : Session
 M = p/AB ∷ p/C ∷ []
