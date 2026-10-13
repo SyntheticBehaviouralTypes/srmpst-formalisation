@@ -297,7 +297,7 @@ module Definitions.Graph.Algebra (N : ℕ) where
     closeLoop (node s) = node (Fin.suc s)
     closeLoop ended = ended
 
-  -- `μᵈ` binds `var 0F`; `μ λ X → G` binds `X` (`Utils.Binder`).
+  -- `μᵈ` binds `var 0F`; `μ X · G` binds `X` (`Utils.Binder`).
   μᵈ : ∀ {δ} → OpenGraph (suc δ) → OpenGraph δ
   μᵈ (openGraph n (loop Fin.zero) table) =
     openGraph
@@ -317,6 +317,10 @@ module Definitions.Graph.Algebra (N : ℕ) where
   μ : ∀ {δ} → (Loop δ → OpenGraph (suc δ)) → OpenGraph δ
   μ {δ} body = μᵈ (body (λ {m} {p} → var (bound δ p)))
 
+  -- `μ X · G`, as `μX.G`; the body is a `∙`-chain (`_∙_`'s level).
+  infixr 4 μ
+  syntax μ (λ X → G) = μ X · G
+
   -- ── compilation ──
   --
   -- The ended state is always emitted, as the last index.
@@ -335,7 +339,8 @@ module Definitions.Graph.Algebra (N : ℕ) where
   -- ── sequential composition ──
   --
   -- Every `ended` of the first graph becomes the root of the second.
-  infixr 6 _⨾_
+  -- Below `_∙_`, above `_∥_`: `α ∙ G ⨾ H ∥ K` is `((α ∙ G) ⨾ H) ∥ K`.
+  infixr 3.8 _⨾_
 
   _⨾_ : ∀ {δ} → OpenGraph δ → OpenGraph δ → OpenGraph δ
   openGraph m r₁ t₁ ⨾ openGraph n r₂ t₂ =
@@ -351,8 +356,9 @@ module Definitions.Graph.Algebra (N : ℕ) where
   -- ── parallel composition (interleaving product) ──
   --
   -- States are pairs of component states; (ended , ended) is `ended`.
-  -- Components must be closed.
-  infixr 7 _∥_
+  -- Components must be closed.  Below `_∙_` and `_⨾_`: `α ∙ G ∥ β ∙ H`
+  -- is `(α ∙ G) ∥ (β ∙ H)`.
+  infixr 3.5 _∥_
 
   _∥_ : ∀ {δ} → OpenGraph 0 → OpenGraph 0 → OpenGraph δ
   _∥_ {δ} (openGraph m₁ r₁ t₁) (openGraph m₂ r₂ t₂) =

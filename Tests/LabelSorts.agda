@@ -16,13 +16,13 @@
 
 module Tests.LabelSorts where
 
+open import Definitions.Expr.Syntax
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Data.List using ([]; _∷_)
 open import Data.Product using (proj₁)
 open import Data.Unit using (tt)
-open import Data.Bool using (true)
 open import Relation.Nullary using (Dec; ¬_)
 open import Relation.Nullary.Decidable using (from-yes; from-no)
 
@@ -66,11 +66,11 @@ open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_)
 -- `A` picks a branch, then sends the sort that branch carries
 p/A : Proc 0 0
 p/A =
-  ifp val (v/bool true)
-  then (A ⇒ ⁅ C ⁆ ! asNat < val v/unit >∙
-         (A ⇒ ⁅ B ⁆ ! value < val (v/nat 0) >∙ ∅))
-  else (A ⇒ ⁅ C ⁆ ! asBool < val v/unit >∙
-         (A ⇒ ⁅ B ⁆ ! value < val (v/bool true) >∙ ∅))
+  ifp true
+  then A ⇒ ⁅ C ⁆ ! asNat < unit >∙
+        A ⇒ ⁅ B ⁆ ! value < 0 >∙ ∅
+  else A ⇒ ⁅ C ⁆ ! asBool < unit >∙
+        A ⇒ ⁅ B ⁆ ! value < true >∙ ∅
 
 p/C : Proc 0 0
 p/C = C ⇐ A ？· ⟪ asNat ↦ ∅ ∣ asBool ↦ ∅ ⟫
@@ -95,10 +95,10 @@ well-typed = from-yes wtd/good
 --  Control: the `s/bool` leaf really IS inspected
 -- ══════════════════════════════════════════════════════════════════════
 --
--- The branch body needs `var 0F ∶ s/nat`, so the `s/bool` leaf rejects.
+-- The branch body needs `x ∶ s/nat`, so the `s/bool` leaf rejects.
 
 p/B′ : Proc 0 0
-p/B′ = B ⇐ A ？· ⟪ value ↦ ifp is-zero (var 0F) then ∅ else ∅ ⟫
+p/B′ = B ⇐ A ？· ⟪ value ⟨ x ⟩ ↦ ifp is-zero x then ∅ else ∅ ⟫
 
 M/bad : Over.Session singletons
 M/bad = p/A v∷ p/B′ v∷ p/C v∷ v[]

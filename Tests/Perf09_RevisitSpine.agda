@@ -8,6 +8,7 @@
 
 module Tests.Perf09_RevisitSpine where
 
+open import Definitions.Expr.Syntax
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
@@ -46,7 +47,7 @@ done  = 1F
 -- (u → t → u, and u → ℓ)
 g : OpenGraph 0
 g =
-  μ λ X →
+  μ X ·
     ⟪ A ⟶ ⁅ B ⁆ # again < s/bool > ∙ B ⟶ ⁅ A ⁆ # ack < s/bool > ∙ X
     ∣ A ⟶ ⁅ B ⁆ # done < s/bool >  ∙ A ⟶ ⁅ C ⁆ # result < s/bool > ∙ end
     ⟫

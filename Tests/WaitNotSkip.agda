@@ -16,6 +16,7 @@
 -- are pairwise non-bisimilar (their arities differ), so no cycle closes and
 -- no finite tree exists.
 
+open import Definitions.Expr.Syntax
 open import Data.Nat using (ℕ; zero; suc; _<_)
 open import Data.Nat.Properties using (<-trans; n<1+n; <-irrefl; suc-injective)
 

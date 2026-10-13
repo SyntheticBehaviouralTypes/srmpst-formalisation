@@ -5,10 +5,10 @@
 
 module Examples.RoundRobin where
 
+open import Definitions.Expr.Syntax
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using ([]; _∷_)
-open import Data.Bool using (true)
 open import Data.Product using (proj₁; ∃-syntax; _×_)
 open import Data.List using (length)
 open import Relation.Binary.PropositionalEquality using (_≡_)
@@ -50,8 +50,8 @@ module NonRecursive where
   round : OpenGraph 0
   round =
     A ⟶ ⁅ B ⁆ # token < s/bool > ∙
-    (B ⟶ ⁅ C ⁆ # token < s/bool > ∙
-     C ⟶ ⁅ A ⁆ # token < s/bool > ∙ end)
+    B ⟶ ⁅ C ⁆ # token < s/bool > ∙
+    C ⟶ ⁅ A ⁆ # token < s/bool > ∙ end
 
   wbg : WBGraph {N = 3}
   wbg = buildG round
@@ -61,9 +61,9 @@ module NonRecursive where
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module Global)
 
   p/A p/B p/C : Proc 0 0
-  p/A = A ⇒ ⁅ B ⁆ ! token < val (v/bool true) >∙ (A ⇐ C ？· ⟪ token ↦ ∅ ⟫)
-  p/B = B ⇐ A ？· ⟪ token ↦ B ⇒ ⁅ C ⁆ ! token < val (v/bool true) >∙ ∅ ⟫
-  p/C = C ⇐ B ？· ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < val (v/bool true) >∙ ∅ ⟫
+  p/A = A ⇒ ⁅ B ⁆ ! token < true >∙ A ⇐ C ？· ⟪ token ↦ ∅ ⟫
+  p/B = B ⇐ A ？· ⟪ token ↦ B ⇒ ⁅ C ⁆ ! token < true >∙ ∅ ⟫
+  p/C = C ⇐ B ？· ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < true >∙ ∅ ⟫
 
   -- {A} {B} {C}: one process per role.
   module A∣B∣C where
@@ -89,7 +89,7 @@ module NonRecursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = (B ⇒ ⁅ C ⁆ ! token < val (v/bool true) >∙ (A ⇐ C ？· ⟪ token ↦ ∅ ⟫))
+    M = B ⇒ ⁅ C ⁆ ! token < true >∙ A ⇐ C ？· ⟪ token ↦ ∅ ⟫
       ∷ p/C
       ∷ []
 
@@ -108,7 +108,7 @@ module NonRecursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = (A ⇒ ⁅ B ⁆ ! token < val (v/bool true) >∙ (C ⇐ B ？· ⟪ token ↦ ∅ ⟫))
+    M = A ⇒ ⁅ B ⁆ ! token < true >∙ C ⇐ B ？· ⟪ token ↦ ∅ ⟫
       ∷ p/B
       ∷ []
 
@@ -128,7 +128,7 @@ module NonRecursive where
 
     M : Session
     M = p/A
-      ∷ (B ⇐ A ？· ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < val (v/bool true) >∙ ∅ ⟫)
+      ∷ B ⇐ A ？· ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < true >∙ ∅ ⟫
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
@@ -161,7 +161,7 @@ module Recursive where
   -- μ (A --bool--> B --bool--> C --bool--> loop)
   round : OpenGraph 0
   round =
-    μ λ X →
+    μ X ·
       A ⟶ ⁅ B ⁆ # token < s/bool > ∙
       B ⟶ ⁅ C ⁆ # token < s/bool > ∙
       C ⟶ ⁅ A ⁆ # token < s/bool > ∙ X
@@ -174,12 +174,12 @@ module Recursive where
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module Global)
 
   p/A p/B p/C : Proc 0 0
-  p/A = rec λ X → A ⇒ ⁅ B ⁆ ! token < val (v/bool true) >∙
-                  (A ⇐ C ？· ⟪ token ↦ X ⟫)
-  p/B = rec λ X → B ⇐ A ？· ⟪ token ↦ B ⇒ ⁅ C ⁆ ! token < val (v/bool true) >∙
-                                      X ⟫
-  p/C = rec λ X → C ⇐ B ？· ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < val (v/bool true) >∙
-                                      X ⟫
+  p/A = rec X · A ⇒ ⁅ B ⁆ ! token < true >∙
+                A ⇐ C ？· ⟪ token ↦ X ⟫
+  p/B = rec X · B ⇐ A ？· ⟪ token ↦ B ⇒ ⁅ C ⁆ ! token < true >∙
+                                    X ⟫
+  p/C = rec X · C ⇐ B ？· ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < true >∙
+                                    X ⟫
 
   -- {A} {B} {C}
   module A∣B∣C where
@@ -205,8 +205,8 @@ module Recursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = (rec λ X → B ⇒ ⁅ C ⁆ ! token < val (v/bool true) >∙
-                   (A ⇐ C ？· ⟪ token ↦ X ⟫))
+    M = rec X · B ⇒ ⁅ C ⁆ ! token < true >∙
+                A ⇐ C ？· ⟪ token ↦ X ⟫
       ∷ p/C
       ∷ []
 
@@ -225,8 +225,8 @@ module Recursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = (rec λ X → A ⇒ ⁅ B ⁆ ! token < val (v/bool true) >∙
-                   (C ⇐ B ？· ⟪ token ↦ X ⟫))
+    M = rec X · A ⇒ ⁅ B ⁆ ! token < true >∙
+                C ⇐ B ？· ⟪ token ↦ X ⟫
       ∷ p/B
       ∷ []
 
@@ -246,8 +246,8 @@ module Recursive where
 
     M : Session
     M = p/A
-      ∷ (rec λ X → B ⇐ A ？·
-                     ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < val (v/bool true) >∙ X ⟫)
+      ∷ rec X · B ⇐ A ？·
+                  ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < true >∙ X ⟫
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀

@@ -13,7 +13,7 @@
 
 module Tests.Multicast where
 
-open import Data.Bool using (true)
+open import Definitions.Expr.Syntax
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Fin.Subset using (⁅_⁆; _∪_; ⊥)
@@ -65,7 +65,7 @@ module Once where
   wbg = buildG g
 
   send : PartSet → Proc 0 0
-  send Qs = A ⇒ Qs ! announce < val (v/bool true) >∙ ∅
+  send Qs = A ⇒ Qs ! announce < true >∙ ∅
 
   -- 1. accepted.
   accepted :
@@ -128,16 +128,16 @@ module NotSynchronous where
 module Loop where
 
   g : OpenGraph 0
-  g = μ λ X → A ⟶ BC # announce < s/bool > ∙ X
+  g = μ X · A ⟶ BC # announce < s/bool > ∙ X
 
   wbg : WBGraph {N = 3}
   wbg = buildG g
 
   p/A : Proc 0 0
-  p/A = rec λ X → A ⇒ BC ! announce < val (v/bool true) >∙ X
+  p/A = rec X · A ⇒ BC ! announce < true >∙ X
 
   p/R : Part → Proc 0 0
-  p/R R = rec λ X → R ⇐ A ？· ⟪ announce ↦ X ⟫
+  p/R R = rec X · R ⇐ A ？· ⟪ announce ↦ X ⟫
 
   looping :
     True (typecheckSession wbg singletons (p/A v∷ p/R B v∷ p/R C v∷ v[]))

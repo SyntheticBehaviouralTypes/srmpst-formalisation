@@ -9,17 +9,17 @@
 --  │ A⟶C # 1<unit>       A⟶B # 0<bool>       B⟶C # 0<bool>
 --  └───────────────► s₂ ───────────────► t₂ ───────────────► ended
 --
--- `p/B` forwards what it received: `C ! value < var 0F >∙ ∅`.
+-- `p/B` forwards what it received: `C ! value < x >∙ ∅`.
 
 module Tests.LabelSortsForward where
 
+open import Definitions.Expr.Syntax
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
 open import Data.List using ([]; _∷_)
 open import Data.Product using (proj₁)
 open import Data.Unit using (tt)
-open import Data.Bool using (true)
 open import Relation.Nullary using (Dec)
 open import Relation.Nullary.Decidable using (from-yes)
 
@@ -64,15 +64,15 @@ open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_)
 
 p/A : Proc 0 0
 p/A =
-  ifp val (v/bool true)
-  then (A ⇒ ⁅ C ⁆ ! asNat < val v/unit >∙
-         (A ⇒ ⁅ B ⁆ ! value < val (v/nat 0) >∙ ∅))
-  else (A ⇒ ⁅ C ⁆ ! asBool < val v/unit >∙
-         (A ⇒ ⁅ B ⁆ ! value < val (v/bool true) >∙ ∅))
+  ifp true
+  then A ⇒ ⁅ C ⁆ ! asNat < unit >∙
+        A ⇒ ⁅ B ⁆ ! value < 0 >∙ ∅
+  else A ⇒ ⁅ C ⁆ ! asBool < unit >∙
+        A ⇒ ⁅ B ⁆ ! value < true >∙ ∅
 
 -- USES the bound variable, at two different sorts, in one derivation
 p/B : Proc 0 0
-p/B = B ⇐ A ？· ⟪ value ↦ B ⇒ ⁅ C ⁆ ! value < var 0F >∙ ∅ ⟫
+p/B = B ⇐ A ？· ⟪ value ⟨ x ⟩ ↦ B ⇒ ⁅ C ⁆ ! value < x >∙ ∅ ⟫
 
 p/C : Proc 0 0
 p/C =

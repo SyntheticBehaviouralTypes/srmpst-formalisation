@@ -5,6 +5,8 @@
 
 module Tests.CheckAlgSanity where
 
+open import Definitions.Expr.Syntax
+import Data.Bool as Bool
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.List using ([]; _∷_)
@@ -128,7 +130,7 @@ module unskip?-sanity where
 
 module Wait?-sanity where
 
-  open import Data.Bool using (Bool; true; false)
+  open import Data.Bool using (Bool)
   open import Data.Vec using (Vec) renaming ([] to v[]; _∷_ to _v∷_)
 
   open import Definitions.Graph.Algebra 3
@@ -169,8 +171,8 @@ module Wait?-sanity where
   fin = 2F
 
   leaf-s1 leaf-fin : Vec Bool 3
-  leaf-s1  = false v∷ true  v∷ false v∷ v[]
-  leaf-fin = false v∷ false v∷ true  v∷ v[]
+  leaf-s1  = Bool.false v∷ Bool.true  v∷ Bool.false v∷ v[]
+  leaf-fin = Bool.false v∷ Bool.false v∷ Bool.true  v∷ v[]
 
   -- One `wv/step`, then a `wv/leaf` at `s1`.
   Wait-A-leaf-s1 : True (Wait? ⁅ A ⁆ leaf-s1 s0)

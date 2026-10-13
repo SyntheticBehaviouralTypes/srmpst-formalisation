@@ -1,10 +1,11 @@
 {-# OPTIONS --guardedness #-}
 
--- Forced rejections of the unguarded `rec λ X → X` on tiny graphs, which
+-- Forced rejections of the unguarded `rec X · X` on tiny graphs, which
 -- must be cheap.
 
 module Tests.Perf01_TinyRejections where
 
+open import Definitions.Expr.Syntax
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Unit using (tt)
@@ -39,8 +40,8 @@ module MinimalGraph where
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
-  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec λ X → X) ∶ initial (proj₁ wbg))
-  wtd = typecheck wbg ⁅ A ⁆ ((rec λ X → X))
+  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec X · X) ∶ initial (proj₁ wbg))
+  wtd = typecheck wbg ⁅ A ⁆ (rec X · X)
 
   _ : False wtd
   _ = _
@@ -62,8 +63,8 @@ module Size2Linear where
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
-  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec λ X → X) ∶ initial (proj₁ wbg))
-  wtd = typecheck wbg ⁅ A ⁆ ((rec λ X → X))
+  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec X · X) ∶ initial (proj₁ wbg))
+  wtd = typecheck wbg ⁅ A ⁆ (rec X · X)
 
   _ : False wtd
   _ = _
@@ -87,14 +88,14 @@ module Size3Linear where
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
-  wtdA : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec λ X → X) ∶ initial (proj₁ wbg))
-  wtdA = typecheck wbg ⁅ A ⁆ ((rec λ X → X))
+  wtdA : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec X · X) ∶ initial (proj₁ wbg))
+  wtdA = typecheck wbg ⁅ A ⁆ (rec X · X)
 
   _ : False wtdA
   _ = _
 
-  wtdC : Dec (⊢ᵛ[ ⁅ C ⁆ ] (rec λ X → X) ∶ initial (proj₁ wbg))
-  wtdC = typecheck wbg ⁅ C ⁆ ((rec λ X → X))
+  wtdC : Dec (⊢ᵛ[ ⁅ C ⁆ ] (rec X · X) ∶ initial (proj₁ wbg))
+  wtdC = typecheck wbg ⁅ C ⁆ (rec X · X)
 
   _ : False wtdC
   _ = _
@@ -118,8 +119,8 @@ module Size2LinearUninvolved where
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
-  wtd : Dec (⊢ᵛ[ ⁅ C ⁆ ] (rec λ X → X) ∶ initial (proj₁ wbg))
-  wtd = typecheck wbg ⁅ C ⁆ ((rec λ X → X))
+  wtd : Dec (⊢ᵛ[ ⁅ C ⁆ ] (rec X · X) ∶ initial (proj₁ wbg))
+  wtd = typecheck wbg ⁅ C ⁆ (rec X · X)
 
   _ : False wtd
   _ = _
@@ -151,8 +152,8 @@ module Size2Choice where
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
-  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec λ X → X) ∶ initial (proj₁ wbg))
-  wtd = typecheck wbg ⁅ A ⁆ ((rec λ X → X))
+  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec X · X) ∶ initial (proj₁ wbg))
+  wtd = typecheck wbg ⁅ A ⁆ (rec X · X)
 
   _ : False wtd
   _ = _
@@ -186,8 +187,8 @@ module Size3Choice where
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
-  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec λ X → X) ∶ initial (proj₁ wbg))
-  wtd = typecheck wbg ⁅ A ⁆ ((rec λ X → X))
+  wtd : Dec (⊢ᵛ[ ⁅ A ⁆ ] (rec X · X) ∶ initial (proj₁ wbg))
+  wtd = typecheck wbg ⁅ A ⁆ (rec X · X)
 
   _ : False wtd
   _ = _

@@ -6,6 +6,8 @@
 
 module Examples.NoSynGT where
 
+open import Definitions.Expr.Syntax
+import Data.Bool as Bool
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
@@ -14,7 +16,6 @@ open import Data.Sum using (_⊎_)
 open import Data.Product using (proj₁; ∃-syntax; _×_)
 open import Data.List using (length)
 open import Data.Unit using (tt)
-open import Data.Bool using (false)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl)
 open import Relation.Nullary.Decidable using (does; from-yes)
 
@@ -52,11 +53,11 @@ open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module
 
 p/A : Proc 0 0
 p/A =
-  ifp is-zero (val (v/nat 0))
-    then (A ⇒ ⁅ B ⁆ ! notify < val v/unit >∙
-          (A ⇒ ⁅ C ⁆ ! notify < val v/unit >∙ ∅))
-    else (A ⇒ ⁅ C ⁆ ! notify < val v/unit >∙
-          (A ⇒ ⁅ B ⁆ ! notify < val v/unit >∙ ∅))
+  ifp is-zero (0)
+    then A ⇒ ⁅ B ⁆ ! notify < unit >∙
+         A ⇒ ⁅ C ⁆ ! notify < unit >∙ ∅
+    else A ⇒ ⁅ C ⁆ ! notify < unit >∙
+         A ⇒ ⁅ B ⁆ ! notify < unit >∙ ∅
 
 p/B : Proc 0 0
 p/B = B ⇐ A ？· ⟪ notify ↦ ∅ ⟫
@@ -99,7 +100,7 @@ module AB∣C where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (A ⇒ ⁅ C ⁆ ! notify < val v/unit >∙ ∅) v∷ p/C v∷ v[]
+  M = A ⇒ ⁅ C ⁆ ! notify < unit >∙ ∅ v∷ p/C v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
   M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -116,7 +117,7 @@ module AC∣B where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (A ⇒ ⁅ B ⁆ ! notify < val v/unit >∙ ∅) v∷ p/B v∷ v[]
+  M = A ⇒ ⁅ B ⁆ ! notify < unit >∙ ∅ v∷ p/B v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
   M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -133,13 +134,13 @@ module A∣BC where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M₁ M₂ : Session
-  M₁ = p/A v∷ (B ⇐ A ？· ⟪ notify ↦ C ⇐ A ？· ⟪ notify ↦ ∅ ⟫ ⟫) v∷ v[]
-  M₂ = p/A v∷ (C ⇐ A ？· ⟪ notify ↦ B ⇐ A ？· ⟪ notify ↦ ∅ ⟫ ⟫) v∷ v[]
+  M₁ = p/A v∷ B ⇐ A ？· ⟪ notify ↦ C ⇐ A ？· ⟪ notify ↦ ∅ ⟫ ⟫ v∷ v[]
+  M₂ = p/A v∷ C ⇐ A ？· ⟪ notify ↦ B ⇐ A ？· ⟪ notify ↦ ∅ ⟫ ⟫ v∷ v[]
 
-  _ : does (typecheckSession wbg Ρ M₁) ≡ false
+  _ : does (typecheckSession wbg Ρ M₁) ≡ Bool.false
   _ = refl
 
-  _ : does (typecheckSession wbg Ρ M₂) ≡ false
+  _ : does (typecheckSession wbg Ρ M₂) ≡ Bool.false
   _ = refl
 
 -- {A,B,C}: everything is internal.

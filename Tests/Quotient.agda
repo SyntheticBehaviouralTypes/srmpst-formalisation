@@ -8,7 +8,9 @@
 
 module Tests.Quotient where
 
-open import Data.Bool using (Bool; true; false; if_then_else_)
+open import Definitions.Expr.Syntax
+import Data.Bool as Bool
+open import Data.Bool using (Bool; if_then_else_)
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Nat using (ℕ)
@@ -103,8 +105,8 @@ module Three where
     round : OpenGraph 0
     round =
       A ⟶ ⁅ B ⁆ # token < s/bool > ∙
-      (B ⟶ ⁅ C ⁆ # token < s/bool > ∙
-       C ⟶ ⁅ A ⁆ # token < s/bool > ∙ end)
+      B ⟶ ⁅ C ⁆ # token < s/bool > ∙
+      C ⟶ ⁅ A ⁆ # token < s/bool > ∙ end
 
     _ : orig round ≡ ok
     _ = refl
@@ -147,7 +149,7 @@ module Three where
     rec2buy =
       A ⟶ ⁅ S ⁆ # item < s/nat > ∙
       S ⟶ AB # price < s/nat > ∙
-      μ λ X →
+      μ X ·
         ⟪ A ⟶ ⁅ B ⁆ # split < s/nat >   ∙
             ⟪ B ⟶ ⁅ A ⁆ # yes < s/nat > ∙ A ⟶ ⁅ S ⁆ # buy < s/unit > ∙ end
             ∣ B ⟶ ⁅ A ⁆ # no < s/unit > ∙ X
@@ -176,7 +178,7 @@ module Three where
 
     -- {A,B}: `A→B` is internal; `A` sends to `C`, before or after it.
     ab : Proc 0 0
-    ab = A ⇒ ⁅ C ⁆ ! notify < val v/unit >∙ ∅
+    ab = A ⇒ ⁅ C ⁆ ! notify < unit >∙ ∅
 
     -- {B,C}: two receives from `A` at different own roles; `A` decides the
     -- order, the code has to commit to one.
@@ -194,11 +196,11 @@ module Three where
     _ : view nosyn BC ≡ ok
     _ = refl
 
-    _ : TC nosyn AB ab ≡ true
+    _ : TC nosyn AB ab ≡ Bool.true
     _ = refl
-    _ : TC nosyn BC bc₁ ≡ false
+    _ : TC nosyn BC bc₁ ≡ Bool.false
     _ = refl
-    _ : TC nosyn BC bc₂ ≡ false
+    _ : TC nosyn BC bc₂ ≡ Bool.false
     _ = refl
 
   -- Examples/CounterExamples.agda: A → B (choice), B → C (forward).
@@ -212,8 +214,8 @@ module Three where
     -- {A,C}: one label of the choice (a sender may send fewer), then the
     -- forward from `B`, at both.
     ac : Proc 0 0
-    ac = A ⇒ ⁅ B ⁆ ! accept < val (v/bool true) >∙
-         (C ⇐ B ？· ⟪ accept ↦ ∅ ∣ reject ↦ ∅ ⟫)
+    ac = A ⇒ ⁅ B ⁆ ! accept < true >∙
+         C ⇐ B ？· ⟪ accept ↦ ∅ ∣ reject ↦ ∅ ⟫
 
     _ : orig round ≡ ok
     _ = refl
@@ -224,13 +226,13 @@ module Three where
     _ : view round BC ≡ ok
     _ = refl
 
-    _ : TC round AC ac ≡ true
+    _ : TC round AC ac ≡ Bool.true
     _ = refl
 
   -- Tests/Multicast.agda, Once: A ⟶ {B, C}.
   module Multicast where
     g : OpenGraph 0
-    g = (A ⟶ (⁅ B ⁆ ∪ ⁅ C ⁆) # announce < s/bool >) ∙ end
+    g = A ⟶ ⁅ B ⁆ ∪ ⁅ C ⁆ # announce < s/bool > ∙ end
 
     _ : orig g ≡ ok
     _ = refl
@@ -296,7 +298,7 @@ module Four where
 
     recmw : OpenGraph 0
     recmw =
-      μ λ X →
+      μ X ·
         M ⟶ ⁅ W1 ⁆ # datum < s/nat > ∙
         M ⟶ ⁅ W2 ⁆ # datum < s/nat > ∙
         W1 ⟶ ⁅ R ⁆ # report < s/nat > ∙
@@ -318,34 +320,34 @@ module Four where
     -- different own roles, in either order.
     mw1₁ mw1₂ : Proc 0 0
     mw1₁ =
-      rec λ X →
-        M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 0) >∙
-        (W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
-         (M ⇐ R ？· ⟪ continue ↦ X
-                    ∣ stop     ↦ M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool true) >∙ ∅
-                    ⟫))
+      rec X ·
+        M ⇒ ⁅ W2 ⁆ ! datum < 0 >∙
+        W1 ⇒ ⁅ R ⁆ ! report < 0 >∙
+        M ⇐ R ？· ⟪ continue ↦ X
+                  ∣ stop     ↦ M ⇒ ⁅ W2 ⁆ ! stop < true >∙ ∅
+                  ⟫
     mw1₂ =
-      rec λ X →
-        W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
-        (M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 0) >∙
-         (M ⇐ R ？· ⟪ continue ↦ X
-                    ∣ stop     ↦ M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool true) >∙ ∅
-                    ⟫))
+      rec X ·
+        W1 ⇒ ⁅ R ⁆ ! report < 0 >∙
+        M ⇒ ⁅ W2 ⁆ ! datum < 0 >∙
+        M ⇐ R ？· ⟪ continue ↦ X
+                  ∣ stop     ↦ M ⇒ ⁅ W2 ⁆ ! stop < true >∙ ∅
+                  ⟫
 
     -- Controls without a race: {M,W2} and {W1,R}.
     mw2 w1r : Proc 0 0
     mw2 =
-      rec λ X →
-        M ⇒ ⁅ W1 ⁆ ! datum < val (v/nat 0) >∙
-        (W2 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
-         (M ⇐ R ？· ⟪ continue ↦ X
-                    ∣ stop     ↦ M ⇒ ⁅ W1 ⁆ ! stop < val (v/bool true) >∙ ∅
-                    ⟫))
+      rec X ·
+        M ⇒ ⁅ W1 ⁆ ! datum < 0 >∙
+        W2 ⇒ ⁅ R ⁆ ! report < 0 >∙
+        M ⇐ R ？· ⟪ continue ↦ X
+                  ∣ stop     ↦ M ⇒ ⁅ W1 ⁆ ! stop < true >∙ ∅
+                  ⟫
     w1r =
-      rec λ X →
+      rec X ·
         W1 ⇐ M ？·
           ⟪ datum ↦ R ⇐ W2 ？·
-                      ⟪ report ↦ R ⇒ ⁅ M ⁆ ! continue < val (v/nat 0) >∙ X ⟫
+                      ⟪ report ↦ R ⇒ ⁅ M ⁆ ! continue < 0 >∙ X ⟫
           ∣ stop  ↦ ∅
           ⟫
 
@@ -353,21 +355,21 @@ module Four where
     -- by `W1`): a mixed choice, in either order.
     w12₁ w12₂ : Proc 0 0
     w12₁ =
-      rec λ X →
+      rec X ·
         W1 ⇐ M ？·
-          ⟪ datum ↦ W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
-                    (W2 ⇐ M ？·
-                      ⟪ datum ↦ W2 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙ X
+          ⟪ datum ↦ W1 ⇒ ⁅ R ⁆ ! report < 0 >∙
+                    W2 ⇐ M ？·
+                      ⟪ datum ↦ W2 ⇒ ⁅ R ⁆ ! report < 0 >∙ X
                       ∣ stop  ↦ ∅
-                      ⟫)
+                      ⟫
           ∣ stop  ↦ W2 ⇐ M ？· ⟪ datum ↦ ∅ ∣ stop ↦ ∅ ⟫
           ⟫
     w12₂ =
-      rec λ X →
+      rec X ·
         W1 ⇐ M ？·
           ⟪ datum ↦ W2 ⇐ M ？·
-                      ⟪ datum ↦ W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
-                                (W2 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙ X)
+                      ⟪ datum ↦ W1 ⇒ ⁅ R ⁆ ! report < 0 >∙
+                                W2 ⇒ ⁅ R ⁆ ! report < 0 >∙ X
                       ∣ stop  ↦ ∅
                       ⟫
           ∣ stop  ↦ W2 ⇐ M ？· ⟪ datum ↦ ∅ ∣ stop ↦ ∅ ⟫
@@ -389,17 +391,17 @@ module Four where
     _ : view recmw W2R ≡ ok
     _ = refl
 
-    _ : TC recmw MW1 mw1₁ ≡ false
+    _ : TC recmw MW1 mw1₁ ≡ Bool.false
     _ = refl
-    _ : TC recmw MW1 mw1₂ ≡ false
+    _ : TC recmw MW1 mw1₂ ≡ Bool.false
     _ = refl
-    _ : TC recmw MW2 mw2 ≡ true
+    _ : TC recmw MW2 mw2 ≡ Bool.true
     _ = refl
-    _ : TC recmw W1R w1r ≡ true
+    _ : TC recmw W1R w1r ≡ Bool.true
     _ = refl
-    _ : TC recmw W1W2 w12₁ ≡ false
+    _ : TC recmw W1W2 w12₁ ≡ Bool.false
     _ = refl
-    _ : TC recmw W1W2 w12₂ ≡ false
+    _ : TC recmw W1W2 w12₂ ≡ Bool.false
     _ = refl
 
   -- A relay: `A → B . B → C . C → D` under {B,C}.  `B` receives, `B→C`
@@ -424,15 +426,15 @@ module Four where
     BC = ⁅ B ⁆ ∪ ⁅ C ⁆
 
     bc : Proc 0 0
-    bc = B ⇐ A ？· ⟪ relay ↦ C ⇒ ⁅ D ⁆ ! relay < val v/unit >∙ ∅ ⟫
+    bc = B ⇐ A ？· ⟪ relay ↦ C ⇒ ⁅ D ⁆ ! relay < unit >∙ ∅ ⟫
 
     _ : orig g ≡ ok
     _ = refl
     _ : view g BC ≡ ok
     _ = refl
-    _ : ⌊ synchronous? (viewGraph (underlying (compile g)) BC) ⌋ ≡ false
+    _ : ⌊ synchronous? (viewGraph (underlying (compile g)) BC) ⌋ ≡ Bool.false
     _ = refl
-    _ : TC g BC bc ≡ true
+    _ : TC g BC bc ≡ Bool.true
     _ = refl
 
   -- An internal choice, told to `R` by one message.
@@ -454,13 +456,13 @@ module Four where
 
     -- {P,Q}: the internal choice is made by the send that tells `R`.
     pq : Proc 0 0
-    pq = Q ⇒ ⁅ R ⁆ ! right < val v/unit >∙ ∅
+    pq = Q ⇒ ⁅ R ⁆ ! right < unit >∙ ∅
 
     _ : orig told ≡ ok
     _ = refl
     _ : view told PQ ≡ ok
     _ = refl
-    _ : TC told PQ pq ≡ true
+    _ : TC told PQ pq ≡ Bool.true
     _ = refl
 
   -- `P → Q . R → S`, as role-level synchronisation demands: both orders.
@@ -480,10 +482,10 @@ module Four where
 
     -- A mixed choice at state 0 for both blocks, in either order.
     ps₁ ps₂ qr₁ qr₂ : Proc 0 0
-    ps₁ = P ⇒ ⁅ Q ⁆ ! ping < val v/unit >∙ (S ⇐ R ？· ⟪ pong ↦ ∅ ⟫)
-    ps₂ = S ⇐ R ？· ⟪ pong ↦ P ⇒ ⁅ Q ⁆ ! ping < val v/unit >∙ ∅ ⟫
-    qr₁ = Q ⇐ P ？· ⟪ ping ↦ R ⇒ ⁅ S ⁆ ! pong < val v/unit >∙ ∅ ⟫
-    qr₂ = R ⇒ ⁅ S ⁆ ! pong < val v/unit >∙ (Q ⇐ P ？· ⟪ ping ↦ ∅ ⟫)
+    ps₁ = P ⇒ ⁅ Q ⁆ ! ping < unit >∙ S ⇐ R ？· ⟪ pong ↦ ∅ ⟫
+    ps₂ = S ⇐ R ？· ⟪ pong ↦ P ⇒ ⁅ Q ⁆ ! ping < unit >∙ ∅ ⟫
+    qr₁ = Q ⇐ P ？· ⟪ ping ↦ R ⇒ ⁅ S ⁆ ! pong < unit >∙ ∅ ⟫
+    qr₂ = R ⇒ ⁅ S ⁆ ! pong < unit >∙ Q ⇐ P ？· ⟪ ping ↦ ∅ ⟫
 
     _ : orig square ≡ ok
     _ = refl
@@ -492,13 +494,13 @@ module Four where
     _ : view square QR ≡ ok
     _ = refl
 
-    _ : TC square PS ps₁ ≡ false
+    _ : TC square PS ps₁ ≡ Bool.false
     _ = refl
-    _ : TC square PS ps₂ ≡ false
+    _ : TC square PS ps₂ ≡ Bool.false
     _ = refl
-    _ : TC square QR qr₁ ≡ false
+    _ : TC square QR qr₁ ≡ Bool.false
     _ = refl
-    _ : TC square QR qr₂ ≡ false
+    _ : TC square QR qr₂ ≡ Bool.false
     _ = refl
 
 -- ══════════════════════════════════════════════════════════════════════
@@ -536,25 +538,25 @@ module Five where
 
     g : OpenGraph 0
     g =
-        (P ⟶ ⁅ Q ⁆ # ping < s/unit > ∙ end)
-      ∥ (R ⟶ ⁅ T ⁆ # warm < s/unit > ∙
-         R ⟶ ⁅ S ⁆ # pong < s/unit > ∙ end)
+        P ⟶ ⁅ Q ⁆ # ping < s/unit > ∙ end
+      ∥ R ⟶ ⁅ T ⁆ # warm < s/unit > ∙
+        R ⟶ ⁅ S ⁆ # pong < s/unit > ∙ end
 
     PS : _
     PS = ⁅ P ⁆ ∪ ⁅ S ⁆
 
     -- Both orders are rejected by `Focus` at state 0.
     ps₁ ps₂ : Proc 0 0
-    ps₁ = P ⇒ ⁅ Q ⁆ ! ping < val v/unit >∙ (S ⇐ R ？· ⟪ pong ↦ ∅ ⟫)
-    ps₂ = S ⇐ R ？· ⟪ pong ↦ P ⇒ ⁅ Q ⁆ ! ping < val v/unit >∙ ∅ ⟫
+    ps₁ = P ⇒ ⁅ Q ⁆ ! ping < unit >∙ S ⇐ R ？· ⟪ pong ↦ ∅ ⟫
+    ps₂ = S ⇐ R ？· ⟪ pong ↦ P ⇒ ⁅ Q ⁆ ! ping < unit >∙ ∅ ⟫
 
     _ : orig g ≡ ok
     _ = refl
     _ : view g PS ≡ ok
     _ = refl
-    _ : TC g PS ps₁ ≡ false
+    _ : TC g PS ps₁ ≡ Bool.false
     _ = refl
-    _ : TC g PS ps₂ ≡ false
+    _ : TC g PS ps₂ ≡ Bool.false
     _ = refl
 
   -- An internal choice next to an outsider's step.
@@ -572,7 +574,7 @@ module Five where
         ⟪ P ⟶ ⁅ S ⁆ # left < s/unit >  ∙ S ⟶ ⁅ R ⁆ # left < s/unit > ∙ end
         ∣ P ⟶ ⁅ S ⁆ # right < s/unit > ∙ S ⟶ ⁅ R ⁆ # right < s/unit > ∙ end
         ⟫
-      ∥ (T ⟶ ⁅ U ⁆ # idle < s/unit > ∙ end)
+      ∥ T ⟶ ⁅ U ⁆ # idle < s/unit > ∙ end
 
     PS : _
     PS = ⁅ P ⁆ ∪ ⁅ S ⁆
@@ -580,11 +582,11 @@ module Five where
     -- {P,S}: the internal choice is made by the send that tells `R`;
     -- `T→U` is an outsider's step.
     ps : Proc 0 0
-    ps = S ⇒ ⁅ R ⁆ ! left < val v/unit >∙ ∅
+    ps = S ⇒ ⁅ R ⁆ ! left < unit >∙ ∅
 
     _ : orig g ≡ ok
     _ = refl
     _ : view g PS ≡ ok
     _ = refl
-    _ : TC g PS ps ≡ true
+    _ : TC g PS ps ≡ Bool.true
     _ = refl

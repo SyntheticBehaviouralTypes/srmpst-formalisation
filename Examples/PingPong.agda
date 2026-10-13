@@ -5,10 +5,10 @@
 
 module Examples.PingPong where
 
+open import Definitions.Expr.Syntax
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using ([]; _∷_)
-open import Data.Bool using (true)
 open import Data.Product using (proj₁; ∃-syntax; _×_)
 open import Data.List using (length)
 open import Relation.Binary.PropositionalEquality using (_≡_)
@@ -58,8 +58,8 @@ module NonRecursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = (A ⇒ ⁅ B ⁆ ! ping < val (v/bool true) >∙ (A ⇐ B ？· ⟪ pong ↦ ∅ ⟫))
-      ∷ (B ⇐ A ？· ⟪ ping ↦ B ⇒ ⁅ A ⁆ ! pong < val (v/nat 0) >∙ ∅ ⟫)
+    M = A ⇒ ⁅ B ⁆ ! ping < true >∙ A ⇐ B ？· ⟪ pong ↦ ∅ ⟫
+      ∷ B ⇐ A ？· ⟪ ping ↦ B ⇒ ⁅ A ⁆ ! pong < 0 >∙ ∅ ⟫
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
@@ -91,7 +91,7 @@ module Recursive where
   -- μ (A --bool--> B --nat--> loop)
   ping-pong : OpenGraph 0
   ping-pong =
-    μ λ X → A ⟶ ⁅ B ⁆ # ping < s/bool > ∙ B ⟶ ⁅ A ⁆ # pong < s/nat > ∙ X
+    μ X · A ⟶ ⁅ B ⁆ # ping < s/bool > ∙ B ⟶ ⁅ A ⁆ # pong < s/nat > ∙ X
 
   wbg : WBGraph {N = 2}
   wbg = buildG ping-pong
@@ -107,9 +107,9 @@ module Recursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = (rec λ X → A ⇒ ⁅ B ⁆ ! ping < val (v/bool true) >∙
-                    (A ⇐ B ？· ⟪ pong ↦ X ⟫))
-      ∷ (rec λ X → B ⇐ A ？· ⟪ ping ↦ B ⇒ ⁅ A ⁆ ! pong < val (v/nat 0) >∙ X ⟫)
+    M = rec X · A ⇒ ⁅ B ⁆ ! ping < true >∙
+                 A ⇐ B ？· ⟪ pong ↦ X ⟫
+      ∷ rec X · B ⇐ A ？· ⟪ ping ↦ B ⇒ ⁅ A ⁆ ! pong < 0 >∙ X ⟫
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀

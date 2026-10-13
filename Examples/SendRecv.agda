@@ -5,11 +5,11 @@
 
 module Examples.SendRecv where
 
+open import Definitions.Expr.Syntax
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Fin.Subset using (⁅_⁆)
 open import Data.Vec using ([]; _∷_)
-open import Data.Bool using (true)
 open import Data.Product using (proj₁; ∃-syntax; _×_)
 open import Data.List using (length)
 open import Relation.Binary.PropositionalEquality using (_≡_)
@@ -56,8 +56,8 @@ module NonRecursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = (A ⇒ ⁅ B ⁆ ! flag < val (v/bool true) >∙ ∅)
-      ∷ (B ⇐ A ？· ⟪ flag ↦ ∅ ⟫)
+    M = A ⇒ ⁅ B ⁆ ! flag < true >∙ ∅
+      ∷ B ⇐ A ？· ⟪ flag ↦ ∅ ⟫
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
@@ -88,7 +88,7 @@ module NonRecursive where
 module Recursive where
   -- μ (A --bool--> loop)
   sendrecv : OpenGraph 0
-  sendrecv = μ λ X → A ⟶ ⁅ B ⁆ # flag < s/bool > ∙ X
+  sendrecv = μ X · A ⟶ ⁅ B ⁆ # flag < s/bool > ∙ X
 
   wbg : WBGraph {N = 2}
   wbg = buildG sendrecv
@@ -104,8 +104,8 @@ module Recursive where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = (rec λ X → A ⇒ ⁅ B ⁆ ! flag < val (v/bool true) >∙ X)
-      ∷ (rec λ X → B ⇐ A ？· ⟪ flag ↦ X ⟫)
+    M = rec X · A ⇒ ⁅ B ⁆ ! flag < true >∙ X
+      ∷ rec X · B ⇐ A ？· ⟪ flag ↦ X ⟫
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀
@@ -146,9 +146,9 @@ module RecursiveUnfoldOnce where
     open Global Ρ using (_-[_]->ᵍ_)
 
     M : Session
-    M = (A ⇒ ⁅ B ⁆ ! flag < val (v/bool true) >∙
-           (rec λ X → A ⇒ ⁅ B ⁆ ! flag < val (v/bool true) >∙ X))
-      ∷ (rec λ X → B ⇐ A ？· ⟪ flag ↦ X ⟫)
+    M = A ⇒ ⁅ B ⁆ ! flag < true >∙
+          rec X · A ⇒ ⁅ B ⁆ ! flag < true >∙ X
+      ∷ rec X · B ⇐ A ？· ⟪ flag ↦ X ⟫
       ∷ []
 
     M-typed : ⊢s[ Ρ ] M ∶ s₀

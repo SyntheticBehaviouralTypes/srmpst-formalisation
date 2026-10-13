@@ -5,6 +5,7 @@
 
 module Tests.ViewsSession where
 
+open import Definitions.Expr.Syntax
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Fin.Subset using (⁅_⁆; _∈_; inside; outside)
@@ -37,8 +38,8 @@ token = 0F
 round : OpenGraph 0
 round =
   A ⟶ ⁅ B ⁆ # token < s/unit > ∙
-  (B ⟶ ⁅ C ⁆ # token < s/unit > ∙
-   C ⟶ ⁅ A ⁆ # token < s/unit > ∙ end)
+  B ⟶ ⁅ C ⁆ # token < s/unit > ∙
+  C ⟶ ⁅ A ⁆ # token < s/unit > ∙ end
 
 wbg : WBGraph {N = 3}
 wbg = buildG round
@@ -95,8 +96,8 @@ open Global Ρ using (_-[_]->ᵍ_)
 -- ── The session ───────────────────────────────────────────────────────
 
 p/AB p/C : Proc 0 0
-p/AB = B ⇒ ⁅ C ⁆ ! token < val v/unit >∙ (A ⇐ C ？· ⟪ token ↦ ∅ ⟫)
-p/C  = C ⇐ B ？· ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < val v/unit >∙ ∅ ⟫
+p/AB = B ⇒ ⁅ C ⁆ ! token < unit >∙ A ⇐ C ？· ⟪ token ↦ ∅ ⟫
+p/C  = C ⇐ B ？· ⟪ token ↦ C ⇒ ⁅ A ⁆ ! token < unit >∙ ∅ ⟫
 
 M : Session
 M = p/AB ∷ p/C ∷ []

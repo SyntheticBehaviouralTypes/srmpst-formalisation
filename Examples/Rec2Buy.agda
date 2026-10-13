@@ -7,6 +7,7 @@
 
 module Examples.Rec2Buy where
 
+open import Definitions.Expr.Syntax
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
@@ -60,7 +61,7 @@ rec2buy : OpenGraph 0
 rec2buy =
   A ⟶ ⁅ S ⁆ # item < s/nat > ∙
   S ⟶ ⁅ A ； B ⁆ # price < s/nat > ∙
-  μ λ X →
+  μ X ·
     ⟪ A ⟶ ⁅ B ⁆ # split < s/nat >   ∙
         ⟪ B ⟶ ⁅ A ⁆ # yes < s/nat > ∙ A ⟶ ⁅ S ⁆ # buy < s/unit > ∙ end
         ∣ B ⟶ ⁅ A ⁆ # no < s/unit > ∙ X
@@ -77,40 +78,40 @@ open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module
 
 p/A : Proc 0 0
 p/A =
-  A ⇒ ⁅ S ⁆ ! item < val (v/nat 0) >∙
-  (A ⇐ S ？·
-    ⟪ price ↦
-        (rec λ X →
-          ifp is-zero (var 0F)
-          then (A ⇒ ⁅ B ⁆ ! split < val (v/nat 0) >∙
-                (A ⇐ B ？·
-                  ⟪ yes ↦ A ⇒ ⁅ S ⁆ ! buy < val v/unit >∙ ∅
-                  ∣ no  ↦ X
-                  ⟫))
-          else (A ⇒ ⁅ B ⁆ ! cancel < val v/unit >∙
-                (A ⇒ ⁅ S ⁆ ! quit < val v/unit >∙ ∅)))
-    ⟫)
+  A ⇒ ⁅ S ⁆ ! item < 0 >∙
+  A ⇐ S ？·
+    ⟪ price ⟨ amount ⟩ ↦
+        rec X ·
+          ifp is-zero amount
+          then A ⇒ ⁅ B ⁆ ! split < 0 >∙
+               A ⇐ B ？·
+                 ⟪ yes ↦ A ⇒ ⁅ S ⁆ ! buy < unit >∙ ∅
+                 ∣ no  ↦ X
+                 ⟫
+          else A ⇒ ⁅ B ⁆ ! cancel < unit >∙
+               A ⇒ ⁅ S ⁆ ! quit < unit >∙ ∅
+    ⟫
 
--- `B` hears the price (`var 1F` in the loop) before judging a split
--- (`var 0F`).
+-- `B` hears the price before judging each `share` it is offered (but
+-- expressions cannot compare the two, so the price goes unused).
 p/B : Proc 0 0
 p/B =
   B ⇐ S ？·
     ⟪ price ↦
-        (rec λ X →
+        rec X ·
           B ⇐ A ？·
-            ⟪ split  ↦ ifp is-zero (var 0F)
-                       then (B ⇒ ⁅ A ⁆ ! yes < val (v/nat 0) >∙ ∅)
-                       else (B ⇒ ⁅ A ⁆ ! no < val v/unit >∙ X)
-            ∣ cancel ↦ ∅
-            ⟫)
+            ⟪ split ⟨ share ⟩ ↦ ifp is-zero share
+                                then B ⇒ ⁅ A ⁆ ! yes < 0 >∙ ∅
+                                else B ⇒ ⁅ A ⁆ ! no < unit >∙ X
+            ∣ cancel          ↦ ∅
+            ⟫
     ⟫
 
 p/S : Proc 0 0
 p/S =
   S ⇐ A ？·
-    ⟪ item ↦ S ⇒ ⁅ A ； B ⁆ ! price < val (v/nat 0) >∙
-             (S ⇐ A ？· ⟪ buy ↦ ∅ ∣ quit ↦ ∅ ⟫)
+    ⟪ item ↦ S ⇒ ⁅ A ； B ⁆ ! price < 0 >∙
+             S ⇐ A ？· ⟪ buy ↦ ∅ ∣ quit ↦ ∅ ⟫
     ⟫
 
 -- {A} {B} {S}: one process per role.
@@ -151,8 +152,8 @@ module AB∣S where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (A ⇒ ⁅ S ⁆ ! item < val (v/nat 0) >∙
-         (A ⇐ S ？· ⟪ price ↦ A ⇒ ⁅ S ⁆ ! quit < val v/unit >∙ ∅ ⟫))
+  M = A ⇒ ⁅ S ⁆ ! item < 0 >∙
+        A ⇐ S ？· ⟪ price ↦ A ⇒ ⁅ S ⁆ ! quit < unit >∙ ∅ ⟫
     v∷ p/S
     v∷ v[]
 
@@ -172,8 +173,8 @@ module AS∣B where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (S ⇒ ⁅ A ； B ⁆ ! price < val (v/nat 0) >∙
-         (A ⇒ ⁅ B ⁆ ! cancel < val v/unit >∙ ∅))
+  M = S ⇒ ⁅ A ； B ⁆ ! price < 0 >∙
+        A ⇒ ⁅ B ⁆ ! cancel < unit >∙ ∅
     v∷ p/B
     v∷ v[]
 
@@ -195,15 +196,15 @@ module A∣BS where
 
   M : Session
   M = p/A
-    v∷ (S ⇐ A ？·
+    v∷ S ⇐ A ？·
          ⟪ item ↦
-             S ⇒ ⁅ A ； B ⁆ ! price < val (v/nat 0) >∙
-             (B ⇐ A ？·
-               ⟪ split  ↦ B ⇒ ⁅ A ⁆ ! yes < val (v/nat 0) >∙
-                          (S ⇐ A ？· ⟪ buy ↦ ∅ ∣ quit ↦ ∅ ⟫)
+             S ⇒ ⁅ A ； B ⁆ ! price < 0 >∙
+             B ⇐ A ？·
+               ⟪ split  ↦ B ⇒ ⁅ A ⁆ ! yes < 0 >∙
+                          S ⇐ A ？· ⟪ buy ↦ ∅ ∣ quit ↦ ∅ ⟫
                ∣ cancel ↦ S ⇐ A ？· ⟪ buy ↦ ∅ ∣ quit ↦ ∅ ⟫
-               ⟫)
-         ⟫)
+               ⟫
+         ⟫
     v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀

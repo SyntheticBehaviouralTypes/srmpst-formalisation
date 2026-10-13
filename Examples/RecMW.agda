@@ -7,6 +7,8 @@
 
 module Examples.RecMW where
 
+open import Definitions.Expr.Syntax
+import Data.Bool as Bool
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
@@ -15,7 +17,6 @@ open import Data.Sum using (_⊎_)
 open import Data.Product using (proj₁; ∃-syntax; _×_)
 open import Data.List using (length)
 open import Data.Unit using (tt)
-open import Data.Bool using (true; false)
 import Data.Nat
 open import Relation.Binary.PropositionalEquality using (_≡_; refl)
 open import Relation.Nullary.Decidable using (does; from-yes)
@@ -51,7 +52,7 @@ stop     = 1F
 -- and `W1→R` share no role, so `∙` lets them come in either order.
 recmw : OpenGraph 0
 recmw =
-  μ λ X →
+  μ X ·
     M ⟶ ⁅ W1 ⁆ # datum < s/nat > ∙
     M ⟶ ⁅ W2 ⁆ # datum < s/nat > ∙
     W1 ⟶ ⁅ R ⁆ # report < s/nat > ∙
@@ -71,23 +72,24 @@ open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module
 -- ── One process per role ──────────────────────────────────────────────
 
 p/M : Proc 0 0
-p/M = rec λ X →
-        M ⇒ ⁅ W1 ⁆ ! datum < val (v/nat 0) >∙
-        (M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 1) >∙
-        (M ⇐ R ？·
+p/M = rec X ·
+        M ⇒ ⁅ W1 ⁆ ! datum < 0 >∙
+        M ⇒ ⁅ W2 ⁆ ! datum < 1 >∙
+        M ⇐ R ？·
           ⟪ continue ↦ X
-          ∣ stop     ↦ M ⇒ ⁅ W1 ⁆ ! stop < val (v/bool false) >∙
-                       (M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool false) >∙ ∅)
-          ⟫))
+          ∣ stop     ↦ M ⇒ ⁅ W1 ⁆ ! stop < false >∙
+                       M ⇒ ⁅ W2 ⁆ ! stop < false >∙ ∅
+          ⟫
 
 p/R : Proc 0 0
-p/R = rec λ X →
+p/R = rec X ·
         R ⇐ W1 ？·
-          ⟪ report ↦
+          ⟪ report ⟨ r₁ ⟩ ↦
               R ⇐ W2 ？·
-                ⟪ report ↦ ifp is-zero (var 0F)
-                           then (R ⇒ ⁅ M ⁆ ! stop < val (v/bool true) >∙ ∅)
-                           else (R ⇒ ⁅ M ⁆ ! continue < var 1F >∙ X)
+                ⟪ report ⟨ r₂ ⟩ ↦
+                    ifp is-zero r₂
+                    then R ⇒ ⁅ M ⁆ ! stop < true >∙ ∅
+                    else R ⇒ ⁅ M ⁆ ! continue < r₁ >∙ X
                 ⟫
           ⟫
 
@@ -95,10 +97,10 @@ p/R = rec λ X →
 -- `R` until `M` says stop
 p/W : Fin 4 → Proc 0 0
 p/W W = W ⇐ M ？·
-        ⟪ datum ↦ (rec λ X → W ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
-                             (W ⇐ M ？· ⟪ datum ↦ X ∣ stop ↦ ∅ ⟫))
-        ∣ stop  ↦ ∅
-        ⟫
+          ⟪ datum ↦ rec X · W ⇒ ⁅ R ⁆ ! report < 0 >∙
+                            W ⇐ M ？· ⟪ datum ↦ X ∣ stop ↦ ∅ ⟫
+          ∣ stop  ↦ ∅
+          ⟫
 
 -- {M} {R} {W1} {W2}
 -- (Sessions are named `Ms`: `M` is a role.)
@@ -130,73 +132,73 @@ module M∣R∣W1∣W2 where
 -- {M,W1}: `M→W1` is internal; then `M→W2` and `W1→R` are two sends by
 -- different own roles, enabled together: `Focus` refuses either order.
 mw1₁ mw1₂ : Proc 0 0
-mw1₁ = rec λ X →
-         M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 0) >∙
-         (W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
-          (M ⇐ R ？·
-            ⟪ continue ↦ X
-            ∣ stop     ↦ M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool true) >∙ ∅
-            ⟫))
-mw1₂ = rec λ X →
-         W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
-         (M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 0) >∙
-          (M ⇐ R ？·
-            ⟪ continue ↦ X
-            ∣ stop     ↦ M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool true) >∙ ∅
-            ⟫))
+mw1₁ = rec X ·
+         M ⇒ ⁅ W2 ⁆ ! datum < 0 >∙
+         W1 ⇒ ⁅ R ⁆ ! report < 0 >∙
+         M ⇐ R ？·
+           ⟪ continue ↦ X
+           ∣ stop     ↦ M ⇒ ⁅ W2 ⁆ ! stop < true >∙ ∅
+           ⟫
+mw1₂ = rec X ·
+         W1 ⇒ ⁅ R ⁆ ! report < 0 >∙
+         M ⇒ ⁅ W2 ⁆ ! datum < 0 >∙
+         M ⇐ R ？·
+           ⟪ continue ↦ X
+           ∣ stop     ↦ M ⇒ ⁅ W2 ⁆ ! stop < true >∙ ∅
+           ⟫
 
 -- {M,W2}: `M→W2` is internal; `W1→R` is none of its business.
 mw2 : Proc 0 0
-mw2 = rec λ X →
-        M ⇒ ⁅ W1 ⁆ ! datum < val (v/nat 0) >∙
-        (W2 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
-         (M ⇐ R ？·
-           ⟪ continue ↦ X
-           ∣ stop     ↦ M ⇒ ⁅ W1 ⁆ ! stop < val (v/bool true) >∙ ∅
-           ⟫))
+mw2 = rec X ·
+        M ⇒ ⁅ W1 ⁆ ! datum < 0 >∙
+        W2 ⇒ ⁅ R ⁆ ! report < 0 >∙
+        M ⇐ R ？·
+          ⟪ continue ↦ X
+          ∣ stop     ↦ M ⇒ ⁅ W1 ⁆ ! stop < true >∙ ∅
+          ⟫
 
 -- {R,W1}: `W1→R` is internal; the block always continues.
 w1r : Proc 0 0
-w1r = rec λ X →
+w1r = rec X ·
         W1 ⇐ M ？·
           ⟪ datum ↦ R ⇐ W2 ？·
-                        ⟪ report ↦ R ⇒ ⁅ M ⁆ ! continue < val (v/nat 0) >∙ X ⟫
+                      ⟪ report ↦ R ⇒ ⁅ M ⁆ ! continue < 0 >∙ X ⟫
           ∣ stop  ↦ ∅
           ⟫
 
 -- {M,R}: after `M→W1`, `M` may send `M→W2` while `R` may receive `W1→R`:
 -- `Focus` refuses either order.  (`R→M` is internal: here, stop.)
 mr₁ mr₂ : Proc 0 0
-mr₁ = M ⇒ ⁅ W1 ⁆ ! datum < val (v/nat 0) >∙
-      (M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 0) >∙
-       (R ⇐ W1 ？·
-         ⟪ report ↦ R ⇐ W2 ？·
-                      ⟪ report ↦ M ⇒ ⁅ W1 ⁆ ! stop < val (v/bool true) >∙
-                                 (M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool true) >∙ ∅)
-                      ⟫
-         ⟫))
-mr₂ = M ⇒ ⁅ W1 ⁆ ! datum < val (v/nat 0) >∙
-      (R ⇐ W1 ？·
-        ⟪ report ↦ M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 0) >∙
-                   (R ⇐ W2 ？·
-                     ⟪ report ↦ M ⇒ ⁅ W1 ⁆ ! stop < val (v/bool true) >∙
-                                (M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool true) >∙ ∅)
-                     ⟫)
-        ⟫)
+mr₁ = M ⇒ ⁅ W1 ⁆ ! datum < 0 >∙
+      M ⇒ ⁅ W2 ⁆ ! datum < 0 >∙
+      R ⇐ W1 ？·
+        ⟪ report ↦ R ⇐ W2 ？·
+                     ⟪ report ↦ M ⇒ ⁅ W1 ⁆ ! stop < true >∙
+                                M ⇒ ⁅ W2 ⁆ ! stop < true >∙ ∅
+                     ⟫
+        ⟫
+mr₂ = M ⇒ ⁅ W1 ⁆ ! datum < 0 >∙
+      R ⇐ W1 ？·
+        ⟪ report ↦ M ⇒ ⁅ W2 ⁆ ! datum < 0 >∙
+                   R ⇐ W2 ？·
+                     ⟪ report ↦ M ⇒ ⁅ W1 ⁆ ! stop < true >∙
+                                M ⇒ ⁅ W2 ⁆ ! stop < true >∙ ∅
+                     ⟫
+        ⟫
 
 -- {R,W2}: after `M→W1`, `W2` may receive `M→W2` while `R` may receive
 -- `W1→R` (from different senders): `Focus` refuses either order.
 rw2₁ rw2₂ : Proc 0 0
-rw2₁ = rec λ X →
+rw2₁ = rec X ·
          W2 ⇐ M ？·
            ⟪ datum ↦ R ⇐ W1 ？·
-                         ⟪ report ↦ R ⇒ ⁅ M ⁆ ! continue < val (v/nat 0) >∙ X ⟫
+                       ⟪ report ↦ R ⇒ ⁅ M ⁆ ! continue < 0 >∙ X ⟫
            ∣ stop  ↦ ∅
            ⟫
-rw2₂ = rec λ X →
+rw2₂ = rec X ·
          R ⇐ W1 ？·
            ⟪ report ↦ W2 ⇐ M ？·
-                        ⟪ datum ↦ R ⇒ ⁅ M ⁆ ! continue < val (v/nat 0) >∙ X
+                        ⟪ datum ↦ R ⇒ ⁅ M ⁆ ! continue < 0 >∙ X
                         ∣ stop  ↦ ∅
                         ⟫
            ⟫
@@ -204,20 +206,20 @@ rw2₂ = rec λ X →
 -- {W1,W2}: after `M→W1`, `W2` may receive `M→W2` while `W1` may send
 -- `W1→R`: a mixed choice, refused in either order.
 w12₁ w12₂ : Proc 0 0
-w12₁ = rec λ X →
+w12₁ = rec X ·
          W1 ⇐ M ？·
-           ⟪ datum ↦ W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
-                     (W2 ⇐ M ？·
-                       ⟪ datum ↦ W2 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙ X
+           ⟪ datum ↦ W1 ⇒ ⁅ R ⁆ ! report < 0 >∙
+                     W2 ⇐ M ？·
+                       ⟪ datum ↦ W2 ⇒ ⁅ R ⁆ ! report < 0 >∙ X
                        ∣ stop  ↦ ∅
-                       ⟫)
+                       ⟫
            ∣ stop  ↦ W2 ⇐ M ？· ⟪ datum ↦ ∅ ∣ stop ↦ ∅ ⟫
            ⟫
-w12₂ = rec λ X →
+w12₂ = rec X ·
          W1 ⇐ M ？·
            ⟪ datum ↦ W2 ⇐ M ？·
-                       ⟪ datum ↦ W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
-                                 (W2 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙ X)
+                       ⟪ datum ↦ W1 ⇒ ⁅ R ⁆ ! report < 0 >∙
+                                 W2 ⇒ ⁅ R ⁆ ! report < 0 >∙ X
                        ∣ stop  ↦ ∅
                        ⟫
            ∣ stop  ↦ W2 ⇐ M ？· ⟪ datum ↦ ∅ ∣ stop ↦ ∅ ⟫
@@ -226,31 +228,31 @@ w12₂ = rec λ X →
 -- {M,R,W1}: `M→W1`, `W1→R`, `R→M` are internal; the block sends `M→W2`,
 -- hears `W2→R`, and (internally) stops.
 mrw1 : Proc 0 0
-mrw1 = M ⇒ ⁅ W2 ⁆ ! datum < val (v/nat 0) >∙
-       (R ⇐ W2 ？· ⟪ report ↦ M ⇒ ⁅ W2 ⁆ ! stop < val (v/bool false) >∙ ∅ ⟫)
+mrw1 = M ⇒ ⁅ W2 ⁆ ! datum < 0 >∙
+       R ⇐ W2 ？· ⟪ report ↦ M ⇒ ⁅ W2 ⁆ ! stop < false >∙ ∅ ⟫
 
 -- {M,R,W2}: symmetrically, with `W1` outside.
 mrw2 : Proc 0 0
-mrw2 = M ⇒ ⁅ W1 ⁆ ! datum < val (v/nat 0) >∙
-       (R ⇐ W1 ？· ⟪ report ↦ M ⇒ ⁅ W1 ⁆ ! stop < val (v/bool false) >∙ ∅ ⟫)
+mrw2 = M ⇒ ⁅ W1 ⁆ ! datum < 0 >∙
+       R ⇐ W1 ？· ⟪ report ↦ M ⇒ ⁅ W1 ⁆ ! stop < false >∙ ∅ ⟫
 
 -- {M,W1,W2}: `M`'s sends are internal; the workers report in turn, and the
 -- block follows `R`'s decision.
 mw12 : Proc 0 0
-mw12 = rec λ X →
-         W1 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
-         (W2 ⇒ ⁅ R ⁆ ! report < val (v/nat 0) >∙
-          (M ⇐ R ？· ⟪ continue ↦ X ∣ stop ↦ ∅ ⟫))
+mw12 = rec X ·
+         W1 ⇒ ⁅ R ⁆ ! report < 0 >∙
+         W2 ⇒ ⁅ R ⁆ ! report < 0 >∙
+         M ⇐ R ？· ⟪ continue ↦ X ∣ stop ↦ ∅ ⟫
 
 -- {R,W1,W2}: the reports are internal; the workers hear `M`, `R` stops.
 rw12 : Proc 0 0
 rw12 = W1 ⇐ M ？·
          ⟪ datum ↦ W2 ⇐ M ？·
-                     ⟪ datum ↦ R ⇒ ⁅ M ⁆ ! stop < val (v/bool true) >∙
-                               (W1 ⇐ M ？·
+                     ⟪ datum ↦ R ⇒ ⁅ M ⁆ ! stop < true >∙
+                               W1 ⇐ M ？·
                                  ⟪ datum ↦ ∅
                                  ∣ stop  ↦ W2 ⇐ M ？· ⟪ datum ↦ ∅ ∣ stop ↦ ∅ ⟫
-                                 ⟫)
+                                 ⟫
                      ∣ stop  ↦ ∅
                      ⟫
          ∣ stop  ↦ ∅
@@ -301,30 +303,30 @@ b2 = 2F
 
 -- ── Rejected: a block with two own roles able to act at once ──────────
 
-_ : does (typecheckSession wbg Ρ/MR∣W1∣W2 (mr₁ v∷ p/W W1 v∷ p/W W2 v∷ v[])) ≡ false
+_ : does (typecheckSession wbg Ρ/MR∣W1∣W2 (mr₁ v∷ p/W W1 v∷ p/W W2 v∷ v[])) ≡ Bool.false
 _ = refl
-_ : does (typecheckSession wbg Ρ/MR∣W1∣W2 (mr₂ v∷ p/W W1 v∷ p/W W2 v∷ v[])) ≡ false
-_ = refl
-
-_ : does (typecheckSession wbg Ρ/MW1∣R∣W2 (mw1₁ v∷ p/R v∷ p/W W2 v∷ v[])) ≡ false
-_ = refl
-_ : does (typecheckSession wbg Ρ/MW1∣R∣W2 (mw1₂ v∷ p/R v∷ p/W W2 v∷ v[])) ≡ false
+_ : does (typecheckSession wbg Ρ/MR∣W1∣W2 (mr₂ v∷ p/W W1 v∷ p/W W2 v∷ v[])) ≡ Bool.false
 _ = refl
 
-_ : does (typecheckSession wbg Ρ/RW2∣M∣W1 (rw2₁ v∷ p/M v∷ p/W W1 v∷ v[])) ≡ false
+_ : does (typecheckSession wbg Ρ/MW1∣R∣W2 (mw1₁ v∷ p/R v∷ p/W W2 v∷ v[])) ≡ Bool.false
 _ = refl
-_ : does (typecheckSession wbg Ρ/RW2∣M∣W1 (rw2₂ v∷ p/M v∷ p/W W1 v∷ v[])) ≡ false
+_ : does (typecheckSession wbg Ρ/MW1∣R∣W2 (mw1₂ v∷ p/R v∷ p/W W2 v∷ v[])) ≡ Bool.false
 _ = refl
 
-_ : does (typecheckSession wbg Ρ/W1W2∣M∣R (w12₁ v∷ p/M v∷ p/R v∷ v[])) ≡ false
+_ : does (typecheckSession wbg Ρ/RW2∣M∣W1 (rw2₁ v∷ p/M v∷ p/W W1 v∷ v[])) ≡ Bool.false
 _ = refl
-_ : does (typecheckSession wbg Ρ/W1W2∣M∣R (w12₂ v∷ p/M v∷ p/R v∷ v[])) ≡ false
+_ : does (typecheckSession wbg Ρ/RW2∣M∣W1 (rw2₂ v∷ p/M v∷ p/W W1 v∷ v[])) ≡ Bool.false
+_ = refl
+
+_ : does (typecheckSession wbg Ρ/W1W2∣M∣R (w12₁ v∷ p/M v∷ p/R v∷ v[])) ≡ Bool.false
+_ = refl
+_ : does (typecheckSession wbg Ρ/W1W2∣M∣R (w12₂ v∷ p/M v∷ p/R v∷ v[])) ≡ Bool.false
 _ = refl
 
 -- Two-and-two partitions containing a rejected block.
-_ : does (typecheckSession wbg Ρ/MR∣W1W2 (mr₁ v∷ w12₁ v∷ v[])) ≡ false
+_ : does (typecheckSession wbg Ρ/MR∣W1W2 (mr₁ v∷ w12₁ v∷ v[])) ≡ Bool.false
 _ = refl
-_ : does (typecheckSession wbg Ρ/MW1∣RW2 (mw1₁ v∷ rw2₁ v∷ v[])) ≡ false
+_ : does (typecheckSession wbg Ρ/MW1∣RW2 (mw1₁ v∷ rw2₁ v∷ v[])) ≡ Bool.false
 _ = refl
 
 -- ── Accepted ──────────────────────────────────────────────────────────

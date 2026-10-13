@@ -6,6 +6,7 @@
 
 module Examples.CounterExamples where
 
+open import Definitions.Expr.Syntax
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
@@ -15,7 +16,6 @@ open import Data.Product using (_,_; proj₁; ∃-syntax; _×_)
 open import Data.List using (length)
 open import Relation.Binary.PropositionalEquality using (_≡_)
 open import Data.Unit using (tt)
-open import Data.Bool using (true)
 open import Relation.Nullary using (Dec; ¬_)
 open import Relation.Nullary.Decidable using (from-yes; from-no)
 
@@ -95,7 +95,7 @@ C3-illtyped = from-no wtd/C3
 
 -- Not `MessageGuarded`.
 p/C4 : Proc 0 0
-p/C4 = rec λ X → X
+p/C4 = rec X · X
 
 wtd/C4 : Dec (⊢ᵛ[ ⁅ C ⁆ ] p/C4 ∶ s₀)
 wtd/C4 = typecheck wbg ⁅ C ⁆ p/C4
@@ -109,9 +109,9 @@ C4-illtyped = from-no wtd/C4
 
 -- `A` picks `accept`; `B` forwards whichever it gets.
 p/A p/B : Proc 0 0
-p/A = A ⇒ ⁅ B ⁆ ! accept < val (v/bool true) >∙ ∅
-p/B = B ⇐ A ？· ⟪ accept ↦ B ⇒ ⁅ C ⁆ ! accept < val (v/bool true) >∙ ∅
-                ∣ reject ↦ B ⇒ ⁅ C ⁆ ! reject < val (v/bool true) >∙ ∅
+p/A = A ⇒ ⁅ B ⁆ ! accept < true >∙ ∅
+p/B = B ⇐ A ？· ⟪ accept ↦ B ⇒ ⁅ C ⁆ ! accept < true >∙ ∅
+                ∣ reject ↦ B ⇒ ⁅ C ⁆ ! reject < true >∙ ∅
                 ⟫
 
 own/AB∣C own/AC∣B own/A∣BC : Fin 3 → Fin 2
@@ -149,7 +149,7 @@ module AB∣C where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (B ⇒ ⁅ C ⁆ ! reject < val (v/bool true) >∙ ∅) v∷ p/C-good v∷ v[]
+  M = B ⇒ ⁅ C ⁆ ! reject < true >∙ ∅ v∷ p/C-good v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
   M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -166,8 +166,8 @@ module AC∣B where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (A ⇒ ⁅ B ⁆ ! accept < val (v/bool true) >∙
-         (C ⇐ B ？· ⟪ accept ↦ ∅ ∣ reject ↦ ∅ ⟫))
+  M = A ⇒ ⁅ B ⁆ ! accept < true >∙
+        C ⇐ B ？· ⟪ accept ↦ ∅ ∣ reject ↦ ∅ ⟫
     v∷ p/B
     v∷ v[]
 
@@ -186,7 +186,7 @@ module A∣BC where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = p/A v∷ (B ⇐ A ？· ⟪ accept ↦ ∅ ∣ reject ↦ ∅ ⟫) v∷ v[]
+  M = p/A v∷ B ⇐ A ？· ⟪ accept ↦ ∅ ∣ reject ↦ ∅ ⟫ v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
   M-typed = from-yes (typecheckSession wbg Ρ M)

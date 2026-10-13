@@ -5,7 +5,8 @@
 
 module Tests.Views where
 
-open import Data.Bool using (true; false)
+open import Definitions.Expr.Syntax
+import Data.Bool as Bool
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Fin.Subset using (⁅_⁆; _∪_)
@@ -37,23 +38,23 @@ module RoundRobin where
   round : OpenGraph 0
   round =
     A ⟶ ⁅ B ⁆ # token < s/unit > ∙
-    (B ⟶ ⁅ C ⁆ # token < s/unit > ∙
-     C ⟶ ⁅ A ⁆ # token < s/unit > ∙ end)
+    B ⟶ ⁅ C ⁆ # token < s/unit > ∙
+    C ⟶ ⁅ A ⁆ # token < s/unit > ∙ end
 
   wbg : WBGraph {N = 3}
   wbg = buildG round
 
   AB = ⁅ A ⁆ ∪ ⁅ B ⁆
 
-  _ : ⌊ wellBehaved? (viewGraph (underlying (proj₁ wbg)) AB) ⌋ ≡ true
+  _ : ⌊ wellBehaved? (viewGraph (underlying (proj₁ wbg)) AB) ⌋ ≡ Bool.true
   _ = refl
 
   -- `A→B` is hidden: the process of {A,B} sends at `B`, then receives at `A`.
   _ : does (typecheck wbg AB
-              (B ⇒ ⁅ C ⁆ ! token < val v/unit >∙ (A ⇐ C ？· ⟪ token ↦ ∅ ⟫)))
-      ≡ true
+              (B ⇒ ⁅ C ⁆ ! token < unit >∙ A ⇐ C ？· ⟪ token ↦ ∅ ⟫))
+      ≡ Bool.true
   _ = refl
 
   -- Its internal step is no action of the code.
-  _ : does (typecheck wbg AB (A ⇒ ⁅ B ⁆ ! token < val v/unit >∙ ∅)) ≡ false
+  _ : does (typecheck wbg AB (A ⇒ ⁅ B ⁆ ! token < unit >∙ ∅)) ≡ Bool.false
   _ = refl

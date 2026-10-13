@@ -45,7 +45,7 @@ module Definitions.Proc (N : ℕ) where
 
   infixr 8 _⇒_!_<_>∙_
   infixr 8 _⇐_？·_
-  infix  6 ifp_then_else_
+  infixr 8 ifp_then_else_
 
   -- A process typed at the set of roles it owns.
   data NProc (γ δ : ℕ) : Set where

@@ -6,6 +6,7 @@
 
 module Examples.IndepW where
 
+open import Definitions.Expr.Syntax
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
@@ -43,7 +44,7 @@ private
 
 -- one worker pipeline loop: `Ai` feeds `Bi`, which feeds `Ci`, forever
 pipeTail : Fin 7 → Fin 7 → Fin 7 → OpenGraph 0
-pipeTail Ai Bi Ci = μ λ X → itm Ai Bi ∙ itm Bi Ci ∙ X
+pipeTail Ai Bi Ci = μ X · itm Ai Bi ∙ itm Bi Ci ∙ X
 
 -- `S` seeds `A1`, then the first pipeline runs in parallel with `S`
 -- seeding `A2` and the second pipeline.
@@ -57,21 +58,21 @@ wnet : WBNet indepw
 wnet = base ⨾ (base ∥ (base ⨾ base))
 
 p/S : Proc 0 0
-p/S = S ⇒ ⁅ A1 ⁆ ! item < val v/unit >∙ (S ⇒ ⁅ A2 ⁆ ! item < val v/unit >∙ ∅)
+p/S = S ⇒ ⁅ A1 ⁆ ! item < unit >∙ S ⇒ ⁅ A2 ⁆ ! item < unit >∙ ∅
 
 -- Pipeline stages; each takes its own role first.
 p/A : Fin 7 → Fin 7 → Proc 0 0
 p/A A B = A ⇐ S ？·
-            ⟪ item ↦ A ⇒ ⁅ B ⁆ ! item < val v/unit >∙
-                     (rec λ X → A ⇒ ⁅ B ⁆ ! item < val v/unit >∙ X)
+            ⟪ item ↦ A ⇒ ⁅ B ⁆ ! item < unit >∙
+                     rec X · A ⇒ ⁅ B ⁆ ! item < unit >∙ X
             ⟫
 
 p/B : Fin 7 → Fin 7 → Fin 7 → Proc 0 0
 p/B B A C =
-  rec λ X → B ⇐ A ？· ⟪ item ↦ B ⇒ ⁅ C ⁆ ! item < val v/unit >∙ X ⟫
+  rec X · B ⇐ A ？· ⟪ item ↦ B ⇒ ⁅ C ⁆ ! item < unit >∙ X ⟫
 
 p/C : Fin 7 → Fin 7 → Proc 0 0
-p/C C B = rec λ X → C ⇐ B ？· ⟪ item ↦ X ⟫
+p/C C B = rec X · C ⇐ B ？· ⟪ item ↦ X ⟫
 
 open import Safety (wb-net wnet) (sync-net wnet) using (⊢s[_]_∶_)
 

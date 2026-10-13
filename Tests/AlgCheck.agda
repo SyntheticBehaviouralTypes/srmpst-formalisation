@@ -6,6 +6,7 @@
 
 module Tests.AlgCheck where
 
+open import Definitions.Expr.Syntax
 open import Data.Fin using (Fin; zero)
 open import Data.Fin.Patterns
 open import Data.List using ([]; _∷_)
@@ -58,11 +59,11 @@ module Ex6 where
   g : OpenGraph 0
   g =
     B ⟶ ⁅ D ⁆ # start < s/unit > ∙
-    μ λ X →
+    μ X ·
       A ⟶ ⁅ B ⁆ # step < s/unit > ∙
       ⟪ B ⟶ ⁅ C ⁆ # again < s/unit > ∙ X
       ∣ B ⟶ ⁅ C ⁆ # halt < s/unit >  ∙
-          (μ λ Y → A ⟶ ⁅ B ⁆ # step < s/unit > ∙ Y)
+          μ Y · A ⟶ ⁅ B ⁆ # step < s/unit > ∙ Y
       ⟫
 
   Gr = underlying (compile g)
@@ -87,7 +88,7 @@ module Ex6 where
   H = 3F
 
   prog : Proc 0 0
-  prog = rec λ X → A ⇒ ⁅ B ⁆ ! step < val v/unit >∙ X
+  prog = rec X · A ⇒ ⁅ B ⁆ ! step < unit >∙ X
 
   -- The anchor the checker has to find is `M`, which `G` does not reach:
   -- `M -[¬A]->* L` and the tree at `G` steps `G → L`.
@@ -106,7 +107,7 @@ module Ex6 where
   ended-not-at-G = tt
 
   -- An unguarded loop is rejected by `MessageGuarded`, with no search.
-  unguarded : False (tc? v[] v[] ⁅ A ⁆ (rec λ X → X) G)
+  unguarded : False (tc? v[] v[] ⁅ A ⁆ (rec X · X) G)
   unguarded = tt
 
 -- ══════════════════════════════════════════════════════════════════════

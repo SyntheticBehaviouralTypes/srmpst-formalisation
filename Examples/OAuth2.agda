@@ -6,6 +6,7 @@
 
 module Examples.OAuth2 where
 
+open import Definitions.Expr.Syntax
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
@@ -15,7 +16,6 @@ open import Data.Product using (_,_; proj₁; ∃-syntax; _×_)
 open import Data.List using (length)
 open import Relation.Binary.PropositionalEquality using (_≡_)
 open import Data.Unit using (tt)
-open import Data.Bool using (true)
 open import Relation.Nullary.Decidable using (from-yes)
 
 open import Definitions.Expr using (s/bool; s/nat; val; v/bool; v/nat)
@@ -65,19 +65,19 @@ open import Safety (wb-of wbg) (sync-of wbg) using (⊢s[_]_∶_; safety; module
 
 -- the server picks `cancel`
 p/S : Proc 0 0
-p/S = S ⇒ ⁅ C ⁆ ! cancel < val (v/nat 0) >∙ ∅
+p/S = S ⇒ ⁅ C ⁆ ! cancel < 0 >∙ ∅
 
 -- the client covers both offers: forward the password, or tell `A` to quit
 p/C : Proc 0 0
 p/C = C ⇐ S ？·
-        ⟪ login  ↦ C ⇒ ⁅ A ⁆ ! passwd < val (v/nat 0) >∙ ∅
-        ∣ cancel ↦ C ⇒ ⁅ A ⁆ ! quit < val (v/bool true) >∙ ∅
+        ⟪ login  ↦ C ⇒ ⁅ A ⁆ ! passwd < 0 >∙ ∅
+        ∣ cancel ↦ C ⇒ ⁅ A ⁆ ! quit < true >∙ ∅
         ⟫
 
 -- the auth service: authorize towards `S`, or stop
 p/A : Proc 0 0
 p/A = A ⇐ C ？·
-        ⟪ passwd ↦ A ⇒ ⁅ S ⁆ ! auth < val (v/bool true) >∙ ∅
+        ⟪ passwd ↦ A ⇒ ⁅ S ⁆ ! auth < true >∙ ∅
         ∣ quit   ↦ ∅
         ⟫
 
@@ -119,7 +119,7 @@ module SC∣A where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (C ⇒ ⁅ A ⁆ ! passwd < val (v/nat 0) >∙ (S ⇐ A ？· ⟪ auth ↦ ∅ ⟫))
+  M = C ⇒ ⁅ A ⁆ ! passwd < 0 >∙ S ⇐ A ？· ⟪ auth ↦ ∅ ⟫
     v∷ p/A
     v∷ v[]
 
@@ -138,8 +138,8 @@ module SA∣C where
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (S ⇒ ⁅ C ⁆ ! cancel < val (v/nat 0) >∙
-         (A ⇐ C ？· ⟪ passwd ↦ ∅ ∣ quit ↦ ∅ ⟫))
+  M = S ⇒ ⁅ C ⁆ ! cancel < 0 >∙
+        A ⇐ C ？· ⟪ passwd ↦ ∅ ∣ quit ↦ ∅ ⟫
     v∷ p/C
     v∷ v[]
 
@@ -159,10 +159,10 @@ module S∣CA where
 
   M : Session
   M = p/S
-    v∷ (C ⇐ S ？·
-         ⟪ login  ↦ A ⇒ ⁅ S ⁆ ! auth < val (v/bool true) >∙ ∅
+    v∷ C ⇐ S ？·
+         ⟪ login  ↦ A ⇒ ⁅ S ⁆ ! auth < true >∙ ∅
          ∣ cancel ↦ ∅
-         ⟫)
+         ⟫
     v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
