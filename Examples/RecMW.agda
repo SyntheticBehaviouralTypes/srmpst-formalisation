@@ -303,30 +303,40 @@ b2 = 2F
 
 -- ── Rejected: a block with two own roles able to act at once ──────────
 
-_ : does (typecheckSession wbg Ρ/MR∣W1∣W2 (mr₁ v∷ p/W W1 v∷ p/W W2 v∷ v[])) ≡ Bool.false
+_ : does (typecheckSession wbg Ρ/MR∣W1∣W2 (mr₁ v∷ p/W W1 v∷ p/W W2 v∷ v[]))
+    ≡ Bool.false
 _ = refl
-_ : does (typecheckSession wbg Ρ/MR∣W1∣W2 (mr₂ v∷ p/W W1 v∷ p/W W2 v∷ v[])) ≡ Bool.false
-_ = refl
-
-_ : does (typecheckSession wbg Ρ/MW1∣R∣W2 (mw1₁ v∷ p/R v∷ p/W W2 v∷ v[])) ≡ Bool.false
-_ = refl
-_ : does (typecheckSession wbg Ρ/MW1∣R∣W2 (mw1₂ v∷ p/R v∷ p/W W2 v∷ v[])) ≡ Bool.false
+_ : does (typecheckSession wbg Ρ/MR∣W1∣W2 (mr₂ v∷ p/W W1 v∷ p/W W2 v∷ v[]))
+    ≡ Bool.false
 _ = refl
 
-_ : does (typecheckSession wbg Ρ/RW2∣M∣W1 (rw2₁ v∷ p/M v∷ p/W W1 v∷ v[])) ≡ Bool.false
+_ : does (typecheckSession wbg Ρ/MW1∣R∣W2 (mw1₁ v∷ p/R v∷ p/W W2 v∷ v[]))
+    ≡ Bool.false
 _ = refl
-_ : does (typecheckSession wbg Ρ/RW2∣M∣W1 (rw2₂ v∷ p/M v∷ p/W W1 v∷ v[])) ≡ Bool.false
+_ : does (typecheckSession wbg Ρ/MW1∣R∣W2 (mw1₂ v∷ p/R v∷ p/W W2 v∷ v[]))
+    ≡ Bool.false
 _ = refl
 
-_ : does (typecheckSession wbg Ρ/W1W2∣M∣R (w12₁ v∷ p/M v∷ p/R v∷ v[])) ≡ Bool.false
+_ : does (typecheckSession wbg Ρ/RW2∣M∣W1 (rw2₁ v∷ p/M v∷ p/W W1 v∷ v[]))
+    ≡ Bool.false
 _ = refl
-_ : does (typecheckSession wbg Ρ/W1W2∣M∣R (w12₂ v∷ p/M v∷ p/R v∷ v[])) ≡ Bool.false
+_ : does (typecheckSession wbg Ρ/RW2∣M∣W1 (rw2₂ v∷ p/M v∷ p/W W1 v∷ v[]))
+    ≡ Bool.false
+_ = refl
+
+_ : does (typecheckSession wbg Ρ/W1W2∣M∣R (w12₁ v∷ p/M v∷ p/R v∷ v[]))
+    ≡ Bool.false
+_ = refl
+_ : does (typecheckSession wbg Ρ/W1W2∣M∣R (w12₂ v∷ p/M v∷ p/R v∷ v[]))
+    ≡ Bool.false
 _ = refl
 
 -- Two-and-two partitions containing a rejected block.
-_ : does (typecheckSession wbg Ρ/MR∣W1W2 (mr₁ v∷ w12₁ v∷ v[])) ≡ Bool.false
+_ : does (typecheckSession wbg Ρ/MR∣W1W2 (mr₁ v∷ w12₁ v∷ v[]))
+    ≡ Bool.false
 _ = refl
-_ : does (typecheckSession wbg Ρ/MW1∣RW2 (mw1₁ v∷ rw2₁ v∷ v[])) ≡ Bool.false
+_ : does (typecheckSession wbg Ρ/MW1∣RW2 (mw1₁ v∷ rw2₁ v∷ v[]))
+    ≡ Bool.false
 _ = refl
 
 -- ── Accepted ──────────────────────────────────────────────────────────
