@@ -26,7 +26,7 @@ open import Check hiding (base; _∥_; _⨾_)
 
 open import Definitions.Graph.Algebra 4 renaming (var to gvar)
 open import Data.Fin.Subset using (⁅_⁆)
-open import Definitions.Actions 4 renaming (_<_> to mkChoice)
+open import Definitions.Actions 4
 open import Definitions.Proc 4
 
 M R W1 W2 : Fin 4
@@ -46,14 +46,14 @@ lbl1 = 1F
 -- One round: `M→W1`, then `M→W2 ∥ W1→R`, then `W2→R`; `R` loops or stops.
 recmw : OpenGraph 0
 recmw =
-  μ ( (M ⟶ ⁅ W1 ⁆ # mkChoice lbl0 s/nat) ∙
-      (   ((M ⟶ ⁅ W2 ⁆ # mkChoice lbl0 s/nat) ∙ end)
-        ∥ ((W1 ⟶ ⁅ R ⁆ # mkChoice here s/nat) ∙ end)
-      ⨾ (W2 ⟶ ⁅ R ⁆ # mkChoice here s/nat) ∙
-        choice ((R ⟶ ⁅ M ⁆ # mkChoice lbl0 s/nat) ⇒ gvar 0F)
-               ( ((R ⟶ ⁅ M ⁆ # mkChoice lbl1 s/bool) ⇒
-                   ((M ⟶ ⁅ W1 ⁆ # mkChoice lbl1 s/bool) ∙
-                    (M ⟶ ⁅ W2 ⁆ # mkChoice lbl1 s/bool) ∙ end))
+  μ ( (M ⟶ ⁅ W1 ⁆ # lbl0 < s/nat >) ∙
+      (   ((M ⟶ ⁅ W2 ⁆ # lbl0 < s/nat >) ∙ end)
+        ∥ ((W1 ⟶ ⁅ R ⁆ # here < s/nat >) ∙ end)
+      ⨾ (W2 ⟶ ⁅ R ⁆ # here < s/nat >) ∙
+        choice ((R ⟶ ⁅ M ⁆ # lbl0 < s/nat >) ⇒ gvar 0F)
+               ( ((R ⟶ ⁅ M ⁆ # lbl1 < s/bool >) ⇒
+                   ((M ⟶ ⁅ W1 ⁆ # lbl1 < s/bool >) ∙
+                    (M ⟶ ⁅ W2 ⁆ # lbl1 < s/bool >) ∙ end))
                ∷ []) ) )
 
 wbg : WBGraph {N = 4}

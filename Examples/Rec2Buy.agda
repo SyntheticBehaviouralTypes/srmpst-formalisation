@@ -24,7 +24,7 @@ open import Check
 
 open import Definitions.Graph.Algebra 3 renaming (var to gvar)
 open import Utils.SetLit using (⁅_⁆; _；_)
-open import Definitions.Actions 3 renaming (_<_> to mkChoice)
+open import Definitions.Actions 3
 open import Definitions.Proc 3
 
 A B S : Fin 3
@@ -45,17 +45,17 @@ lbl1 = 1F
 --    + A→B cancel(unit) . A→S no(unit) . end )
 rec2buy : OpenGraph 0
 rec2buy =
-  (A ⟶ ⁅ S ⁆ # mkChoice here s/nat) ∙
-  (S ⟶ ⁅ A ； B ⁆ # mkChoice here s/nat) ∙
+  (A ⟶ ⁅ S ⁆ # here < s/nat >) ∙
+  (S ⟶ ⁅ A ； B ⁆ # here < s/nat >) ∙
   μ (choice
-      ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/nat) ⇒
+      ((A ⟶ ⁅ B ⁆ # lbl0 < s/nat >) ⇒
         choice
-          ((B ⟶ ⁅ A ⁆ # mkChoice lbl0 s/nat) ⇒
-            ((A ⟶ ⁅ S ⁆ # mkChoice lbl0 s/unit) ∙ end))
-          ( ((B ⟶ ⁅ A ⁆ # mkChoice lbl1 s/unit) ⇒ gvar 0F)
+          ((B ⟶ ⁅ A ⁆ # lbl0 < s/nat >) ⇒
+            ((A ⟶ ⁅ S ⁆ # lbl0 < s/unit >) ∙ end))
+          ( ((B ⟶ ⁅ A ⁆ # lbl1 < s/unit >) ⇒ gvar 0F)
           ∷ []))
-      ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/unit) ⇒
-          ((A ⟶ ⁅ S ⁆ # mkChoice lbl1 s/unit) ∙ end))
+      ( ((A ⟶ ⁅ B ⁆ # lbl1 < s/unit >) ⇒
+          ((A ⟶ ⁅ S ⁆ # lbl1 < s/unit >) ∙ end))
       ∷ []))
 
 wbg : WBGraph {N = 3}

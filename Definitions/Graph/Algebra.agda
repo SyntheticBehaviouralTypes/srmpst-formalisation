@@ -4,6 +4,7 @@ open import Data.Fin using (Fin; _↑ˡ_; _↑ʳ_; inject₁; fromℕ; combine; 
 import Data.Fin as Fin
 open import Data.List using (List; []; _∷_; _++_)
 import Data.List as List
+open import Data.List.NonEmpty using (List⁺; _∷_; [_]; _⁺++⁺_)
 open import Data.Nat using (ℕ; suc; _+_; _*_)
 open import Data.Product using (_×_; _,_; map₂)
 open import Data.Fin.Relation.Unary.Top using (view; ‵fromℕ; ‵inject₁)
@@ -117,6 +118,28 @@ module Definitions.Graph.Algebra (N : ℕ) where
 
   _∙_ : ∀ {δ} → Action → OpenGraph δ → OpenGraph δ
   α ∙ continuation = choice (α ⇒ continuation) []
+
+  -- ── branching ──
+  --
+  --   ⟪ α₁ ↦ G₁
+  --   ∣ α₂ ↦ G₂
+  --   ⟫
+  --
+  -- is `choice` over the branches, in order.
+  Branches : ℕ → Set
+  Branches δ = List⁺ (Alternative δ)
+
+  infixr 4 _↦_
+  infixr 3 _∣_
+
+  _↦_ : ∀ {δ} → Action → OpenGraph δ → Branches δ
+  α ↦ continuation = [ α ⇒ continuation ]
+
+  _∣_ : ∀ {δ} → Branches δ → Branches δ → Branches δ
+  _∣_ = _⁺++⁺_
+
+  ⟪_⟫ : ∀ {δ} → Branches δ → OpenGraph δ
+  ⟪ first ∷ rest ⟫ = choice first rest
 
   private
     closeRef : ∀ {δ n} → Ref δ n → Ref (suc δ) n → Ref δ n

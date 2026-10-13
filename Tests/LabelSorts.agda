@@ -33,7 +33,7 @@ import Definitions.Typing as Typing
 
 open import Definitions.Graph.Algebra 3 renaming (var to gvar)
 open import Data.Fin.Subset using (⁅_⁆)
-open import Definitions.Actions 3 renaming (_<_> to mkChoice)
+open import Definitions.Actions 3
 open import Definitions.Proc 3
 
 A B C : Fin 3
@@ -51,10 +51,10 @@ lbl1 = 1F
 g : OpenGraph 0
 g =
   choice
-    ((A ⟶ ⁅ C ⁆ # mkChoice lbl0 s/unit) ⇒
-      ((A ⟶ ⁅ B ⁆ # mkChoice here s/nat) ∙ end))
-    ( ((A ⟶ ⁅ C ⁆ # mkChoice lbl1 s/unit) ⇒
-        ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ end))
+    ((A ⟶ ⁅ C ⁆ # lbl0 < s/unit >) ⇒
+      ((A ⟶ ⁅ B ⁆ # here < s/nat >) ∙ end))
+    ( ((A ⟶ ⁅ C ⁆ # lbl1 < s/unit >) ⇒
+        ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ end))
     ∷ [])
 
 wbg : WBGraph {N = 3}

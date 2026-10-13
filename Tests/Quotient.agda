@@ -58,7 +58,7 @@ module Judge (N : ℕ) where
 module Three where
   open import Definitions.Graph.Algebra 3
   open import Data.Fin.Subset using (⁅_⁆; _∪_)
-  open import Definitions.Actions 3 renaming (_<_> to mkChoice)
+  open import Definitions.Actions 3
   open import Definitions.Proc 3
   open Judge 3
 
@@ -83,9 +83,9 @@ module Three where
   module RoundRobin where
     round : OpenGraph 0
     round =
-      (A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙
-      ((B ⟶ ⁅ C ⁆ # mkChoice here s/bool) ∙
-       ((C ⟶ ⁅ A ⁆ # mkChoice here s/bool) ∙ end))
+      (A ⟶ ⁅ B ⁆ # here < s/bool >) ∙
+      ((B ⟶ ⁅ C ⁆ # here < s/bool >) ∙
+       ((C ⟶ ⁅ A ⁆ # here < s/bool >) ∙ end))
 
     _ : orig round ≡ ok
     _ = refl
@@ -106,11 +106,11 @@ module Three where
     oauth : OpenGraph 0
     oauth =
       choice
-        ((S′ ⟶ ⁅ C′ ⁆ # mkChoice lbl0 s/nat) ⇒
-          ((C′ ⟶ ⁅ A′ ⁆ # mkChoice lbl0 s/nat) ∙
-           (A′ ⟶ ⁅ S′ ⁆ # mkChoice here s/bool) ∙ end))
-        ( ((S′ ⟶ ⁅ C′ ⁆ # mkChoice lbl1 s/nat) ⇒
-            ((C′ ⟶ ⁅ A′ ⁆ # mkChoice lbl1 s/bool) ∙ end))
+        ((S′ ⟶ ⁅ C′ ⁆ # lbl0 < s/nat >) ⇒
+          ((C′ ⟶ ⁅ A′ ⁆ # lbl0 < s/nat >) ∙
+           (A′ ⟶ ⁅ S′ ⁆ # here < s/bool >) ∙ end))
+        ( ((S′ ⟶ ⁅ C′ ⁆ # lbl1 < s/nat >) ⇒
+            ((C′ ⟶ ⁅ A′ ⁆ # lbl1 < s/bool >) ∙ end))
         ∷ [])
 
     _ : orig oauth ≡ ok
@@ -129,17 +129,17 @@ module Three where
 
     rec2buy : OpenGraph 0
     rec2buy =
-      (A ⟶ ⁅ S ⁆ # mkChoice here s/nat) ∙
-      (S ⟶ ⁅ A ⁆ # mkChoice here s/nat) ∙
+      (A ⟶ ⁅ S ⁆ # here < s/nat >) ∙
+      (S ⟶ ⁅ A ⁆ # here < s/nat >) ∙
       μ (choice
-          ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/nat) ⇒
+          ((A ⟶ ⁅ B ⁆ # lbl0 < s/nat >) ⇒
             choice
-              ((B ⟶ ⁅ A ⁆ # mkChoice lbl0 s/nat) ⇒
-                ((A ⟶ ⁅ S ⁆ # mkChoice lbl0 s/unit) ∙ end))
-              ( ((B ⟶ ⁅ A ⁆ # mkChoice lbl1 s/unit) ⇒ var 0F)
+              ((B ⟶ ⁅ A ⁆ # lbl0 < s/nat >) ⇒
+                ((A ⟶ ⁅ S ⁆ # lbl0 < s/unit >) ∙ end))
+              ( ((B ⟶ ⁅ A ⁆ # lbl1 < s/unit >) ⇒ var 0F)
               ∷ []))
-          ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/unit) ⇒
-              ((A ⟶ ⁅ S ⁆ # mkChoice lbl1 s/unit) ∙ end))
+          ( ((A ⟶ ⁅ B ⁆ # lbl1 < s/unit >) ⇒
+              ((A ⟶ ⁅ S ⁆ # lbl1 < s/unit >) ∙ end))
           ∷ []))
 
     -- {A,B}: the `A⟶B`, `B⟶A` loop is an internal τ-cycle; its exits are
@@ -158,10 +158,10 @@ module Three where
     nosyn : OpenGraph 0
     nosyn =
       choice
-        ((A ⟶ ⁅ B ⁆ # mkChoice here s/unit) ⇒
-          ((A ⟶ ⁅ C ⁆ # mkChoice here s/unit) ∙ end))
-        ( ((A ⟶ ⁅ C ⁆ # mkChoice here s/unit) ⇒
-            ((A ⟶ ⁅ B ⁆ # mkChoice here s/unit) ∙ end))
+        ((A ⟶ ⁅ B ⁆ # here < s/unit >) ⇒
+          ((A ⟶ ⁅ C ⁆ # here < s/unit >) ∙ end))
+        ( ((A ⟶ ⁅ C ⁆ # here < s/unit >) ⇒
+            ((A ⟶ ⁅ B ⁆ # here < s/unit >) ∙ end))
         ∷ [])
 
     -- {A,B}: `A→B` is internal; `A` sends to `C`, before or after it.
@@ -196,10 +196,10 @@ module Three where
     round : OpenGraph 0
     round =
       choice
-        ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) ⇒
-          ((B ⟶ ⁅ C ⁆ # mkChoice lbl0 s/bool) ∙ end))
-        ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) ⇒
-            ((B ⟶ ⁅ C ⁆ # mkChoice lbl1 s/bool) ∙ end))
+        ((A ⟶ ⁅ B ⁆ # lbl0 < s/bool >) ⇒
+          ((B ⟶ ⁅ C ⁆ # lbl0 < s/bool >) ∙ end))
+        ( ((A ⟶ ⁅ B ⁆ # lbl1 < s/bool >) ⇒
+            ((B ⟶ ⁅ C ⁆ # lbl1 < s/bool >) ∙ end))
         ∷ [])
 
     -- {A,C}: one label of the choice (a sender may send fewer), then the
@@ -222,7 +222,7 @@ module Three where
   -- Tests/Multicast.agda, Once: A ⟶ {B, C}.
   module Multicast where
     g : OpenGraph 0
-    g = (A ⟶ (⁅ B ⁆ ∪ ⁅ C ⁆) # mkChoice here s/bool) ∙ end
+    g = (A ⟶ (⁅ B ⁆ ∪ ⁅ C ⁆) # here < s/bool >) ∙ end
 
     _ : orig g ≡ ok
     _ = refl
@@ -238,10 +238,10 @@ module Three where
     g : OpenGraph 0
     g =
       choice
-        ((A ⟶ ⁅ C ⁆ # mkChoice lbl0 s/unit) ⇒
-          ((A ⟶ ⁅ B ⁆ # mkChoice here s/nat) ∙ end))
-        ( ((A ⟶ ⁅ C ⁆ # mkChoice lbl1 s/unit) ⇒
-            ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ end))
+        ((A ⟶ ⁅ C ⁆ # lbl0 < s/unit >) ⇒
+          ((A ⟶ ⁅ B ⁆ # here < s/nat >) ∙ end))
+        ( ((A ⟶ ⁅ C ⁆ # lbl1 < s/unit >) ⇒
+            ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ end))
         ∷ [])
 
     _ : orig g ≡ ok
@@ -262,7 +262,7 @@ module Three where
 module Four where
   open import Definitions.Graph.Algebra 4 renaming (var to gvar)
   open import Data.Fin.Subset using (⁅_⁆; _∪_)
-  open import Definitions.Actions 4 renaming (_<_> to mkChoice)
+  open import Definitions.Actions 4
   open import Definitions.Proc 4
   open Judge 4
 
@@ -283,14 +283,14 @@ module Four where
 
     recmw : OpenGraph 0
     recmw =
-      μ ( (M ⟶ ⁅ W1 ⁆ # mkChoice lbl0 s/nat) ∙
-          (   ((M ⟶ ⁅ W2 ⁆ # mkChoice lbl0 s/nat) ∙ end)
-            ∥ ((W1 ⟶ ⁅ R ⁆ # mkChoice here s/nat) ∙ end)
-          ⨾ (W2 ⟶ ⁅ R ⁆ # mkChoice here s/nat) ∙
-            choice ((R ⟶ ⁅ M ⁆ # mkChoice lbl0 s/nat) ⇒ gvar 0F)
-                   ( ((R ⟶ ⁅ M ⁆ # mkChoice lbl1 s/bool) ⇒
-                       ((M ⟶ ⁅ W1 ⁆ # mkChoice lbl1 s/bool) ∙
-                        (M ⟶ ⁅ W2 ⁆ # mkChoice lbl1 s/bool) ∙ end))
+      μ ( (M ⟶ ⁅ W1 ⁆ # lbl0 < s/nat >) ∙
+          (   ((M ⟶ ⁅ W2 ⁆ # lbl0 < s/nat >) ∙ end)
+            ∥ ((W1 ⟶ ⁅ R ⁆ # here < s/nat >) ∙ end)
+          ⨾ (W2 ⟶ ⁅ R ⁆ # here < s/nat >) ∙
+            choice ((R ⟶ ⁅ M ⁆ # lbl0 < s/nat >) ⇒ gvar 0F)
+                   ( ((R ⟶ ⁅ M ⁆ # lbl1 < s/bool >) ⇒
+                       ((M ⟶ ⁅ W1 ⁆ # lbl1 < s/bool >) ∙
+                        (M ⟶ ⁅ W2 ⁆ # lbl1 < s/bool >) ∙ end))
                    ∷ []) ) )
 
     MW1 MW2 MR W1W2 W1R W2R : _
@@ -392,9 +392,9 @@ module Four where
     D = 3F
 
     g : OpenGraph 0
-    g = (A ⟶ ⁅ B ⁆ # mkChoice here s/unit) ∙
-        (B ⟶ ⁅ C ⁆ # mkChoice here s/unit) ∙
-        (C ⟶ ⁅ D ⁆ # mkChoice here s/unit) ∙ end
+    g = (A ⟶ ⁅ B ⁆ # here < s/unit >) ∙
+        (B ⟶ ⁅ C ⁆ # here < s/unit >) ∙
+        (C ⟶ ⁅ D ⁆ # here < s/unit >) ∙ end
 
     BC : _
     BC = ⁅ B ⁆ ∪ ⁅ C ⁆
@@ -422,10 +422,10 @@ module Four where
     told : OpenGraph 0
     told =
       choice
-        ((P ⟶ ⁅ Q ⁆ # mkChoice lbl0 s/unit) ⇒
-          ((Q ⟶ ⁅ R ⁆ # mkChoice lbl0 s/unit) ∙ end))
-        ( ((P ⟶ ⁅ Q ⁆ # mkChoice lbl1 s/unit) ⇒
-            ((Q ⟶ ⁅ R ⁆ # mkChoice lbl1 s/unit) ∙ end))
+        ((P ⟶ ⁅ Q ⁆ # lbl0 < s/unit >) ⇒
+          ((Q ⟶ ⁅ R ⁆ # lbl0 < s/unit >) ∙ end))
+        ( ((P ⟶ ⁅ Q ⁆ # lbl1 < s/unit >) ⇒
+            ((Q ⟶ ⁅ R ⁆ # lbl1 < s/unit >) ∙ end))
         ∷ [])
 
     PQ : _
@@ -452,8 +452,8 @@ module Four where
 
     square : OpenGraph 0
     square =
-        ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) ∙ end)
-      ∥ ((R ⟶ ⁅ S ⁆ # mkChoice here s/unit) ∙ end)
+        ((P ⟶ ⁅ Q ⁆ # here < s/unit >) ∙ end)
+      ∥ ((R ⟶ ⁅ S ⁆ # here < s/unit >) ∙ end)
 
     PS QR : _
     PS = ⁅ P ⁆ ∪ ⁅ S ⁆
@@ -489,7 +489,7 @@ module Four where
 module Five where
   open import Definitions.Graph.Algebra 5
   open import Data.Fin.Subset using (⁅_⁆; _∪_)
-  open import Definitions.Actions 5 renaming (_<_> to mkChoice)
+  open import Definitions.Actions 5
   open import Definitions.Proc 5
   open Judge 5
 
@@ -512,9 +512,9 @@ module Five where
 
     g : OpenGraph 0
     g =
-        ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) ∙ end)
-      ∥ ((R ⟶ ⁅ T ⁆ # mkChoice here s/unit) ∙
-         (R ⟶ ⁅ S ⁆ # mkChoice here s/unit) ∙ end)
+        ((P ⟶ ⁅ Q ⁆ # here < s/unit >) ∙ end)
+      ∥ ((R ⟶ ⁅ T ⁆ # here < s/unit >) ∙
+         (R ⟶ ⁅ S ⁆ # here < s/unit >) ∙ end)
 
     PS : _
     PS = ⁅ P ⁆ ∪ ⁅ S ⁆
@@ -546,12 +546,12 @@ module Five where
     g : OpenGraph 0
     g =
       ( choice
-          ((P ⟶ ⁅ S ⁆ # mkChoice lbl0 s/unit) ⇒
-            ((S ⟶ ⁅ R ⁆ # mkChoice lbl0 s/unit) ∙ end))
-          ( ((P ⟶ ⁅ S ⁆ # mkChoice lbl1 s/unit) ⇒
-              ((S ⟶ ⁅ R ⁆ # mkChoice lbl1 s/unit) ∙ end))
+          ((P ⟶ ⁅ S ⁆ # lbl0 < s/unit >) ⇒
+            ((S ⟶ ⁅ R ⁆ # lbl0 < s/unit >) ∙ end))
+          ( ((P ⟶ ⁅ S ⁆ # lbl1 < s/unit >) ⇒
+              ((S ⟶ ⁅ R ⁆ # lbl1 < s/unit >) ∙ end))
           ∷ []) )
-      ∥ ((T ⟶ ⁅ U ⁆ # mkChoice here s/unit) ∙ end)
+      ∥ ((T ⟶ ⁅ U ⁆ # here < s/unit >) ∙ end)
 
     PS : _
     PS = ⁅ P ⁆ ∪ ⁅ S ⁆

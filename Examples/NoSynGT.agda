@@ -23,7 +23,7 @@ open import Check
 
 open import Definitions.Graph.Algebra 3
 open import Data.Fin.Subset using (⁅_⁆)
-open import Definitions.Actions 3 renaming (_<_> to mkChoice)
+open import Definitions.Actions 3
 open import Definitions.Proc 3
 
 A B C : Fin 3
@@ -38,10 +38,10 @@ here = 0F
 nosyn : OpenGraph 0
 nosyn =
   choice
-    ((A ⟶ ⁅ B ⁆ # mkChoice here s/unit) ⇒
-      ((A ⟶ ⁅ C ⁆ # mkChoice here s/unit) ∙ end))
-    ( ((A ⟶ ⁅ C ⁆ # mkChoice here s/unit) ⇒
-        ((A ⟶ ⁅ B ⁆ # mkChoice here s/unit) ∙ end))
+    ((A ⟶ ⁅ B ⁆ # here < s/unit >) ⇒
+      ((A ⟶ ⁅ C ⁆ # here < s/unit >) ∙ end))
+    ( ((A ⟶ ⁅ C ⁆ # here < s/unit >) ⇒
+        ((A ⟶ ⁅ B ⁆ # here < s/unit >) ∙ end))
     ∷ [])
 
 wbg : WBGraph {N = 3}

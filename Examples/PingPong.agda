@@ -20,7 +20,7 @@ open import Check
 
 open import Definitions.Graph.Algebra 2
 open import Data.Fin.Subset using (⁅_⁆)
-open import Definitions.Actions 2 renaming (_<_> to mkChoice)
+open import Definitions.Actions 2
 open import Definitions.Proc 2
 
 A B : Fin 2
@@ -38,8 +38,8 @@ module NonRecursive where
   -- A --bool--> B --nat--> A, end
   ping-pong : OpenGraph 0
   ping-pong =
-    (A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙
-    ((B ⟶ ⁅ A ⁆ # mkChoice here s/nat) ∙ end)
+    (A ⟶ ⁅ B ⁆ # here < s/bool >) ∙
+    ((B ⟶ ⁅ A ⁆ # here < s/nat >) ∙ end)
 
   wbg : WBGraph {N = 2}
   wbg = buildG ping-pong
@@ -88,7 +88,7 @@ module Recursive where
   -- μ (A --bool--> B --nat--> loop)
   ping-pong : OpenGraph 0
   ping-pong =
-    μ ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ ((B ⟶ ⁅ A ⁆ # mkChoice here s/nat) ∙ var 0F))
+    μ ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ ((B ⟶ ⁅ A ⁆ # here < s/nat >) ∙ var 0F))
 
   wbg : WBGraph {N = 2}
   wbg = buildG ping-pong

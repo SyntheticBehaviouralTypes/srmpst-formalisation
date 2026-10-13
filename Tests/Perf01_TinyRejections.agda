@@ -46,7 +46,7 @@ module MinimalGraph where
 -- `A → B`, end: size 2, no choice.
 module Size2Linear where
   open import Definitions.Graph.Algebra 2
-  open import Definitions.Actions 2 renaming (_<_> to mkChoice)
+  open import Definitions.Actions 2
   open import Definitions.Proc 2
 
   A B : Fin 2
@@ -54,7 +54,7 @@ module Size2Linear where
   B = 1F
 
   wbg : WBGraph {N = 2}
-  wbg = buildG ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ end)
+  wbg = buildG ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ end)
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
@@ -68,7 +68,7 @@ module Size2Linear where
 -- (two hops deep).
 module Size3Linear where
   open import Definitions.Graph.Algebra 3
-  open import Definitions.Actions 3 renaming (_<_> to mkChoice)
+  open import Definitions.Actions 3
   open import Definitions.Proc 3
 
   A B C : Fin 3
@@ -77,7 +77,7 @@ module Size3Linear where
   C = 2F
 
   wbg : WBGraph {N = 3}
-  wbg = buildG ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ ((B ⟶ ⁅ C ⁆ # mkChoice here s/bool) ∙ end))
+  wbg = buildG ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ ((B ⟶ ⁅ C ⁆ # here < s/bool >) ∙ end))
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
@@ -97,7 +97,7 @@ module Size3Linear where
 -- skips exactly one action.
 module Size2LinearUninvolved where
   open import Definitions.Graph.Algebra 3
-  open import Definitions.Actions 3 renaming (_<_> to mkChoice)
+  open import Definitions.Actions 3
   open import Definitions.Proc 3
 
   A B C : Fin 3
@@ -106,7 +106,7 @@ module Size2LinearUninvolved where
   C = 2F
 
   wbg : WBGraph {N = 3}
-  wbg = buildG ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ end)
+  wbg = buildG ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ end)
 
   open import Safety (wb-of wbg) (sync-of wbg) using (⊢ᵛ[_]_∶_)
 
@@ -119,7 +119,7 @@ module Size2LinearUninvolved where
 -- A 2-way choice at the root, both branches to the shared `ended`.
 module Size2Choice where
   open import Definitions.Graph.Algebra 2
-  open import Definitions.Actions 2 renaming (_<_> to mkChoice)
+  open import Definitions.Actions 2
   open import Definitions.Proc 2
 
   A B : Fin 2
@@ -132,8 +132,8 @@ module Size2Choice where
 
   round : OpenGraph 0
   round =
-    choice ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) ⇒ end)
-           ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) ⇒ end)
+    choice ((A ⟶ ⁅ B ⁆ # lbl0 < s/bool >) ⇒ end)
+           ( ((A ⟶ ⁅ B ⁆ # lbl1 < s/bool >) ⇒ end)
            ∷ [])
 
   wbg : WBGraph {N = 2}
@@ -151,7 +151,7 @@ module Size2Choice where
 -- branch continuing `B → C`), checking `A`, who is active at the root.
 module Size3Choice where
   open import Definitions.Graph.Algebra 3
-  open import Definitions.Actions 3 renaming (_<_> to mkChoice)
+  open import Definitions.Actions 3
   open import Definitions.Proc 3
 
   A B C : Fin 3
@@ -165,9 +165,9 @@ module Size3Choice where
 
   round : OpenGraph 0
   round =
-    choice ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) ⇒ end)
-           ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) ⇒
-               ((B ⟶ ⁅ C ⁆ # mkChoice here s/bool) ∙ end))
+    choice ((A ⟶ ⁅ B ⁆ # lbl0 < s/bool >) ⇒ end)
+           ( ((A ⟶ ⁅ B ⁆ # lbl1 < s/bool >) ⇒
+               ((B ⟶ ⁅ C ⁆ # here < s/bool >) ∙ end))
            ∷ [])
 
   wbg : WBGraph {N = 3}

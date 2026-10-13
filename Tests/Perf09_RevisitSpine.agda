@@ -23,7 +23,7 @@ import Definitions.Typing as Typing
 
 open import Definitions.Graph.Algebra 3
 open import Data.Fin.Subset using (⁅_⁆)
-open import Definitions.Actions 3 renaming (_<_> to mkChoice)
+open import Definitions.Actions 3
 open import Definitions.Proc 3
 
 A B C : Fin 3
@@ -42,10 +42,10 @@ lbl1 = 1F
 g : OpenGraph 0
 g =
   μ (choice
-      ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) ⇒
-        ((B ⟶ ⁅ A ⁆ # mkChoice here s/bool) ∙ var 0F))        -- u → t → u
-      ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) ⇒
-          ((A ⟶ ⁅ C ⁆ # mkChoice here s/bool) ∙ end))         -- u → ℓ
+      ((A ⟶ ⁅ B ⁆ # lbl0 < s/bool >) ⇒
+        ((B ⟶ ⁅ A ⁆ # here < s/bool >) ∙ var 0F))        -- u → t → u
+      ( ((A ⟶ ⁅ B ⁆ # lbl1 < s/bool >) ⇒
+          ((A ⟶ ⁅ C ⁆ # here < s/bool >) ∙ end))         -- u → ℓ
       ∷ []))
 
 wbg : WBGraph {N = 3}

@@ -20,7 +20,7 @@ open import Definitions.Expr using (s/bool; val; v/bool)
 open import Check
 
 open import Definitions.Graph.Algebra 2
-open import Definitions.Actions 2 renaming (_<_> to mkChoice)
+open import Definitions.Actions 2
 open import Definitions.Proc 2
 
 A B : Fin 2
@@ -38,7 +38,7 @@ here = 0F
 module NonRecursive where
   -- A --bool--> B, end
   sendrecv : OpenGraph 0
-  sendrecv = (A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ end
+  sendrecv = (A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ end
 
   wbg : WBGraph {N = 2}
   wbg = buildG sendrecv
@@ -84,7 +84,7 @@ module NonRecursive where
 module Recursive where
   -- μ (A --bool--> loop)
   sendrecv : OpenGraph 0
-  sendrecv = μ ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙ var 0F)
+  sendrecv = μ ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙ var 0F)
 
   wbg : WBGraph {N = 2}
   wbg = buildG sendrecv

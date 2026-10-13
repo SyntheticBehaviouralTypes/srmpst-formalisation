@@ -20,7 +20,7 @@ open import Definitions.Expr using (s/unit; val; v/unit)
 open import Definitions.Behav using (WellBehaved; Synchronous)
 open import Definitions.Graph.Core 3 using (graphTheory)
 open import Definitions.Graph.Algebra 3
-open import Definitions.Actions 3 renaming (_<_> to mkChoice)
+open import Definitions.Actions 3
 open import Definitions.Proc 3
 open import Check
 
@@ -34,9 +34,9 @@ here′ = 0F
 
 round : OpenGraph 0
 round =
-  (A ⟶ ⁅ B ⁆ # mkChoice here′ s/unit) ∙
-  ((B ⟶ ⁅ C ⁆ # mkChoice here′ s/unit) ∙
-   ((C ⟶ ⁅ A ⁆ # mkChoice here′ s/unit) ∙ end))
+  (A ⟶ ⁅ B ⁆ # here′ < s/unit >) ∙
+  ((B ⟶ ⁅ C ⁆ # here′ < s/unit >) ∙
+   ((C ⟶ ⁅ A ⁆ # here′ < s/unit >) ∙ end))
 
 wbg : WBGraph {N = 3}
 wbg = buildG round

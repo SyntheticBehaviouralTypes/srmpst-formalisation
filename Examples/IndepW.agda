@@ -19,7 +19,7 @@ import Definitions.Typing as Typing
 open import Definitions.Graph.Algebra 7 using (OpenGraph; end; _∙_; μ; var; initial)
 open import Definitions.Graph.Network 7 using (Net; base; _∥_; _⨾_; present)
 open import Data.Fin.Subset using (⁅_⁆)
-open import Definitions.Actions 7 renaming (_<_> to mkChoice)
+open import Definitions.Actions 7
 open import Definitions.Proc 7
 
 S A1 B1 C1 A2 B2 C2 : Fin 7
@@ -36,7 +36,7 @@ here = 0F
 
 private
   itm : Fin 7 → Fin 7 → _
-  itm P Q = P ⟶ ⁅ Q ⁆ # mkChoice here s/unit
+  itm P Q = P ⟶ ⁅ Q ⁆ # here < s/unit >
 
 -- one worker pipeline loop: `Ai` feeds `Bi`, which feeds `Ci`, forever
 pipeTail : Fin 7 → Fin 7 → Fin 7 → OpenGraph 0

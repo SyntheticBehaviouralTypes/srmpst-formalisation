@@ -26,18 +26,22 @@ module ∈T?-sanity where
   open import Definitions.Graph.Core 3 using (State; graphTheory)
   open import Definitions.Graph.Decision 3 using (wellBehaved?)
   open import Definitions.Actions 3
-    using (_⟶_#_) renaming (_<_> to mkChoice)
+    using (_⟶_#_; _<_>)
 
   A B C : Fin 3
   A = 0F
   B = 1F
   C = 2F
 
+  -- typed labels pin `nchoices`: an unsolved one blocks every decision
+  here : Fin 1
+  here = 0F
+
   -- s0 --A⟶B<unit>--> s1 --A⟶B<unit>--> ended
   g : OpenGraph 0
   g =
-    (A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙
-    (A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙ end
+    (A ⟶ ⁅ B ⁆ # here < s/unit >) ∙
+    (A ⟶ ⁅ B ⁆ # here < s/unit >) ∙ end
 
   Gr = underlying (compile g)
 
@@ -78,18 +82,22 @@ module unskip?-sanity where
   open import Definitions.Graph.Core 3 using (State; graphTheory)
   open import Definitions.Graph.Decision 3 using (wellBehaved?)
   open import Definitions.Actions 3
-    using (_⟶_#_) renaming (_<_> to mkChoice)
+    using (_⟶_#_; _<_>)
 
   A B C : Fin 3
   A = 0F
   B = 1F
   C = 2F
 
+  -- typed labels pin `nchoices`: an unsolved one blocks every decision
+  here : Fin 1
+  here = 0F
+
   -- s0 --B⟶C--> s1 --A⟶B--> ended
   g : OpenGraph 0
   g =
-    (B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙
-    (A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙ end
+    (B ⟶ ⁅ C ⁆ # here < s/unit >) ∙
+    (A ⟶ ⁅ B ⁆ # here < s/unit >) ∙ end
 
   Gr = underlying (compile g)
 
@@ -127,17 +135,21 @@ module Wait?-sanity where
   open import Definitions.Graph.Core 3 using (State; graphTheory)
   open import Definitions.Graph.Decision 3 using (wellBehaved?)
   open import Definitions.Actions 3
-    using (_⟶_#_) renaming (_<_> to mkChoice)
+    using (_⟶_#_; _<_>)
 
   A B C : Fin 3
   A = 0F
   B = 1F
   C = 2F
 
+  -- typed labels pin `nchoices`: an unsolved one blocks every decision
+  here : Fin 1
+  here = 0F
+
   g : OpenGraph 0
   g =
-    (B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙
-    (A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙ end
+    (B ⟶ ⁅ C ⁆ # here < s/unit >) ∙
+    (A ⟶ ⁅ B ⁆ # here < s/unit >) ∙ end
 
   Gr = underlying (compile g)
 

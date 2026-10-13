@@ -31,7 +31,7 @@ open import Definitions.Graph.Decision 3 using (wellBehaved?)
 open import Definitions.Graph.Bisimulation 3
   using (Bisimilar; bisimulationCorrect)
 open import Definitions.Actions 3
-  using (Action; _⟶_#_) renaming (_<_> to mkChoice)
+  using (Action; _⟶_#_; _<_>)
 open import Data.Fin.Subset using (⁅_⁆)
 
 A B C : Fin 3
@@ -39,9 +39,13 @@ A = 0F
 B = 1F
 C = 2F
 
--- `nchoices` pinned: an unsolved one blocks every decision on the graph.
+-- a typed label pins `nchoices`: an unsolved one blocks every decision on
+-- the graph.
+l0 : Fin 1
+l0 = 0F
+
 β : Action
-β = B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 0} 0F s/unit
+β = B ⟶ ⁅ C ⁆ # l0 < s/unit >
 
 g : OpenGraph 0
 g = β ∙ β ∙ end   -- s --β--> K --β--> ended

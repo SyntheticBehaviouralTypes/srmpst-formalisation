@@ -20,7 +20,7 @@ open import Check
 
 open import Definitions.Graph.Algebra 3
 open import Data.Fin.Subset using (⁅_⁆)
-open import Definitions.Actions 3 renaming (_<_> to mkChoice)
+open import Definitions.Actions 3
 open import Definitions.Proc 3
 
 A B C : Fin 3
@@ -47,9 +47,9 @@ module NonRecursive where
   -- A --bool--> B --bool--> C --bool--> A, end
   round : OpenGraph 0
   round =
-    (A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙
-    ((B ⟶ ⁅ C ⁆ # mkChoice here s/bool) ∙
-     ((C ⟶ ⁅ A ⁆ # mkChoice here s/bool) ∙ end))
+    (A ⟶ ⁅ B ⁆ # here < s/bool >) ∙
+    ((B ⟶ ⁅ C ⁆ # here < s/bool >) ∙
+     ((C ⟶ ⁅ A ⁆ # here < s/bool >) ∙ end))
 
   wbg : WBGraph {N = 3}
   wbg = buildG round
@@ -153,9 +153,9 @@ module Recursive where
   -- μ (A --bool--> B --bool--> C --bool--> loop)
   round : OpenGraph 0
   round =
-    μ ((A ⟶ ⁅ B ⁆ # mkChoice here s/bool) ∙
-       ((B ⟶ ⁅ C ⁆ # mkChoice here s/bool) ∙
-        ((C ⟶ ⁅ A ⁆ # mkChoice here s/bool) ∙ var 0F)))
+    μ ((A ⟶ ⁅ B ⁆ # here < s/bool >) ∙
+       ((B ⟶ ⁅ C ⁆ # here < s/bool >) ∙
+        ((C ⟶ ⁅ A ⁆ # here < s/bool >) ∙ var 0F)))
 
   wbg : WBGraph {N = 3}
   wbg = buildG round

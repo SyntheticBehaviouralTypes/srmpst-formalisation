@@ -24,7 +24,7 @@ open import Check
 
 open import Definitions.Graph.Algebra 3
 open import Data.Fin.Subset using (⁅_⁆)
-open import Definitions.Actions 3 renaming (_<_> to mkChoice)
+open import Definitions.Actions 3
 open import Definitions.Proc 3
 
 A B C : Fin 3
@@ -42,10 +42,10 @@ lbl1 = 1F
 round : OpenGraph 0
 round =
   choice
-    ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) ⇒
-      ((B ⟶ ⁅ C ⁆ # mkChoice lbl0 s/bool) ∙ end))
-    ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) ⇒
-        ((B ⟶ ⁅ C ⁆ # mkChoice lbl1 s/bool) ∙ end))
+    ((A ⟶ ⁅ B ⁆ # lbl0 < s/bool >) ⇒
+      ((B ⟶ ⁅ C ⁆ # lbl0 < s/bool >) ∙ end))
+    ( ((A ⟶ ⁅ B ⁆ # lbl1 < s/bool >) ⇒
+        ((B ⟶ ⁅ C ⁆ # lbl1 < s/bool >) ∙ end))
     ∷ [])
 
 wbg : WBGraph {N = 3}

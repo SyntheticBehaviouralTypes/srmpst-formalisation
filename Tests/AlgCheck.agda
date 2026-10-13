@@ -31,7 +31,7 @@ module Ex6 where
   open import Definitions.Graph.Core 4 using (State; graphTheory)
   open import Definitions.Graph.Decision 4 using (wellBehaved?; synchronous?)
   open import Definitions.Actions 4
-    using (Action; _⟶_#_) renaming (_<_> to mkChoice)
+    using (Action; _⟶_#_; _<_>)
 
   A B C D : Fin 4
   A = 0F
@@ -39,18 +39,26 @@ module Ex6 where
   C = 2F
   D = 3F
 
+  -- typed labels pin `nchoices`: an unsolved one blocks every decision
+  here : Fin 1
+  here = 0F
+
+  lbl0 lbl1 : Fin 2
+  lbl0 = 0F
+  lbl1 = 1F
+
   -- G=0  L=1  M=2  H=3   (4 = ended)
   --
   --   G --B⟶D--> L --A⟶B--> M --B⟶C⟨0⟩--> L
   --                            --B⟶C⟨1⟩--> H --A⟶B--> H
   g : OpenGraph 0
   g =
-    (B ⟶ ⁅ D ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙
-    μ ( (A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙
+    (B ⟶ ⁅ D ⁆ # here < s/unit >) ∙
+    μ ( (A ⟶ ⁅ B ⁆ # here < s/unit >) ∙
         choice
-          ((B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 1} 0F s/unit) ⇒ var 0F)
-          ( ((B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 1} 1F s/unit) ⇒
-              μ ((A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙ var 0F))
+          ((B ⟶ ⁅ C ⁆ # lbl0 < s/unit >) ⇒ var 0F)
+          ( ((B ⟶ ⁅ C ⁆ # lbl1 < s/unit >) ⇒
+              μ ((A ⟶ ⁅ B ⁆ # here < s/unit >) ∙ var 0F))
           ∷ []) )
 
   Gr = underlying (compile g)
@@ -107,15 +115,19 @@ module SkipVar where
   open import Definitions.Graph.Core 3 using (State; graphTheory)
   open import Definitions.Graph.Decision 3 using (wellBehaved?; synchronous?)
   open import Definitions.Actions 3
-    using (Action; _⟶_#_) renaming (_<_> to mkChoice)
+    using (Action; _⟶_#_; _<_>)
 
   A B C : Fin 3
   A = 0F
   B = 1F
   C = 2F
 
+  -- typed labels pin `nchoices`: an unsolved one blocks every decision
+  here : Fin 1
+  here = 0F
+
   β : Action
-  β = B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 0} 0F s/unit
+  β = B ⟶ ⁅ C ⁆ # here < s/unit >
 
   -- s --β--> K --β--> ended;  `A` is active nowhere.
   g : OpenGraph 0

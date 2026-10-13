@@ -23,7 +23,7 @@ open import Check
 
 open import Definitions.Graph.Algebra 3
 open import Data.Fin.Subset using (⁅_⁆)
-open import Definitions.Actions 3 renaming (_<_> to mkChoice)
+open import Definitions.Actions 3
 open import Definitions.Proc 3
 
 S C A : Fin 3
@@ -49,11 +49,11 @@ quit   = 1F
 oauth : OpenGraph 0
 oauth =
   choice
-    ((S ⟶ ⁅ C ⁆ # mkChoice login s/nat) ⇒
-      ((C ⟶ ⁅ A ⁆ # mkChoice passwd s/nat) ∙
-       (A ⟶ ⁅ S ⁆ # mkChoice here s/bool) ∙ end))
-    ( ((S ⟶ ⁅ C ⁆ # mkChoice cancel s/nat) ⇒
-        ((C ⟶ ⁅ A ⁆ # mkChoice quit s/bool) ∙ end))
+    ((S ⟶ ⁅ C ⁆ # login < s/nat >) ⇒
+      ((C ⟶ ⁅ A ⁆ # passwd < s/nat >) ∙
+       (A ⟶ ⁅ S ⁆ # here < s/bool >) ∙ end))
+    ( ((S ⟶ ⁅ C ⁆ # cancel < s/nat >) ⇒
+        ((C ⟶ ⁅ A ⁆ # quit < s/bool >) ∙ end))
     ∷ [])
 
 wbg : WBGraph {N = 3}

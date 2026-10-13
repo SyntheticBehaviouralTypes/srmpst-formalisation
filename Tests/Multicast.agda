@@ -31,7 +31,7 @@ open import Check
 open import Definitions.Common 3 using (Part; PartSet)
 open import Definitions.Graph.Algebra 3
 open import Definitions.Graph.Decision 3 using (synchronous?)
-open import Definitions.Actions 3 renaming (_<_> to mkChoice)
+open import Definitions.Actions 3
 open import Definitions.Proc 3
 
 A B C : Fin 3
@@ -57,7 +57,7 @@ recv R = R ⇐ A ？· (∅ V.∷ V.[])
 module Once where
 
   g : OpenGraph 0
-  g = (A ⟶ BC # mkChoice here s/bool) ∙ end
+  g = (A ⟶ BC # here < s/bool >) ∙ end
 
   wbg : WBGraph {N = 3}
   wbg = buildG g
@@ -96,14 +96,14 @@ module NotSynchronous where
 
   -- A self-send: `A` is among its own receivers.
   self : OpenGraph 0
-  self = (A ⟶ ⁅ A ⁆ # mkChoice here s/bool) ∙ end
+  self = (A ⟶ ⁅ A ⁆ # here < s/bool >) ∙ end
 
   self-rejected : False (synchronous? (underlying (compile self)))
   self-rejected = tt
 
   -- An empty multicast: `A` sends to nobody.
   nobody : OpenGraph 0
-  nobody = (A ⟶ ⊥ # mkChoice here s/bool) ∙ end
+  nobody = (A ⟶ ⊥ # here < s/bool >) ∙ end
 
   nobody-rejected : False (synchronous? (underlying (compile nobody)))
   nobody-rejected = tt
@@ -111,7 +111,7 @@ module NotSynchronous where
   -- A lone receive: `A` receives from itself, and nobody sends.
   lone : Action
   lone =
-    just ((？ A) # mkChoice here s/bool) V.∷ nothing V.∷ nothing V.∷ V.[]
+    just ((？ A) # here < s/bool >) V.∷ nothing V.∷ nothing V.∷ V.[]
 
   lonely : OpenGraph 0
   lonely = lone ∙ end
@@ -126,7 +126,7 @@ module NotSynchronous where
 module Loop where
 
   g : OpenGraph 0
-  g = μ ((A ⟶ BC # mkChoice here s/bool) ∙ var 0F)
+  g = μ ((A ⟶ BC # here < s/bool >) ∙ var 0F)
 
   wbg : WBGraph {N = 3}
   wbg = buildG g
