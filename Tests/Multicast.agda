@@ -114,7 +114,7 @@ module NotSynchronous where
     just ((？ A) # mkChoice here s/bool) V.∷ nothing V.∷ nothing V.∷ V.[]
 
   lonely : OpenGraph 0
-  lonely = openGraph 1 (node 0F) (((lone , ended) ∷ []) v∷ v[])
+  lonely = lone ∙ end
 
   lone-rejected : False (synchronous? (underlying (compile lonely)))
   lone-rejected = tt

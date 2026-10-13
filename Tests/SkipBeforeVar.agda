@@ -44,11 +44,7 @@ C = 2F
 β = B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 0} 0F s/unit
 
 g : OpenGraph 0
-g = openGraph 2 (node 0F)
-  ( ( (β , node 1F) ∷ [] )   -- s --β--> K
-  v∷ ( (β , ended) ∷ [] )            -- K --β--> ended
-  v∷ v[]
-  )
+g = β ∙ β ∙ end   -- s --β--> K --β--> ended
 
 G = underlying (compile g)
 

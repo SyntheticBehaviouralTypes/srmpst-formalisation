@@ -104,15 +104,14 @@ module Three where
     A′ = C
 
     oauth : OpenGraph 0
-    oauth = openGraph 4 (node 0F)
-      ( ( ((S′ ⟶ ⁅ C′ ⁆ # mkChoice lbl0 s/nat) , node 1F)
-        ∷ ((S′ ⟶ ⁅ C′ ⁆ # mkChoice lbl1 s/nat) , node 3F)
-        ∷ [] )
-      v∷ ( ((C′ ⟶ ⁅ A′ ⁆ # mkChoice lbl0 s/nat) , node 2F) ∷ [] )
-      v∷ ( ((A′ ⟶ ⁅ S′ ⁆ # mkChoice here s/bool) , ended) ∷ [] )
-      v∷ ( ((C′ ⟶ ⁅ A′ ⁆ # mkChoice lbl1 s/bool) , ended) ∷ [] )
-      v∷ v[]
-      )
+    oauth =
+      choice
+        ((S′ ⟶ ⁅ C′ ⁆ # mkChoice lbl0 s/nat) ⇒
+          ((C′ ⟶ ⁅ A′ ⁆ # mkChoice lbl0 s/nat) ∙
+           (A′ ⟶ ⁅ S′ ⁆ # mkChoice here s/bool) ∙ end))
+        ( ((S′ ⟶ ⁅ C′ ⁆ # mkChoice lbl1 s/nat) ⇒
+            ((C′ ⟶ ⁅ A′ ⁆ # mkChoice lbl1 s/bool) ∙ end))
+        ∷ [])
 
     _ : orig oauth ≡ ok
     _ = refl
@@ -129,19 +128,19 @@ module Three where
     S = C
 
     rec2buy : OpenGraph 0
-    rec2buy = openGraph 6 (node 0F)
-      (  ( ((A ⟶ ⁅ S ⁆ # mkChoice here s/nat) , node 1F) ∷ [] )
-      v∷ ( ((S ⟶ ⁅ A ⁆ # mkChoice here s/nat) , node 2F) ∷ [] )
-      v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/nat) , node 4F)
-         ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/unit) , node 3F)
-         ∷ [] )
-      v∷ ( ((A ⟶ ⁅ S ⁆ # mkChoice lbl1 s/unit) , ended) ∷ [] )
-      v∷ ( ((B ⟶ ⁅ A ⁆ # mkChoice lbl0 s/nat) , node 5F)
-         ∷ ((B ⟶ ⁅ A ⁆ # mkChoice lbl1 s/unit) , node 2F)
-         ∷ [] )
-      v∷ ( ((A ⟶ ⁅ S ⁆ # mkChoice lbl0 s/unit) , ended) ∷ [] )
-      v∷ v[]
-      )
+    rec2buy =
+      (A ⟶ ⁅ S ⁆ # mkChoice here s/nat) ∙
+      (S ⟶ ⁅ A ⁆ # mkChoice here s/nat) ∙
+      μ (choice
+          ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/nat) ⇒
+            choice
+              ((B ⟶ ⁅ A ⁆ # mkChoice lbl0 s/nat) ⇒
+                ((A ⟶ ⁅ S ⁆ # mkChoice lbl0 s/unit) ∙ end))
+              ( ((B ⟶ ⁅ A ⁆ # mkChoice lbl1 s/unit) ⇒ var 0F)
+              ∷ []))
+          ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/unit) ⇒
+              ((A ⟶ ⁅ S ⁆ # mkChoice lbl1 s/unit) ∙ end))
+          ∷ []))
 
     -- {A,B}: the `A⟶B`, `B⟶A` loop is an internal τ-cycle; its exits are
     -- `A⟶S` buy / no.
@@ -195,14 +194,13 @@ module Three where
   -- Examples/CounterExamples.agda: A → B (choice), B → C (forward).
   module Forward where
     round : OpenGraph 0
-    round = openGraph 3 (node 0F)
-      ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , node 1F)
-        ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , node 2F)
-        ∷ [] )
-      v∷ ( ((B ⟶ ⁅ C ⁆ # mkChoice lbl0 s/bool) , ended) ∷ [] )
-      v∷ ( ((B ⟶ ⁅ C ⁆ # mkChoice lbl1 s/bool) , ended) ∷ [] )
-      v∷ v[]
-      )
+    round =
+      choice
+        ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) ⇒
+          ((B ⟶ ⁅ C ⁆ # mkChoice lbl0 s/bool) ∙ end))
+        ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) ⇒
+            ((B ⟶ ⁅ C ⁆ # mkChoice lbl1 s/bool) ∙ end))
+        ∷ [])
 
     -- {A,C}: one label of the choice (a sender may send fewer), then the
     -- forward from `B`, at both.
@@ -453,14 +451,9 @@ module Four where
     S = 3F
 
     square : OpenGraph 0
-    square = openGraph 3 (node 0F)
-      ( ( ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) , node 1F)
-        ∷ ((R ⟶ ⁅ S ⁆ # mkChoice here s/unit) , node 2F)
-        ∷ [] )
-      v∷ ( ((R ⟶ ⁅ S ⁆ # mkChoice here s/unit) , ended) ∷ [] )
-      v∷ ( ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) , ended) ∷ [] )
-      v∷ v[]
-      )
+    square =
+        ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) ∙ end)
+      ∥ ((R ⟶ ⁅ S ⁆ # mkChoice here s/unit) ∙ end)
 
     PS QR : _
     PS = ⁅ P ⁆ ∪ ⁅ S ⁆
@@ -508,7 +501,7 @@ module Five where
   lbl1 = 1F
 
   -- `(P → Q) ∥ (R → T . R → S)` under {P,S}.  `P→Q` and `R→S` are
-  -- a mixed choice at state 2, which the idle `R→T` reaches from 0.
+  -- a mixed choice at state 1, which the idle `R→T` reaches from 0.
   module Race where
     P Q R S T : Fin 5
     P = 0F
@@ -518,18 +511,10 @@ module Five where
     T = 4F
 
     g : OpenGraph 0
-    g = openGraph 5 (node 0F)
-      ( ( ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) , node 1F)
-        ∷ ((R ⟶ ⁅ T ⁆ # mkChoice here s/unit) , node 2F)
-        ∷ [] )
-      v∷ ( ((R ⟶ ⁅ T ⁆ # mkChoice here s/unit) , node 3F) ∷ [] )
-      v∷ ( ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) , node 3F)
-         ∷ ((R ⟶ ⁅ S ⁆ # mkChoice here s/unit) , node 4F)
-         ∷ [] )
-      v∷ ( ((R ⟶ ⁅ S ⁆ # mkChoice here s/unit) , ended) ∷ [] )
-      v∷ ( ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) , ended) ∷ [] )
-      v∷ v[]
-      )
+    g =
+        ((P ⟶ ⁅ Q ⁆ # mkChoice here s/unit) ∙ end)
+      ∥ ((R ⟶ ⁅ T ⁆ # mkChoice here s/unit) ∙
+         (R ⟶ ⁅ S ⁆ # mkChoice here s/unit) ∙ end)
 
     PS : _
     PS = ⁅ P ⁆ ∪ ⁅ S ⁆

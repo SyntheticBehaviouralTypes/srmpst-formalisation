@@ -35,11 +35,9 @@ module ∈T?-sanity where
 
   -- s0 --A⟶B<unit>--> s1 --A⟶B<unit>--> ended
   g : OpenGraph 0
-  g = openGraph 2 (node 0F)
-    ( ( ((A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) , node 1F) ∷ [] )
-    v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) , ended) ∷ [] )
-    v∷ v[]
-    )
+  g =
+    (A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙
+    (A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙ end
 
   Gr = underlying (compile g)
 
@@ -89,11 +87,9 @@ module unskip?-sanity where
 
   -- s0 --B⟶C--> s1 --A⟶B--> ended
   g : OpenGraph 0
-  g = openGraph 2 (node 0F)
-    ( ( ((B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 0} 0F s/unit) , node 1F) ∷ [] )
-    v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) , ended) ∷ [] )
-    v∷ v[]
-    )
+  g =
+    (B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙
+    (A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙ end
 
   Gr = underlying (compile g)
 
@@ -139,11 +135,9 @@ module Wait?-sanity where
   C = 2F
 
   g : OpenGraph 0
-  g = openGraph 2 (node 0F)
-    ( ( ((B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 0} 0F s/unit) , node 1F) ∷ [] )
-    v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) , ended) ∷ [] )
-    v∷ v[]
-    )
+  g =
+    (B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙
+    (A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙ end
 
   Gr = underlying (compile g)
 

@@ -1,8 +1,9 @@
 {-# OPTIONS --guardedness #-}
 
--- A recursive two-buyer protocol: `A` gets a price from seller `S`, then
--- repeatedly cancels or proposes a split to `B`, who answers `yes` (`A`
--- buys) or `no` (back to the proposal).  All five partitions are accepted.
+-- A recursive two-buyer protocol: `A` asks seller `S` for an item, `S`
+-- multicasts the price to both buyers, then `A` repeatedly cancels or
+-- proposes a split to `B`, who answers `yes` (`A` buys) or `no` (back to
+-- the proposal).  All five partitions are accepted.
 
 module Examples.Rec2Buy where
 
@@ -21,8 +22,8 @@ open import Definitions.Expr
   using (s/nat; s/unit; val; v/nat; v/unit; is-zero; var)
 open import Check
 
-open import Definitions.Graph.Algebra 3 hiding (var)
-open import Data.Fin.Subset using (⁅_⁆)
+open import Definitions.Graph.Algebra 3 renaming (var to gvar)
+open import Utils.SetLit using (⁅_⁆; _；_)
 open import Definitions.Actions 3 renaming (_<_> to mkChoice)
 open import Definitions.Proc 3
 
@@ -38,34 +39,24 @@ lbl0 lbl1 : Fin 2
 lbl0 = 0F
 lbl1 = 1F
 
-private
-  -- state references (`Ref 0 6`)
-  t0 t1 t2 t3 t4 t5 : Ref 0 6
-  t0 = node 0F
-  t1 = node 1F
-  t2 = node 2F
-  t3 = node 3F
-  t4 = node 4F
-  t5 = node 5F
-
--- s0 --A→S item(nat)--> s1 --S→A price(nat)--> s2
--- s2 --A→B split(nat)--> s4 | --A→B cancel(unit)--> s3
--- s4 --B→A yes(nat)--> s5   | --B→A no(unit)-----> s2   (the loop)
--- s3 --A→S no(unit)--> ended;  s5 --A→S buy(unit)--> ended
+-- A→S item(nat) . S→{A,B} price(nat) .
+-- μ (  A→B split(nat)  . (B→A yes(nat) . A→S buy(unit) . end
+--                        + B→A no(unit) . loop)
+--    + A→B cancel(unit) . A→S no(unit) . end )
 rec2buy : OpenGraph 0
-rec2buy = openGraph 6 (node 0F)
-  (  ( ((A ⟶ ⁅ S ⁆ # mkChoice here s/nat) , t1) ∷ [] )                    -- s0
-  v∷ ( ((S ⟶ ⁅ A ⁆ # mkChoice here s/nat) , t2) ∷ [] )                    -- s1
-  v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/nat) , t4)                           -- s2: split
-     ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/unit) , t3)                          --     cancel
-     ∷ [] )
-  v∷ ( ((A ⟶ ⁅ S ⁆ # mkChoice lbl1 s/unit) , ended) ∷ [] )                 -- s3: no-s
-  v∷ ( ((B ⟶ ⁅ A ⁆ # mkChoice lbl0 s/nat) , t5)                           -- s4: yes
-     ∷ ((B ⟶ ⁅ A ⁆ # mkChoice lbl1 s/unit) , t2)                          --     no (loop)
-     ∷ [] )
-  v∷ ( ((A ⟶ ⁅ S ⁆ # mkChoice lbl0 s/unit) , ended) ∷ [] )                 -- s5: buy
-  v∷ v[]
-  )
+rec2buy =
+  (A ⟶ ⁅ S ⁆ # mkChoice here s/nat) ∙
+  (S ⟶ ⁅ A ； B ⁆ # mkChoice here s/nat) ∙
+  μ (choice
+      ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/nat) ⇒
+        choice
+          ((B ⟶ ⁅ A ⁆ # mkChoice lbl0 s/nat) ⇒
+            ((A ⟶ ⁅ S ⁆ # mkChoice lbl0 s/unit) ∙ end))
+          ( ((B ⟶ ⁅ A ⁆ # mkChoice lbl1 s/unit) ⇒ gvar 0F)
+          ∷ []))
+      ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/unit) ⇒
+          ((A ⟶ ⁅ S ⁆ # mkChoice lbl1 s/unit) ∙ end))
+      ∷ []))
 
 wbg : WBGraph {N = 3}
 wbg = buildG rec2buy {p = tt}
@@ -88,19 +79,23 @@ p/A =
                  (A ⇒ ⁅ S ⁆ ! lbl1 < val v/unit >∙ ∅)))
     v∷ v[]))
 
+-- `B` hears the price (`var 1F` in the loop) before judging a split
+-- (`var 0F`).
 p/B : Proc 0 0
 p/B =
-  rec (B ⇐ A ？·
-        (  (ifp is-zero (var 0F)
-            then (B ⇒ ⁅ A ⁆ ! lbl0 < val (v/nat 0) >∙ ∅)
-            else (B ⇒ ⁅ A ⁆ ! lbl1 < val v/unit >∙ v 0F))
-        v∷ ∅
-        v∷ v[]))
+  B ⇐ S ？·
+    (  rec (B ⇐ A ？·
+             (  (ifp is-zero (var 0F)
+                 then (B ⇒ ⁅ A ⁆ ! lbl0 < val (v/nat 0) >∙ ∅)
+                 else (B ⇒ ⁅ A ⁆ ! lbl1 < val v/unit >∙ v 0F))
+             v∷ ∅
+             v∷ v[]))
+    v∷ v[])
 
 p/S : Proc 0 0
 p/S =
   S ⇐ A ？·
-    (  (S ⇒ ⁅ A ⁆ ! here < val (v/nat 0) >∙
+    (  (S ⇒ ⁅ A ； B ⁆ ! here < val (v/nat 0) >∙
         (S ⇐ A ？· (∅ v∷ ∅ v∷ v[])))
     v∷ v[])
 
@@ -155,14 +150,18 @@ module AB∣S where
                    × (∀ n → ∃[ βs ] ∃[ M″ ] M′ =[ βs ]⇒* M″ × (finished M″ ⊎ length βs ≡ n))
   M-safe = safety Ρ M-typed
 
--- {A,S} {B}: item and price are internal; the block cancels.
+-- {A,S} {B}: the item is internal; the block multicasts the price (`B`
+-- is the only outsider who hears it), then cancels.
 module AS∣B where
   Ρ = byOwner own/AS∣B
   open Over Ρ
   open Global Ρ using (_-[_]->ᵍ_)
 
   M : Session
-  M = (A ⇒ ⁅ B ⁆ ! lbl1 < val v/unit >∙ ∅) v∷ p/B v∷ v[]
+  M = (S ⇒ ⁅ A ； B ⁆ ! here < val (v/nat 0) >∙
+         (A ⇒ ⁅ B ⁆ ! lbl1 < val v/unit >∙ ∅))
+    v∷ p/B
+    v∷ v[]
 
   M-typed : ⊢s[ Ρ ] M ∶ s₀
   M-typed = from-yes (typecheckSession wbg Ρ M)
@@ -173,7 +172,8 @@ module AS∣B where
   M-safe = safety Ρ M-typed
 
 -- {A} {B,S}: `B` and `S` never talk; the one process interleaves them, one
--- role at a time (`S` quotes, `B` answers `yes`, `S` hears `buy`).
+-- role at a time (`S` quotes to `A` and its own `B`, `B` answers `yes`,
+-- `S` hears `buy`).
 module A∣BS where
   Ρ = byOwner own/A∣BS
   open Over Ρ
@@ -182,7 +182,7 @@ module A∣BS where
   M : Session
   M = p/A
     v∷ (S ⇐ A ？·
-         (  (S ⇒ ⁅ A ⁆ ! here < val (v/nat 0) >∙
+         (  (S ⇒ ⁅ A ； B ⁆ ! here < val (v/nat 0) >∙
              (B ⇐ A ？·
                (  (B ⇒ ⁅ A ⁆ ! lbl0 < val (v/nat 0) >∙ (S ⇐ A ？· (∅ v∷ ∅ v∷ v[])))
                v∷ (S ⇐ A ？· (∅ v∷ ∅ v∷ v[]))

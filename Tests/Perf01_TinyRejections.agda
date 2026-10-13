@@ -131,11 +131,10 @@ module Size2Choice where
   lbl1 = 1F
 
   round : OpenGraph 0
-  round = openGraph 1 (node 0F)
-    ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , ended)
-      ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , ended)
-      ∷ [] )
-    v∷ v[] )
+  round =
+    choice ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) ⇒ end)
+           ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) ⇒ end)
+           ∷ [])
 
   wbg : WBGraph {N = 2}
   wbg = buildG round {p = tt}
@@ -165,13 +164,11 @@ module Size3Choice where
   lbl1 = 1F
 
   round : OpenGraph 0
-  round = openGraph 2 (node 0F)
-    ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , ended)
-      ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , node 1F)
-      ∷ [] )                                              -- s0
-    v∷ ( ((B ⟶ ⁅ C ⁆ # mkChoice here s/bool) , ended) ∷ [] )  -- s1
-    v∷ v[]
-    )
+  round =
+    choice ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) ⇒ end)
+           ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) ⇒
+               ((B ⟶ ⁅ C ⁆ # mkChoice here s/bool) ∙ end))
+           ∷ [])
 
   wbg : WBGraph {N = 3}
   wbg = buildG round {p = tt}

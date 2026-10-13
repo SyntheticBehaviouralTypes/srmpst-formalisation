@@ -40,14 +40,13 @@ lbl1 = 1F
 
 -- states: 0 = u, 1 = t, 2 = ℓ, plus the DSL's distinguished end
 g : OpenGraph 0
-g = openGraph 3 (node 0F)
-  ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , node 1F)
-    ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , node 2F)
-    ∷ [] )                                                            -- u
-  v∷ ( ((B ⟶ ⁅ A ⁆ # mkChoice here s/bool) , node 0F) ∷ [] )        -- t → u
-  v∷ ( ((A ⟶ ⁅ C ⁆ # mkChoice here s/bool) , ended) ∷ [] )                 -- ℓ
-  v∷ v[]
-  )
+g =
+  μ (choice
+      ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) ⇒
+        ((B ⟶ ⁅ A ⁆ # mkChoice here s/bool) ∙ var 0F))        -- u → t → u
+      ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) ⇒
+          ((A ⟶ ⁅ C ⁆ # mkChoice here s/bool) ∙ end))         -- u → ℓ
+      ∷ []))
 
 wbg : WBGraph {N = 3}
 wbg = buildG g {p = tt}

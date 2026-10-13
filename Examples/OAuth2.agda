@@ -47,16 +47,14 @@ quit   = 1F
 -- s0 --S→C[login]--> s1 --C→A[passwd]--> s2 --A→S[auth]--> ended
 -- s0 --S→C[cancel]--> s3 --C→A[quit]----------------------> ended
 oauth : OpenGraph 0
-oauth = openGraph 4 (node 0F)
-  ( ( ((S ⟶ ⁅ C ⁆ # mkChoice login s/nat) , node 1F)
-    ∷ ((S ⟶ ⁅ C ⁆ # mkChoice cancel s/nat) , node 3F)
-    ∷ [] )                                                            -- s0
-  v∷ ( ((C ⟶ ⁅ A ⁆ # mkChoice passwd s/nat) , node 2F)
-     ∷ [] )                                                           -- s1
-  v∷ ( ((A ⟶ ⁅ S ⁆ # mkChoice here s/bool) , ended) ∷ [] )             -- s2
-  v∷ ( ((C ⟶ ⁅ A ⁆ # mkChoice quit s/bool) , ended) ∷ [] )             -- s3
-  v∷ v[]
-  )
+oauth =
+  choice
+    ((S ⟶ ⁅ C ⁆ # mkChoice login s/nat) ⇒
+      ((C ⟶ ⁅ A ⁆ # mkChoice passwd s/nat) ∙
+       (A ⟶ ⁅ S ⁆ # mkChoice here s/bool) ∙ end))
+    ( ((S ⟶ ⁅ C ⁆ # mkChoice cancel s/nat) ⇒
+        ((C ⟶ ⁅ A ⁆ # mkChoice quit s/bool) ∙ end))
+    ∷ [])
 
 wbg : WBGraph {N = 3}
 wbg = buildG oauth {p = tt}

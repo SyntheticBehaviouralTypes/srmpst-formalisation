@@ -44,17 +44,14 @@ module Ex6 where
   --   G --B⟶D--> L --A⟶B--> M --B⟶C⟨0⟩--> L
   --                            --B⟶C⟨1⟩--> H --A⟶B--> H
   g : OpenGraph 0
-  g = openGraph 4 (node 0F)
-    ( ( ((B ⟶ ⁅ D ⁆ # mkChoice {nchoices = 0} 0F s/unit) , node 1F) ∷ [] )
-    v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit)
-         , node 2F) ∷ [] )
-    v∷ ( ((B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 1} 0F s/unit) , node 1F)
-       ∷ ((B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 1} 1F s/unit)
-         , node 3F) ∷ [] )
-    v∷ ( ((A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit)
-         , node 3F) ∷ [] )
-    v∷ v[]
-    )
+  g =
+    (B ⟶ ⁅ D ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙
+    μ ( (A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙
+        choice
+          ((B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 1} 0F s/unit) ⇒ var 0F)
+          ( ((B ⟶ ⁅ C ⁆ # mkChoice {nchoices = 1} 1F s/unit) ⇒
+              μ ((A ⟶ ⁅ B ⁆ # mkChoice {nchoices = 0} 0F s/unit) ∙ var 0F))
+          ∷ []) )
 
   Gr = underlying (compile g)
 
@@ -122,11 +119,7 @@ module SkipVar where
 
   -- s --β--> K --β--> ended;  `A` is active nowhere.
   g : OpenGraph 0
-  g = openGraph 2 (node 0F)
-    ( ( (β , node 1F) ∷ [] )
-    v∷ ( (β , ended) ∷ [] )
-    v∷ v[]
-    )
+  g = β ∙ β ∙ end
 
   Gr = underlying (compile g)
 

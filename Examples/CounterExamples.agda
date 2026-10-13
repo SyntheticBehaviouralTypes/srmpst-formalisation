@@ -40,14 +40,13 @@ lbl1 = 1F
 -- s0 --A→B[0]--> s1 --B→C[0]--> ended
 -- s0 --A→B[1]--> s2 --B→C[1]--> ended    (`ended` is the DSL's unique end)
 round : OpenGraph 0
-round = openGraph 3 (node 0F)
-  ( ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) , node 1F)
-    ∷ ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) , node 2F)
-    ∷ [] )                                                            -- s0
-  v∷ ( ((B ⟶ ⁅ C ⁆ # mkChoice lbl0 s/bool) , ended) ∷ [] )             -- s1
-  v∷ ( ((B ⟶ ⁅ C ⁆ # mkChoice lbl1 s/bool) , ended) ∷ [] )             -- s2
-  v∷ v[]
-  )
+round =
+  choice
+    ((A ⟶ ⁅ B ⁆ # mkChoice lbl0 s/bool) ⇒
+      ((B ⟶ ⁅ C ⁆ # mkChoice lbl0 s/bool) ∙ end))
+    ( ((A ⟶ ⁅ B ⁆ # mkChoice lbl1 s/bool) ⇒
+        ((B ⟶ ⁅ C ⁆ # mkChoice lbl1 s/bool) ∙ end))
+    ∷ [])
 
 wbg : WBGraph {N = 3}
 wbg = buildG round {p = tt}
