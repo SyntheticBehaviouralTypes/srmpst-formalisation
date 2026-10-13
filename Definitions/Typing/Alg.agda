@@ -196,10 +196,6 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   Post : Part → Event → States δ → States δ
   Post P e = PostBy (_-<[ P ↦ e ]>->_)
 
-  -- Successors by a receive with event `e` at `R`, sent from outside `Q`.
-  Postᴿ : PartSet → Part → Event → States δ → States δ
-  Postᴿ Q R e = PostBy (_-<[ Q ∣ R ↦ e ]>->_)
-
   -- `P` acts at `Q` only, and a step with event `e` at `Q` is enabled.
   Dom : PartSet → Part → Event → States δ
   Dom P Q e (_ , s) = Focus P Q s × ∃[ t ] s -<[ Q ↦ e ]>-> t
@@ -215,7 +211,8 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   Offers : PartSet → Part → Part → ℕ → States δ
   Offers Q P R I (_ , s) =
     Focus Q R s
-    × Σ[ j ∈ Fin (suc I) ] ∃[ U ] ∃[ t ] s -<[ Q ∣ R ↦ (？ P) # j < U > ]>-> t
+    × Σ[ j ∈ Fin (suc I) ] ∃[ U ] ∃[ t ]
+        Σ[ gr ∈ s -<[ R ↦ (？ P) # j < U > ]>-> t ] Foreign Q (action-of gr)
 
   -- `P` never acts again.
   Ended : PartSet → States δ
@@ -298,8 +295,8 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       → (R∈    : R ∈ˢ Q)
       → (rdy   : 𝒮 ⊆ Wait Q (Offers Q P R I))
       → (conts : ∀ {j U} → let e = (？ P) # j < U > in
-                 Satisfiable (Postᴿ Q R e (Front Q 𝒮))
-               → (U ∷ Γ) ⊢a Q ◂ lu Br j ∶ Postᴿ Q R e (Front Q 𝒮))
+                 Satisfiable (Post R e (Front Q 𝒮))
+               → (U ∷ Γ) ⊢a Q ◂ lu Br j ∶ Post R e (Front Q 𝒮))
       → Γ ⊢a Q ◂ R ⇐ P ？· Br ∶ 𝒮
 
     a/if :
@@ -338,10 +335,10 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
                   {𝒮 = 𝒮}{𝒮′} f)
         td)
 
-  alg/mono {𝒮 = 𝒮}{𝒮′} f (a/recv {P = P}{Q}{R} R∈ rdy conts) =
+  alg/mono {𝒮 = 𝒮}{𝒮′} f (a/recv {P = P}{R = R} R∈ rdy conts) =
     a/recv R∈ (rdy ∘ f)
       (λ { {j}{U} (x , x∈) →
-           let mono = after/mono {step = _-<[ Q ∣ R ↦ (？ P) # j < U > ]>->_}
+           let mono = after/mono {step = _-<[ R ↦ (？ P) # j < U > ]>->_}
                         {𝒮 = 𝒮}{𝒮′} f
            in alg/mono mono (conts (x , mono {x} x∈)) })
 
@@ -393,14 +390,14 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     → Γ ⊢at Q ◂ R ⇐ P ？· Br ∶ (ws , G)
     → (ws , G) ∈ Wait Q (Offers Q P R I)
     × (∀ {u j U t} → Star (_⇝[ Q ]_) G u
-                   → u -<[ Q ∣ R ↦ (？ P) # j < U > ]>-> t
+                   → u -<[ R ↦ (？ P) # j < U > ]>-> t
                    → (U ∷ Γ) ⊢at Q ◂ lu Br j ∶ (ws , t))
 
   at/recv-inv {ws = ws}{G} (_ , a/recv R∈ rdy conts , mem) =
     rdy {ws , G} mem ,
-    λ { run (α , eq , g , fr) →
+    λ { run (α , eq , g) →
           let x∈ = _ , ((G , mem , run) , (α , _ , g , (_ , R∈ , _ , eq)))
-                     , (α , eq , g , fr)
+                     , (α , eq , g)
           in _ , conts (_ , x∈) , x∈ }
 
   at/rec-guarded :

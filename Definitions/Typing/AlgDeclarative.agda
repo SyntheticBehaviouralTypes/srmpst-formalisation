@@ -48,8 +48,8 @@ module Definitions.Typing.AlgDeclarative
              (a/recv {P = P}{Q}{R}{Br = Br} R∈ rdy conts) mem =
     t/skip
       (skip/map
-        (λ { ((foc , _ , _ , _ , (α , eq , g , fr)) , run) →
-             t/recv R∈ foc (α , eq , g , fr)
+        (λ { ((foc , _ , _ , _ , (α , eq , g) , fr) , run) →
+             t/recv R∈ foc (α , eq , g) fr
                (λ gr′ →
                  let x∈ = _ , ((G , mem , run)
                                 , (α , _ , g , (_ , R∈ , _ , eq))) , gr′

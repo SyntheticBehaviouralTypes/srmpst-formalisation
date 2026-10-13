@@ -110,9 +110,9 @@ module Definitions.Transfer
         → M₁._&_⊢p_∶_ Γ Δ PPr G → M₂._&_⊢p_∶_ Γ Δ PPr G
       typing⇒ (M₁.t/send Q∈ foc (α , eq , gr) etd td) =
         M₂.t/send Q∈ (focus⇒ foc) (α , eq , to gr) etd (typing⇒ td)
-      typing⇒ (M₁.t/recv R∈ foc (α , eq , gr , fr) conts) =
-        M₂.t/recv R∈ (focus⇒ foc) (α , eq , to gr , fr)
-          λ { (α′ , eq′ , gr′ , fr′) → typing⇒ (conts (α′ , eq′ , from gr′ , fr′)) }
+      typing⇒ (M₁.t/recv R∈ foc (α , eq , gr) fr conts) =
+        M₂.t/recv R∈ (focus⇒ foc) (α , eq , to gr) fr
+          λ { (α′ , eq′ , gr′) → typing⇒ (conts (α′ , eq′ , from gr′)) }
       typing⇒ (M₁.t/skip std) = M₂.t/skip (skip/typing⇒ std)
       typing⇒ (M₁.t/unskip tr eq td) =
         M₂.t/unskip (skip⇒ tr) (~⇒ eq) (typing⇒ td)

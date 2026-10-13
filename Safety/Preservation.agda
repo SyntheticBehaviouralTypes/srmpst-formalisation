@@ -153,10 +153,9 @@ module Safety.Preservation
         unskip skip/reflᴸ (local/~ H′~G′)
           (at/subst-expr (balL j) (te/val (value/sort V))
             (proj₂ (at/recv-inv (unskip (lift tr) ~reflᴸ td))
-              ε (_ , eqR , gr , P , P∉ , Qs , _ , eqP)))
+              ε (_ , eqR , gr)))
         where
           eqR = ev-recv {P} {Qs} {i < sort/value V >} (own≢out R∈ P∉) R∈Qs
-          eqP = ev-sender {P} {Qs} {i < sort/value V >}
 
       if-true :
         ∀ {E Pr Pr′ G}
@@ -191,7 +190,7 @@ module Safety.Preservation
           go vβ
             with waitLeaf vβ own
                    (proj₁ (at/recv-inv (unskip (lift tr) ~reflᴸ td)))
-          ... | foc , _ , _ , _ , α′ , eq , vα′ , _ =
+          ... | foc , _ , _ , _ , (α′ , eq , vα′) , _ =
             ∉α→¬∈α {P} {β} P∉β
               (comm-∈α {α′} {β} {P}
                 (WellBehaved.recv-overlap (wbL j) vα′ vβ (_ , _ , eq)

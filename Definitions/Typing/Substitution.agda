@@ -129,8 +129,8 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
       t/send Q∈ foc gr
         (exp-subst etd′ etd)
         (typing/subst-expr etd ptd)
-    typing/subst-expr {Γ = _ ∷ _} etd (t/recv {Br = Br} R∈ foc gr conts) =
-      t/recv R∈ foc gr
+    typing/subst-expr {Γ = _ ∷ _} etd (t/recv {Br = Br} R∈ foc gr fr conts) =
+      t/recv R∈ foc gr fr
         (transport-proc (subst/lu Br _)
         ∘ typing/subst-expr (expr-weaken-lemma {x = zero} etd)
         ∘ conts)
@@ -189,8 +189,8 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
       t/send Q∈ foc gr
         (expr-weaken-lemma etd)
         (typing/weaken-expr ptd)
-    typing/weaken-expr (t/recv {Br = Br} R∈ foc gr conts) =
-      t/recv R∈ foc gr
+    typing/weaken-expr (t/recv {Br = Br} R∈ foc gr fr conts) =
+      t/recv R∈ foc gr fr
         ( transport-proc (lookup/weaken-expr Br)
         ∘ typing/weaken-expr
         ∘ conts
@@ -266,8 +266,8 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
     typing/weaken-proc (t/send Q∈ foc gr etd ptd) =
       t/send Q∈ foc gr etd
         (typing/weaken-proc ptd)
-    typing/weaken-proc (t/recv {Br = Br} R∈ foc gr conts) =
-      t/recv R∈ foc gr
+    typing/weaken-proc (t/recv {Br = Br} R∈ foc gr fr conts) =
+      t/recv R∈ foc gr fr
         ( transport-proc (lookup/weaken-proc Br _ _)
         ∘ typing/weaken-proc
         ∘ conts
@@ -350,8 +350,8 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
     typing/subst-proc ptd′ (t/send Q∈ foc gr etd ptd) =
       t/send Q∈ foc gr etd
         (typing/subst-proc ptd′ ptd)
-    typing/subst-proc ptd′ (t/recv {Br = Br} R∈ foc gr conts) =
-      t/recv R∈ foc gr
+    typing/subst-proc ptd′ (t/recv {Br = Br} R∈ foc gr fr conts) =
+      t/recv R∈ foc gr fr
         ( transport-proc (lookup/subst-proc Br)
         ∘ typing/subst-proc (typing/weaken-expr ptd′)
         ∘ conts

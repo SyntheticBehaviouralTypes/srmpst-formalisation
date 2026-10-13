@@ -95,10 +95,11 @@ module MPST {N : ℕ} {B : BTheory N} (wb : WellBehaved B) where
        {Br : Vec (Proc (suc γ) δ) (suc I)}
      → (R∈  : R ∈ Q)
      → (foc : Focus Q R G)
-     → (gr  : G -<[ Q ∣ R ↦ (？ P) # i < T > ]>-> G')
+     → (gr  : G -<[ R ↦ (？ P) # i < T > ]>-> G')
+     → Foreign Q (action-of gr)
      → (conts :
          ∀ {j U G″}
-         → (gr′ : G -<[ Q ∣ R ↦ (？ P) # j < U > ]>-> G″)
+         → (gr′ : G -<[ R ↦ (？ P) # j < U > ]>-> G″)
          → (U ∷ Γ) & Δ ⊢p Q ◂ lu Br j ∶ G″)
      → Γ & Δ ⊢p Q ◂ R ⇐ P ？· Br ∶ G
 

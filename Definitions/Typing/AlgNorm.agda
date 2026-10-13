@@ -239,33 +239,34 @@ module Definitions.Typing.AlgNorm
     RecvL {I} P Q R Br u =
       R ∈ˢ Q × Focus Q R u
       × (Σ[ j ∈ Fin (suc I) ] ∃[ U ] ∃[ t ]
-           (u -<[ Q ∣ R ↦ (？ P) # j < U > ]>-> t))
-      × (∀ {j U t} → u -<[ Q ∣ R ↦ (？ P) # j < U > ]>-> t
+           Σ[ gr ∈ u -<[ R ↦ (？ P) # j < U > ]>-> t ]
+             Foreign Q (action-of gr))
+      × (∀ {j U t} → u -<[ R ↦ (？ P) # j < U > ]>-> t
                    → Typ (U ∷ Γ) Δ (Q ◂ lu Br j) t)
 
     recvL/closed :
       ∀ {I P Q R}{Br : Vec (Proc (suc γ) δ) (suc I)} → Closed (RecvL P Q R Br)
-    recvL/closed G~H (R∈ , foc , (j , U , _ , (α , eq , gr , fr)) , k) =
-      R∈ , focus/~ G~H foc , (j , U , _ , (α , eq , ~L→ G~H gr , fr)) ,
-      λ { (α′ , eq′ , gr′ , fr′) →
-          typ/closed (~R→~ G~H gr′) (k (α′ , eq′ , ~R→ G~H gr′ , fr′)) }
+    recvL/closed G~H (R∈ , foc , (j , U , _ , (α , eq , gr) , fr) , k) =
+      R∈ , focus/~ G~H foc , (j , U , _ , (α , eq , ~L→ G~H gr) , fr) ,
+      λ { (α′ , eq′ , gr′) →
+          typ/closed (~R→~ G~H gr′) (k (α′ , eq′ , ~R→ G~H gr′)) }
 
     -- A branch offered after a `¬Q` step was offered before it.
     recvL/adv :
       ∀ {I P Q R}{Br : Vec (Proc (suc γ) δ) (suc I)}
       → Advances Q (RecvL P Q R Br)
-    recvL/adv {Q = Q} (R∈ , foc , (j , U , _ , (α , eq , gr , fr)) , k) grα Q∉α
+    recvL/adv {Q = Q} (R∈ , foc , (j , U , _ , (α , eq , gr) , fr) , k) grα Q∉α
       with skip/advance {P = Q} (skip/one {P = Q} grα Q∉α) gr
              (_ , R∈ , _ , eq)
     ... | _ , gr′ , _ =
       R∈ , focus/skip foc (skip/one {P = Q} grα Q∉α)
-      , (j , U , _ , (α , eq , gr′ , fr)) ,
-      λ { (α″ , eq″ , gr″ , fr″) →
+      , (j , U , _ , (α , eq , gr′) , fr) ,
+      λ { (α″ , eq″ , gr″) →
           let tr  = skip/one {P = Q} grα Q∉α
               ceq = recv/same-comm tr R∈ gr (_ , _ , eq) gr″ (_ , _ , eq″)
               _ , gr₀ , _ , tr₀ , H~ =
                 branch/before tr R∈ (_ , _ , eq) gr gr″ ceq
-          in t/unskip tr₀ H~ (k (α″ , eq″ , gr₀ , fr″)) }
+          in t/unskip tr₀ H~ (k (α″ , eq″ , gr₀)) }
 
     ---------------------------------------------------------------------
     -- rec
@@ -330,7 +331,7 @@ module Definitions.Typing.AlgNorm
       walk (t/unskip tr eq td) = wait/~ c eq (waitFollow c adv (walk td) tr)
       walk (t/skip std)        = waitV/mono vof/nil (tree std)
       walk td@(t/send _ _ _ _ _) = wv/leaf (base td tt)
-      walk td@(t/recv _ _ _ _)   = wv/leaf (base td tt)
+      walk td@(t/recv _ _ _ _ _) = wv/leaf (base td tt)
       walk td@(t/if _ _ _)     = wv/leaf (base td tt)
       walk td@(t/rec _ _)      = wv/leaf (base td tt)
       walk td@(t/var _)        = wv/leaf (base td tt)
@@ -365,7 +366,8 @@ module Definitions.Typing.AlgNorm
       → WaitV Q (RecvL {Γ = Γ} {Δ = Δ} P Q R Br) ∅S G
     recvWait {Br = Br} =
       Walk.walk _ (recvL/closed {Br = Br}) (recvL/adv {Br = Br})
-        λ { (t/recv R∈ foc gr conts) _ → R∈ , foc , (_ , _ , _ , gr) , conts }
+        λ { (t/recv R∈ foc gr fr conts) _ →
+              R∈ , foc , (_ , _ , _ , gr , fr) , conts }
 
     varWait :
       ∀ {P}{X : Fin δ}{G}
@@ -459,17 +461,17 @@ module Definitions.Typing.AlgNorm
 
   recvAt :
     ∀ {γ δ}{Γ : Vec Sort γ}{I P Q R}{Br : Vec (Proc (suc γ) δ) (suc I)}{j U}
-    → Postᴿ Q R ((？ P) # j < U >) (Front Q (Typed Γ (Q ◂ R ⇐ P ？· Br)))
+    → Post R ((？ P) # j < U >) (Front Q (Typed Γ (Q ◂ R ⇐ P ？· Br)))
       ⊆ Typed (U ∷ Γ) (Q ◂ lu Br j)
 
   recvAt {P = P}{Q}{R}{Br}{j}{U}{ws , t}
-         (_ , ((_ , td , run) , _) , (α , eq , gr , fr))
+         (_ , ((_ , td , run) , _) , (α , eq , gr))
     with waitFind (recvWait td)
   ... | _ , R∈ , _
     with waitLeaf {Q} gr (_ , R∈ , _ , eq)
            (waitFollow (recvL/closed {Br = Br}) (recvL/adv {Br = Br})
               (recvWait td) (idle⇒unskip run))
-  ... | _ , _ , _ , k = k (α , eq , gr , fr)
+  ... | _ , _ , _ , k = k (α , eq , gr)
 
   -- `bal`: `a/send` types the continuation after every step with `P`'s
   -- event, `t/send` after one; `send-det` makes them the same.

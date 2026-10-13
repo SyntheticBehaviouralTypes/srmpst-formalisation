@@ -66,12 +66,8 @@ module Definitions.Behav where
     _-<[_↦_]>->_ : Behav → Part → Event → Behav → Set
     s -<[ P ↦ e ]>-> t = ∃[ α ] ev α P ≡ just e × s -< α >-> t
 
-    -- A step with event `e` at `R`, sent from outside `Q`.
-    infix 4 _-<[_∣_↦_]>->_
-
-    _-<[_∣_↦_]>->_ : Behav → PartSet → Part → Event → Behav → Set
-    s -<[ Q ∣ R ↦ e ]>-> t =
-      ∃[ α ] ev α R ≡ just e × s -< α >-> t × Foreign Q α
+    action-of : ∀ {s P e t} → s -<[ P ↦ e ]>-> t → Action
+    action-of = proj₁
 
     -- `P ∈T G`: some trace from `G` mentions `P`.  `G -[¬ P ]->* G′`: a
     -- trace to `G′` that never mentions `P`.

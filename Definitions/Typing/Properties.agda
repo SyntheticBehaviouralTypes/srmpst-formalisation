@@ -56,15 +56,16 @@ module Definitions.Typing.Properties {N : ℕ}{B : BTheory N}(wb : WellBehaved B
         etd
         (td/bisim Δ~Δ′ (~L→~ G~G′ gr) ptd)
 
-    td/bisim Δ~Δ′ G~G′ (t/recv R∈ foc (α , eq , gr , fr) conts) =
+    td/bisim Δ~Δ′ G~G′ (t/recv R∈ foc (α , eq , gr) fr conts) =
       t/recv R∈
         (focus/~ G~G′ foc)
-        (α , eq , ~L→ G~G′ gr , fr)
-        (λ { (α′ , eq′ , gr′ , fr′) →
+        (α , eq , ~L→ G~G′ gr)
+        fr
+        (λ { (α′ , eq′ , gr′) →
           td/bisim
             Δ~Δ′
             (~R→~ G~G′ gr′)
-            (conts (α′ , eq′ , ~R→ G~G′ gr′ , fr′)) })
+            (conts (α′ , eq′ , ~R→ G~G′ gr′)) })
 
     td/bisim Δ~Δ′ G~G′ (t/skip std) =
       t/skip (skip-td/bisim Δ~Δ′ [] G~G′ std)

@@ -309,7 +309,7 @@ module Safety.Progress
           -- of `Qs`, with `α`'s arity.
           go lu≡ td@(_ , a/recv {R = R′} {Br = Br′} R′∈ _ _ , _)
             with waitLeaf step own (proj₁ (at/recv-inv td))
-          ... | foc , _ , _ , _ , α‴ , eqR′ , vα‴ , _
+          ... | foc , _ , _ , _ , (α‴ , eqR′ , vα‴) , _
             with comm-ev (sym (recv-overlapᴸ step vα‴
                                  (recvs R′∈ (foc V.skip/refl step own))
                                  (_ , eqR′)))
@@ -396,7 +396,7 @@ module Safety.Progress
           go lu≡ (_ , a/rec _ _ _ , _) = nothing , _ , s/rec k lu≡
           go lu≡ td@(_ , a/recv R∈ _ _ , _)
             with waitLeaf step own (proj₁ (at/recv-inv td))
-          ... | foc , _ , _ , _ , α‴ , eqR , vα‴ , (S′ , S′∉ , _ , _ , eqS′)
+          ... | foc , _ , _ , _ , (α‴ , eqR , vα‴) , (S′ , S′∉ , _ , _ , eqS′)
             with own/b step own
           ... | _ , _ , _ , grβ =
             let _ , eqβS′ =
@@ -432,7 +432,7 @@ module Safety.Progress
       ... | _ , _ , tr , mem = inj₂ (inj₂ (trace/active ε tr mem))
       status lu≡ td@(_ , a/recv R∈ _ _ , _)
         with waitActive
-               (λ { (_ , _ , _ , _ , _ , eq , vα , _) → V.in/ev vα R∈ eq })
+               (λ { (_ , _ , _ , _ , (_ , eq , vα) , _) → V.in/ev vα R∈ eq })
                (proj₁ (at/recv-inv td))
       ... | _ , _ , tr , mem = inj₂ (inj₂ (trace/active ε tr mem))
 
