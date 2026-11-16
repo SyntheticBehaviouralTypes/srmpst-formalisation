@@ -8,6 +8,8 @@ open import Data.Vec hiding ([_]) renaming (lookup to lu; removeAt to _-_)
 open import Data.Product
 open import Data.Sum
 open import Data.Maybe.Base using (Maybe; just; nothing)
+open import Data.Fin.Subset using (_∈_)
+open import Data.Fin.Subset.Properties using (∈⊤)
 open import Data.Empty using (⊥)
 -- open import Data.Unit using (⊤)
 open import Function using (_∘_)
@@ -42,7 +44,7 @@ module MPST {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
 
   data is-comm {γ δ} : Part → Proc γ δ → Set where
     is-send : ∀ {Q ℓ E Pr} → is-comm Q (Q ! ℓ < E >∙ Pr)
-    is-recv : ∀ {Q I}{S : Vec Sort (suc I)}{B} → is-comm Q (Σ Q ？[ S ]· B)
+    is-recv : ∀ {Q I}{S : Vec Sort (suc I)}{D B} → is-comm Q (Σ Q ？[ S ∣ D ]· B)
 
   still-active : Behav → Part → Set
   still-active G P = ∀ {G′} → G =<¬ P >=> G′ → ∃[ G″ ] G′ ~< P >~> G″
@@ -91,12 +93,13 @@ module MPST {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
       (td : Γ & Δ / G' ↑ sender α ⊢p< ng > Pr) ->
       Γ & Δ / G ↑ sender α ⊢p< g > (receiver α ! label α < E >∙ Pr)
 
-    t/recv : ∀{g p Br} ->
+    t/recv∣ : ∀{g p D Br} ->
       p [R] G ->
+      (offers : ∀ {i G'} -> G -< p , i >-> G' -> i ∈ D) ->
       (conts : ∀ {i G'}
         -> G -< p , i >-> G'
         -> (α/sort (p , i) ∷ Γ) & Δ / G' ↑ preceiver p ⊢p< ng > (lu Br i)) ->
-      Γ & Δ / G ↑ preceiver p ⊢p< g > (Σ psender p ？[ sorts p ]· Br)
+      Γ & Δ / G ↑ preceiver p ⊢p< g > (Σ psender p ？[ sorts p ∣ D ]· Br)
 
     t/skip : ∀ {g P Q Pr} ->
       is-comm Q Pr →
@@ -123,6 +126,15 @@ module MPST {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
       ∀ {P} → ¬ (P ∈T G) ->
       Γ & Δ / G ↑ P ⊢p< ng > ∅
 
+  -- Typing an input that accepts every label
+  t/recv : ∀{Γ : Vec Sort γ}{Δ : Vec Behav δ}{G g p Br} ->
+    p [R] G ->
+    (conts : ∀ {i G'}
+      -> G -< p , i >-> G'
+      -> (α/sort (p , i) ∷ Γ) & Δ / G' ↑ preceiver p ⊢p< ng > (lu Br i)) ->
+    Γ & Δ / G ↑ preceiver p ⊢p< g > (Σ psender p ？[ sorts p ]· Br)
+  t/recv r conts = t/recv∣ r (λ _ → ∈⊤) conts
+
   data _~~_ : ∀ {δ} → Vec Behav δ → Vec Behav δ → Set where
     ~~-cons : ∀ {G G' δ} {Δ Δ' : Vec Behav δ}
       → G ~ G' → Δ ~~ Δ' → (G ∷ Δ) ~~ (G' ∷ Δ')
@@ -144,8 +156,8 @@ module MPST {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     Γ & Δ  / G ↑ P ⊢p< g > Pr →
     Γ & Δ' / G ↑ P ⊢p< g > Pr
   t/Δ/bisim x (t/send gr etd y) = t/send gr etd (t/Δ/bisim x y)
-  t/Δ/bisim x (t/recv cr conts) =
-    t/recv cr λ gr → t/Δ/bisim x (conts gr)
+  t/Δ/bisim x (t/recv∣ cr O conts) =
+    t/recv∣ cr O λ gr → t/Δ/bisim x (conts gr)
   t/Δ/bisim x (t/skip y p conts) = t/skip y p λ gr → t/Δ/bisim x (conts gr)
   t/Δ/bisim x (t/if etd y y₁) = t/if etd (t/Δ/bisim x y) (t/Δ/bisim x y₁)
   t/Δ/bisim x (t/rec gr y) = t/rec gr (t/Δ/bisim (~~-cons ~refl x) y)
@@ -159,9 +171,9 @@ module MPST {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   t/bisim x (t/send gr etd x₁) =
     let _ , gr' , bn = ~L x gr
     in t/send gr' etd (t/bisim bn x₁)
-  t/bisim x (t/recv R[ rt ] conts) =
+  t/bisim x (t/recv∣ R[ rt ] O conts) =
     let _ , rt' , _ = ~L x rt
-    in t/recv R[ rt' ] (λ gr →
+    in t/recv∣ R[ rt' ] (λ gr → O (~R→ x gr)) (λ gr →
          let _ , gr' , bn = ~R x gr
          in t/bisim bn (conts gr'))
   t/bisim x (t/skip ic p conts) =
@@ -186,7 +198,7 @@ module MPST {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     -> Γ & Δ / G ↑ P ⊢p< mg > Pr
     -> Γ & Δ / G ↑ P ⊢p< ng > Pr
   t/> (t/send gr x etd) = t/send gr x etd
-  t/> (t/recv x conts) = t/recv x conts
+  t/> (t/recv∣ x O conts) = t/recv∣ x O conts
   t/> (t/skip x x₃ conts) = t/skip x x₃ λ x₃ → t/> (conts x₃)
   t/> (t/if etd x x₁) = t/if etd (t/> x) (t/> x₁)
 
@@ -200,11 +212,13 @@ module MPST {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   unrelated/step (t/send gr etd td) rt nS =
     let _ , (rt' , rt'') = diamond rt gr (send-act-indep rt gr nS)
     in t/send rt' etd (unrelated/step td rt'' nS)
-  unrelated/step (t/recv {p = p} (R[ rt ]) K){α = α} gr nS
+  unrelated/step (t/recv∣ {p = p} (R[ rt ]) O K){α = α} gr nS
     with psender p ≟f receiver α
   ... | yes refl rewrite recv-act-eq gr rt (∈S refl) = ⊥-elim (nS (∈R refl))
   ... | no ¬eq with recv-act-indep rt gr nS ¬eq
-  ... | ii = t/recv R[ ◇-r rt gr ii ] λ {i = i} x →
+  -- labels G can send after gr could already be sent before it (cond-comm)
+  ... | ii = t/recv∣ R[ ◇-r rt gr ii ] (λ x → O (cond-comm ii gr rt x .proj₂))
+    λ {i = i} x →
     let _ , rX = cond-comm ii gr rt x
         dd = ◇-r rX gr ii
         rw = step-det (◇-r rX gr ii) x
@@ -281,7 +295,7 @@ module MPST-Extra {N : ℕ}{B : BTheory N}(BP : BT-Prop B)(BE : BT-Extra B) wher
   is-comm? Q (x ! x₁ < x₂ >∙ Pr) with x ≟f Q
   ... | yes refl = yes is-send
   ... | no ¬p = no (λ{ MPST.is-send → ¬p refl })
-  is-comm? Q (Σ x ？[ x₁ ]· x₂) with x ≟f Q
+  is-comm? Q (Σ x ？[ x₁ ∣ _ ]· x₂) with x ≟f Q
   ... | yes refl = yes is-recv
   ... | no ¬p = no (λ{ MPST.is-recv → ¬p refl })
   is-comm? Q (ifp x then Pr else Pr₁) = no λ ()

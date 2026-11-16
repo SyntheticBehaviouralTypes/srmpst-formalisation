@@ -11,3 +11,4 @@ open import Examples.RecMW
 open import Examples.Rec2Buy
 open import Examples.IndepW
 open import Examples.NoSynGT
+open import Examples.IfDistinctLabels

@@ -6,6 +6,7 @@ open import Data.Fin
   using (Fin ; zero ; suc ; less ; equal ; greater ; punchIn ; punchOut)
   renaming (_≟_ to _≟f_)
 open import Data.Vec using (Vec ; [] ; _∷_ ; _[_]=_ ; _[_]≔_ ; map) renaming (lookup to lu)
+open import Data.Fin.Subset using (Subset ; _∈_) renaming (⊤ to all-labels)
 open import Data.Product using (Σ-syntax ; _,_)
 open import Relation.Nullary using (Dec; yes; no ; ¬_ ; _because_ ; ofʸ ; ofⁿ)
 open import Relation.Binary.PropositionalEquality using (_≡_ ; refl)
@@ -19,14 +20,20 @@ module Definitions.Proc (N : ℕ) where
 
   data Proc (γ δ : ℕ) :  Set where -- γ δ are the number of binders for expressions and recursion resp.
     _!_<_>∙_ : Part -> Label -> Exp γ -> Proc γ δ -> Proc γ δ
-    Σ_？[_]·_ : Part -> {I : ℕ} -> Vec Sort (suc I) → Vec (Proc (suc γ) δ) (suc I) -> Proc γ δ
+    Σ_？[_∣_]·_ : Part -> {I : ℕ} -> Vec Sort (suc I) → Subset (suc I)
+      → Vec (Proc (suc γ) δ) (suc I) -> Proc γ δ
     ifp_then_else_ : Exp γ -> Proc γ δ -> Proc γ δ -> Proc γ δ
     rec : Proc γ (suc δ) -> Proc γ δ
     v : Fin δ -> Proc γ δ
     ∅ : Proc γ δ
 
+  -- Input accepting every label
+  Σ_？[_]·_ : ∀ {γ δ} → Part -> {I : ℕ} -> Vec Sort (suc I)
+    → Vec (Proc (suc γ) δ) (suc I) -> Proc γ δ
+  Σ P ？[ S ]· Br = Σ P ？[ S ∣ all-labels ]· Br
 
   infixr 20 _!_<_>∙_
+  infixr 20 Σ_？[_∣_]·_
   infixr 20 Σ_？[_]·_
 
   data done/proc {γ δ} : Proc γ δ -> Set where
@@ -35,7 +42,7 @@ module Definitions.Proc (N : ℕ) where
 
   done? : ∀{δ γ}→ (Pr : Proc δ γ) → Dec (done/proc Pr)
   done? (x ! x₁ < x₂ >∙ Pr) = no (λ ())
-  done? (Σ x ？[ x₁ ]· x₂) = no (λ ())
+  done? (Σ x ？[ x₁ ∣ _ ]· x₂) = no (λ ())
   done? (ifp x then Pr else Pr₁) with done? Pr | done? Pr₁
   ... | yes d1 | yes d2 = yes (done/proc.done-if d1 d2)
   ... | yes d1 | no  d2 = no (λ{ (done-if x₁ x₂) → d2 x₂ })
@@ -48,7 +55,7 @@ module Definitions.Proc (N : ℕ) where
     mutual
       weaken/proc : ∀ {γ δ} ->  Proc γ δ -> (X : Fin (suc δ)) -> Proc γ (suc δ)
       weaken/proc (P ! L < E >∙ Pr) X = P ! L < E >∙ (weaken/proc Pr X)
-      weaken/proc (Σ P ？[ I ]· Br) X = Σ P ？[ I ]· (weaken/proc/branch Br X)
+      weaken/proc (Σ P ？[ I ∣ D ]· Br) X = Σ P ？[ I ∣ D ]· (weaken/proc/branch Br X)
       weaken/proc (ifp E then Pr else Pr') X = ifp E then (weaken/proc Pr X) else (weaken/proc Pr' X)
       weaken/proc (rec Pr) X = rec (weaken/proc Pr (suc X))
       weaken/proc (v x) X = v (punchIn X x)
@@ -62,7 +69,7 @@ module Definitions.Proc (N : ℕ) where
       weaken/proc/exp : ∀ {γ δ} ->  Proc γ δ -> (x : Fin (suc γ)) -> Proc (suc γ) δ
       weaken/proc/exp (P ! L < E >∙ Pr) x =
         P ! L < weaken/exp E x >∙ (weaken/proc/exp Pr x)
-      weaken/proc/exp (Σ P ？[ I ]· Br) x = Σ P ？[ I ]· weaken/exp/branch Br (suc x)
+      weaken/proc/exp (Σ P ？[ I ∣ D ]· Br) x = Σ P ？[ I ∣ D ]· weaken/exp/branch Br (suc x)
       weaken/proc/exp (ifp E then Pr else Pr') x =
         ifp weaken/exp E x then (weaken/proc/exp Pr x) else (weaken/proc/exp Pr' x)
       weaken/proc/exp (rec Pr) x = rec (weaken/proc/exp Pr x)
@@ -77,7 +84,7 @@ module Definitions.Proc (N : ℕ) where
     mutual
       [_/_]pr_ : ∀{γ δ} -> Proc γ δ -> Fin (suc δ) -> Proc γ (suc δ) -> Proc γ δ
       [ Pr / y ]pr (P ! L < E >∙ Pr') = P ! L < E >∙ ([ Pr / y ]pr Pr')
-      [ Pr / y ]pr (Σ P ？[ I ]· Br) = Σ P ？[ I ]· ([ Pr / y ]prch Br)
+      [ Pr / y ]pr (Σ P ？[ I ∣ D ]· Br) = Σ P ？[ I ∣ D ]· ([ Pr / y ]prch Br)
       [ Pr / y ]pr (ifp E then Pr_t else Pr_f) = ifp E then [ Pr / y ]pr Pr_t else ([ Pr / y ]pr Pr_f)
       [ Pr / y ]pr rec Pr' = rec ([ weaken/proc Pr zero / suc y ]pr Pr')
       [ Pr / y ]pr v x with y ≟f x
@@ -93,7 +100,7 @@ module Definitions.Proc (N : ℕ) where
       [_/_]e_ : ∀{γ δ} -> Exp γ -> Fin (suc γ) -> Proc (suc γ) δ -> Proc γ δ
       [ E / y ]e (P ! L < E' >∙ Pr') = P ! L < [ E / y ]exp E' >∙ ([ E / y ]e Pr')
       -- y will be weakned per branch
-      [ E / y ]e (Σ P ？[ I ]· Br) = Σ P ？[ I ]· ([ weaken/exp E zero / y ]ech Br)
+      [ E / y ]e (Σ P ？[ I ∣ D ]· Br) = Σ P ？[ I ∣ D ]· ([ weaken/exp E zero / y ]ech Br)
       [ E / y ]e (ifp E' then Pr_t else Pr_f) =
         ifp [ E / y ]exp E' then [ E / y ]e Pr_t else ([ E / y ]e Pr_f)
       [ E / y ]e rec Pr' = rec ([ E / y ]e Pr')
@@ -122,9 +129,9 @@ module Definitions.Proc (N : ℕ) where
   -- Operational semantics of sessions
 
   data _[_]⇒_ (M : Session) : (α : Maybe Action) → (M' : Session) -> Set where
-   s/comm : ∀{I S i E V Pr Br} -> (P Q : Part) ->
+   s/comm : ∀{I S D i E V Pr Br} -> (P Q : Part) ->
      M [ P ]= (Q ! I , i < E >∙ Pr) -> E ⇓ V ->
-     M [ Q ]= (Σ P ？[ S ]· Br) ->
+     M [ Q ]= (Σ P ？[ S ∣ D ]· Br) -> i ∈ D ->
      M [ just (P ⟶ Q # S , i) ]⇒ (M [ P ]≔ Pr [ Q ]≔ (Subst.[ val V / zero ]e ((lu Br i)) ))
 
    s/if/true : ∀{E Pr Pr'} -> (P : Part) ->

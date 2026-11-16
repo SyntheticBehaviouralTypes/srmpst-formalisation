@@ -89,8 +89,8 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → (Γ - X) & Δ / G ↑ P ⊢p< g > ([ E / X ]e Pr)
   expr-subst-lemma etd (t/send gr etd₁ ptd)
     = t/send gr (exp-subst etd₁ etd) (expr-subst-lemma etd ptd)
-  expr-subst-lemma {E = E}{Γ = S ∷ Γ}{X = X} etd (t/recv {Br = Br} x conts)
-    = t/recv x (λ {i = i} y →
+  expr-subst-lemma {E = E}{Γ = S ∷ Γ}{X = X} etd (t/recv∣ {Br = Br} x O conts)
+    = t/recv∣ x O (λ {i = i} y →
         let etd' = exp-str etd
             ky = expr-subst-lemma {E = weaken/exp E zero}{X = suc X}
                                   etd' (conts y)
@@ -118,8 +118,8 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     insertAt Γ x S & Δ / G ↑ P ⊢p< g > weaken/proc/exp Pr x
   proc-exp-wkn-lemma (t/send gr etd td)
     = t/send gr (exp-wkn-lemma etd) (proc-exp-wkn-lemma td)
-  proc-exp-wkn-lemma (t/recv {Br = Br} r k)
-    = t/recv r λ gr → subst (λ Pr → _ & _ / _ ↑ _ ⊢p< _ > Pr)
+  proc-exp-wkn-lemma (t/recv∣ {Br = Br} r O k)
+    = t/recv∣ r O λ gr → subst (λ Pr → _ & _ / _ ↑ _ ⊢p< _ > Pr)
                             (branch-wkn-lookup-perm {Br = Br})
                             (proc-exp-wkn-lemma (k gr))
   proc-exp-wkn-lemma (t/skip r p k)
@@ -147,8 +147,8 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → Γ & Δ / G ↑ P ⊢p< g > Pr
     → Γ & insertAt Δ X G' / G ↑ P ⊢p< g > weaken/proc Pr X
   proc-wkn-lemma (t/send gr etd td) = t/send gr etd (proc-wkn-lemma td)
-  proc-wkn-lemma {X = X}(t/recv {Br = Br} x k)
-    = t/recv x λ {i = i} gr →
+  proc-wkn-lemma {X = X}(t/recv∣ {Br = Br} x O k)
+    = t/recv∣ x O λ {i = i} gr →
              subst (λ Pr → _ & _ / _ ↑ _ ⊢p< _ > Pr )
                    (branch-wknpr-lookup-perm Br i X) (proc-wkn-lemma (k gr))
   proc-wkn-lemma (t/skip r p k)
@@ -182,8 +182,8 @@ module SubstitutionProperties {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → Γ & Δ / G ↑ P ⊢p< g > ([ Pr' / X ]pr Pr)
   proc-subst-lemma (t/send gr etd x) y = t/send gr etd (proc-subst-lemma x y)
   proc-subst-lemma {Γ = Γ}{Δ = Δ}{X = X}{G' = G'}{Pr' = Pr'}
-                   (t/recv {p = p}{Br = Br} x k) y
-    = t/recv x λ {i = i} gr →
+                   (t/recv∣ {p = p}{Br = Br} x O k) y
+    = t/recv∣ x O λ {i = i} gr →
              subst (λ Pr -> _ & _ / _ ↑ _ ⊢p< ng > Pr)
                    (branch-prsub-lookup-perm {Br = Br})
                    (proc-subst-lemma (k gr) (proc-exp-wkn-lemma y))

@@ -11,6 +11,7 @@ open import Data.Fin hiding (_+_ ; _-_) renaming (_≟_ to _≟f_)
 open import Data.Vec hiding (_++_)
 open import Data.Vec.Properties
 open import Data.Vec.Relation.Unary.Any using (Any; here; there)
+open import Data.Fin.Subset using (_∈_)
 open import Data.Product
 open import Data.Sum
 open import Data.Maybe using (Maybe ; just)
@@ -55,24 +56,24 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   td/lookup {P = P} ts luP with ts P
   ... | ptd rewrite reflect-lookup luP = ptd
 
-  trecv/first : ∀{ G P Q I}{S : Vec Sort (suc I)}{Br}
-    → [] & [] / G ↑ Q ⊢p< ng > (Σ P ？[ S ]· Br)
+  trecv/first : ∀{ G P Q I}{S : Vec Sort (suc I)}{D Br}
+    → [] & [] / G ↑ Q ⊢p< ng > (Σ P ？[ S ∣ D ]· Br)
     → ∀ {α G'} → (gr : G -< α >-> G') → (P∈α : Q ∈α α)
     → P ∈α α
-  trecv/first (t/recv R[ x ] _) gr Q∈α with recv-act-eq x gr Q∈α
+  trecv/first (t/recv∣ R[ x ] _ _) gr Q∈α with recv-act-eq x gr Q∈α
   ... | refl = ∈S refl
   trecv/first (t/skip x SK[ _ , f , _ ] _) gr P∈α = ⊥-elim (f (∈-tr gr P∈α))
 
-  trecv/P∉tr : ∀{ G P Q I}{S : Vec Sort (suc I)}{Br}
+  trecv/P∉tr : ∀{ G P Q I}{S : Vec Sort (suc I)}{D Br}
     → (td : ∀ {G'} → G ~< Q >~> G'
-          → [] & [] / G' ↑ Q ⊢p< ng > (Σ P ？[ S ]· Br))
+          → [] & [] / G' ↑ Q ⊢p< ng > (Σ P ？[ S ∣ D ]· Br))
     → P ∉tr G → Q ∉tr G
   trecv/P∉tr td Q∉tr (∈-tr tr n)
     = Q∉tr (∈-tr tr (trecv/first (td (■ , ∈-tr tr n)) tr n))
 
   open _∈tr_
-  tcomm/skip : ∀{ G P Q I}{S : Vec Sort (suc I)}{i E Br Pr G' }
-    → (∀ {G'} → G ~< Q >~> G' → [] & [] / G' ↑ Q ⊢p< ng > (Σ P ？[ S ]· Br))
+  tcomm/skip : ∀{ G P Q I}{S : Vec Sort (suc I)}{i E D Br Pr G' }
+    → (∀ {G'} → G ~< Q >~> G' → [] & [] / G' ↑ Q ⊢p< ng > (Σ P ？[ S ∣ D ]· Br))
     → (∀ {G'} → G ~< P >~> G' → [] & [] / G' ↑ P ⊢p< ng > (Q ! I , i < E >∙ Pr))
     → (tr : G ~< P >~> G') → skippable Q (tr .proj₁)
   tcomm/skip {P = P} Ky Kx (■ , Px) with (Kx (■ , Px))
@@ -84,23 +85,23 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
       Py = trecv/P∉tr Ky Px
 
   open HeadAct
-  tcomm/sorts/same : ∀{G p S Br i G'}
-    → (td : [] & [] / G ↑ preceiver p ⊢p< ng > (Σ psender p ？[ S ]· Br) )
+  tcomm/sorts/same : ∀{G p S D Br i G'}
+    → (td : [] & [] / G ↑ preceiver p ⊢p< ng > (Σ psender p ？[ S ∣ D ]· Br) )
     → (gr : G -< p , i >-> G')
     → S ≡ sorts p
-  tcomm/sorts/same {p = P ⟶ Q # S'} (t/recv R[ x ] conts) gr
+  tcomm/sorts/same {p = P ⟶ Q # S'} (t/recv∣ R[ x ] _ conts) gr
     with recv-act-eq x gr (∈R refl)
   ... | refl = refl
   tcomm/sorts/same (t/skip _ SK[ _ , f , _ ] _) gr
     = ⊥-elim (f (∈-tr gr (∈R refl)))
 
   open must-skip
-  tcomm/steps : ∀{ G P Q I i E Pr S Br }
+  tcomm/steps : ∀{ G P Q I i E Pr S D Br }
     → [] & [] / G ↑ P ⊢p< ng > (Q ! I , i < E >∙ Pr)
-    → [] & [] / G ↑ Q ⊢p< ng > (Σ P ？[ S ]· Br)
+    → [] & [] / G ↑ Q ⊢p< ng > (Σ P ？[ S ∣ D ]· Br)
     → ∃[ G' ] G -< P ⟶ Q # S , i >-> G'
   tcomm/steps (t/send gr x etd) td rewrite tcomm/sorts/same td gr = _ , gr
-  tcomm/steps (t/skip _ SK[ _ , y , _ ] _) (t/recv R[ x ] _)
+  tcomm/steps (t/skip _ SK[ _ , y , _ ] _) (t/recv∣ R[ x ] _ _)
     = ⊥-elim (y (∈-tr x (∈S refl)))
   tcomm/steps {S = S}
     (t/skip is-send SK[ fx , gx , ax ] Kx) (t/skip is-recv SK[ _ , _ , ay ] Ky)
@@ -125,7 +126,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → TSend/inv P G Pr
   tsend/proc/inv gr (t/send {α = α} gr₁ etd td)
     = TSend/send _ etd gr₁ refl
-  tsend/proc/inv gr (t/recv R[ gr' ] _) with recv-act-eq gr' gr (∈S refl)
+  tsend/proc/inv gr (t/recv∣ R[ gr' ] _ _) with recv-act-eq gr' gr (∈S refl)
   ... | refl = ⊥-elim (snd≢rcv gr refl)
   tsend/proc/inv gr (t/skip x₁ SK[ _ , f , _ ] _) = ⊥-elim (f (∈-tr gr (∈S refl)))
   tsend/proc/inv gr (t/if etd td td₁) = TSend/if _ _ _ etd refl
@@ -141,12 +142,12 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   ... | refl rewrite step-det gr gr₁ = etd , td
   tsend/inv (t/skip _ SK[ _ , x , _ ] conts) gr = ⊥-elim (x (∈-tr gr (∈S refl)))
 
-  trecv/inv : ∀{ G G' P Q I E Br S}{i : Fin (suc I)}
-    → [] & [] / G ↑ Q ⊢p< ng > (Σ P ？[ S ]· Br)
+  trecv/inv : ∀{ G G' P Q I E D Br S}{i : Fin (suc I)}
+    → [] & [] / G ↑ Q ⊢p< ng > (Σ P ？[ S ∣ D ]· Br)
     → [] ⊢e E ∶ lookup S i
     → G -< P ⟶ Q # S , i >-> G'
     → [] & [] / G' ↑ Q ⊢p< ng > ([ E / zero ]e lookup Br i)
-  trecv/inv (t/recv x conts)  etd gr = expr-subst-lemma etd (conts gr)
+  trecv/inv (t/recv∣ x _ conts)  etd gr = expr-subst-lemma etd (conts gr)
   trecv/inv (t/skip _ SK[ _ , f , _ ] _) _ gr = ⊥-elim (f (∈-tr gr (∈R refl)))
 
   t/if/inv : ∀{G P g E Pr Pr' Pr''}
@@ -181,7 +182,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
 
   safety : ∀{G M M' α}
     → ⊢s M ∶ G -> M [ just α ]⇒ M' → ∃[ G' ] G -< α >-> G' × (⊢s M' ∶ G')
-  safety {G = G} {M = M} std (s/comm {S = S}{i = i} P Q Psnd e⇓v Precv) =
+  safety {G = G} {M = M} std (s/comm {S = S}{i = i} P Q Psnd e⇓v Precv _) =
     let etd , ptd' = tsend/inv ptd (red .proj₂)
         vtd = exp-pres etd e⇓v
         qtd' = trecv/inv qtd (te/val vtd) (red .proj₂)
@@ -219,7 +220,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   typing/∈T : ∀ {δ}{Δ : Vec Behav δ}{G P Pr}
     → [] & Δ / G ↑ P ⊢p< mg > Pr → P ∈T G
   typing/∈T (t/send gr _ _) = in/α gr (∈S refl)
-  typing/∈T (t/recv R[ gr ] _) = in/α gr (∈R refl)
+  typing/∈T (t/recv∣ R[ gr ] _ _) = in/α gr (∈R refl)
   typing/∈T (MPST.t/skip _ a conts) with ms-activ a (■ , tt) -- tr/refl
   ... | (_ , tr) = ∈-last tr
   typing/∈T (t/if _ x _) = typing/∈T x
@@ -232,23 +233,26 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     = ⊥-elim (n (∈-last (a (■ , tt) .proj₂)))
   tend/done n (t/send gr td etd)
     = ⊥-elim (n (in/α gr (∈S refl)))
-  tend/done n (t/recv R[ gr ] conts)
+  tend/done n (t/recv∣ R[ gr ] _ conts)
     = ⊥-elim (n (in/α gr (∈R refl)))
   -- NOTES: we need to unfold to expose the <mg> derivation with empty
   -- environments
   tend/done n (t/rec x td) = ⊥-elim (n (typing/∈T (unfold/pres (t/rec x td))))
 
-  -- The syntactic forms that a sending process has
-  data TRecv/inv P {I} (S : Vec Sort (suc I)) (Pr : Proc 0 0) : Set where
-    TRecv/rec : ∀ Pr' → Pr ≡ rec Pr' → TRecv/inv P S Pr
+  -- The syntactic forms that a receiving process has, when it must accept
+  -- label i
+  data TRecv/inv P {I} (S : Vec Sort (suc I)) (i : Fin (suc I)) (Pr : Proc 0 0)
+    : Set where
+    TRecv/rec : ∀ Pr' → Pr ≡ rec Pr' → TRecv/inv P S i Pr
     TRecv/if : ∀ E Pr' Pr'' → [] ⊢e E ∶ s/bool → Pr ≡ ifp E then Pr' else Pr''
-      → TRecv/inv P S Pr
-    TRecv/recv : ∀ Br → Pr ≡ Σ P ？[ S ]· Br → TRecv/inv P S Pr
+      → TRecv/inv P S i Pr
+    TRecv/recv : ∀ D Br → i ∈ D → Pr ≡ Σ P ？[ S ∣ D ]· Br → TRecv/inv P S i Pr
 
   trecv/proc/inv : ∀{G G' P Q I S Pr}{i : Fin (suc I)}
-    → G -< P ⟶ Q # S , i >-> G' → [] & [] / G ↑ Q ⊢p< ng > Pr → TRecv/inv P S Pr
-  trecv/proc/inv gr (t/recv R[ gr₁ ] conts)
-    rewrite recv-act-eq gr₁ gr (∈R refl) = TRecv/recv _ refl
+    → G -< P ⟶ Q # S , i >-> G' → [] & [] / G ↑ Q ⊢p< ng > Pr
+    → TRecv/inv P S i Pr
+  trecv/proc/inv gr (t/recv∣ R[ gr₁ ] offers conts)
+    rewrite recv-act-eq gr₁ gr (∈R refl) = TRecv/recv _ _ (offers gr) refl
   trecv/proc/inv gr (t/send gr₁ _ _) with recv-act-eq gr gr₁ (∈S refl)
   ... | refl = ⊥-elim (snd≢rcv gr refl)
   trecv/proc/inv gr (t/skip x SK[ _ , f , _ ] _) = ⊥-elim (f (∈-tr gr (∈R refl)))
@@ -265,7 +269,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
 
   td-inv : ∀{G Pr} P → [] & [] / G ↑ P ⊢p< ng > Pr → Inv-td G P Pr
   td-inv P (t/send x _ _) = td-red x
-  td-inv P (t/recv R[ x ] _) = td-red x
+  td-inv P (t/recv∣ R[ x ] _ _) = td-red x
   td-inv P (t/skip ms SK[ _ , _ , a ] _) with a (■ , tt) -- tr/refl
   ... | (_ , tr) = td-red (tr/first tr .proj₂ .proj₂)
   td-inv P (t/if etd x x₁) = td-if etd refl
@@ -280,7 +284,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
                {Pr} (x : Γ & Δ / G ↑ P ⊢p< mg > Pr) →
                ∃-syntax (λ G' → ∃-syntax (λ α → G -< α >-> G'))
   get-mg-act (t/send gr etd x) = _ , _ , gr
-  get-mg-act (t/recv R[ x ] conts) = _ , _ , x
+  get-mg-act (t/recv∣ R[ x ] _ conts) = _ , _ , x
   get-mg-act (t/skip x SK[ _ , _ , a ] conts) with a (■ , tt)
   ... | _ , ■ , ∈-tr gr a = (_ , _ , gr)
   ... | _ , a ► _ , _ = (_ , _ , a)
@@ -290,7 +294,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → Γ & [] / G ↑ P ⊢p< g > Pr
     → P ∉T G ⊎ ∃[ G' ] ∃[ α ] G -< α >-> G'
   done-or-step (t/send gr etd x) = inj₂ (_ , _ , gr)
-  done-or-step (t/recv R[ x ] conts) = inj₂ (_ , _ , x)
+  done-or-step (t/recv∣ R[ x ] _ conts) = inj₂ (_ , _ , x)
   done-or-step (MPST.t/skip x SK[ _ , _ , a ] conts) with a (■ , tt)
   ... | _ , ■ , ∈-tr gr a = inj₂ (_ , _ , gr)
   ... | _ , a ► _ , _ = inj₂ (_ , _ , a)
@@ -328,9 +332,9 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   ... | inj₁ ev = inj₂ (_ , _ , s/if/true _ (lookup⇒[]= _ _ y) ev)
   ... | inj₂ ev = inj₂ (_ , _ , s/if/false _ (lookup⇒[]= _ _ y) ev)
   progress {M} {G} td | lv-red {P ⟶ _ # _ , _}{G'} _
-    | TSend/send Q etd gr x | TRecv/recv Br y
+    | TSend/send Q etd gr x | TRecv/recv D Br i∈D y
     = inj₂ (_ , _ , s/comm P Q (lookup⇒[]= _ _ x) (proj₂ (eval-exp etd))
-                           (lookup⇒[]= _ _ y))
+                           (lookup⇒[]= _ _ y) i∈D)
   progress {_} {G} td | lv-end f = inj₁ (λ P → tend/done (lu-tab f P) (td P))
     where
     lu-tab : (f : ∀ i → lookup (tabulate id) i ∉T G) → ∀ P → ¬ (P ∈T G)
@@ -339,7 +343,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   guard-depth-proc-mg : ∀{ G P δ}{Pr : Proc 0 δ}{Δ : Vec Behav δ}
     → [] & Δ / G ↑ P ⊢p< mg > Pr → ℕ
   guard-depth-proc-mg (MPST.t/send gr etd td) = 0
-  guard-depth-proc-mg (MPST.t/recv x conts) = 0
+  guard-depth-proc-mg (MPST.t/recv∣ x _ conts) = 0
   guard-depth-proc-mg (MPST.t/skip x x₁ conts) = 0
   guard-depth-proc-mg (MPST.t/if etd td td₁)
     = suc (guard-depth-proc-mg td ⊔ guard-depth-proc-mg td₁)
@@ -347,7 +351,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   guard-depth-proc : ∀{ G P g}{Pr : Proc 0 0}
     → [] & [] / G ↑ P ⊢p< g > Pr → ℕ
   guard-depth-proc (t/send gr etd td) = 0
-  guard-depth-proc (t/recv x conts) = 0
+  guard-depth-proc (t/recv∣ x _ conts) = 0
   guard-depth-proc (t/skip x x₁ conts) = 0
   guard-depth-proc (t/if etd td td₁)
     = suc ((guard-depth-proc td) ⊔ (guard-depth-proc td₁))
@@ -363,7 +367,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → (td1 : [] & [] / G ↑ P ⊢p< mg > Pr)
     → guard-depth-proc (t/> td1) ≡ guard-depth-proc-mg td1
   guard-G-mg (MPST.t/send gr etd td1) = refl
-  guard-G-mg (MPST.t/recv x conts) = refl
+  guard-G-mg (MPST.t/recv∣ x _ conts) = refl
   guard-G-mg (MPST.t/skip x x₁ conts) = refl
   guard-G-mg (MPST.t/if etd td1 td2)
     = cong suc (Eq.cong₂ _⊔_ (guard-G-mg td1) (guard-G-mg td2))
@@ -372,7 +376,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → (td1 : [] & [] / G ↑ P ⊢p< mg > Pr)
     → guard-depth-proc-mg (unrelated/step td1 gr nn) ≡ guard-depth-proc-mg td1
   guard-unr (MPST.t/send gr etd td1) = refl
-  guard-unr {α = α}{gr = rt}{nn = nn} (MPST.t/recv {p = p} R[ x ] conts)
+  guard-unr {α = α}{gr = rt}{nn = nn} (MPST.t/recv∣ {p = p} R[ x ] _ conts)
     with psender p ≟f receiver α
   ... | yes refl rewrite recv-act-eq rt x (∈S refl) = ⊥-elim (nn (∈R refl))
   ... | no neq = refl
@@ -386,7 +390,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
   guard-unr {α = α} {gr = gr} {nn = nS}
     (MPST.t/skip MPST.is-recv MPST.SK[ p , f , a ] K) | _ , BTheory.■ , sk
     with (K (gr ► ■ , f , sk))
-  ... | t/recv gr td = refl
+  ... | t/recv∣ gr _ td = refl
   ... | t/skip x x₁ conts = refl
   guard-unr {α = α}{gr = gr}{nn = nS}(t/skip rt SK[ p , f , a ] K)
       | _ , (x ► tr) , skₓ , skₜ = refl
@@ -399,7 +403,7 @@ module Safety {N : ℕ}{B : BTheory N}(BP : BT-Prop B) where
     → guard-depth-proc-mg (proc-subst-lemma {X = zero} td td')
       ≡ guard-depth-proc-mg td
   guard-subst td' (t/send gr etd td) = refl
-  guard-subst td' (t/recv x conts) = refl
+  guard-subst td' (t/recv∣ x _ conts) = refl
   guard-subst td' (t/skip x x₁ conts) = refl
   guard-subst td' (t/if etd td td₁)
     = cong suc (Eq.cong₂ _⊔_ (guard-subst td' td) (guard-subst td' td₁))

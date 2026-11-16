@@ -42,7 +42,7 @@ module Examples.CounterExamples where
   p/C2 = Σ B ？[ [ s/bool ] ]· (Σ B ？[ [ s/bool ] ]· (∅ ∷ []) ∷ [])
 
   t/C/bad : [] & [] / >> round ↑ C ⊢p< mg > p/C2 → ⊥
-  t/C/bad (t/recv R[ step/tl/I x x₁ ] conts) = ⊥-elim (x (inj₂ (_∈pr_.∈S refl)))
+  t/C/bad (t/recv∣ R[ step/tl/I x x₁ ] _ conts) = ⊥-elim (x (inj₂ (_∈pr_.∈S refl)))
   t/C/bad (t/skip is-recv SK[ _ , _ , ii ] _) with ii ([ step/i zero , (λ{ (∈S ()) ; (∈R ()) }) ]► (■ , tt))
   t/C/bad (MPST.t/skip MPST.is-recv MPST.SK[ _ , _ , _ ] _) | _ , BTheory.■ , ()
   t/C/bad (MPST.t/skip MPST.is-recv MPST.SK[ _ , _ , _ ] _) | _ , (() BTheory.► fst) , snd
@@ -51,7 +51,7 @@ module Examples.CounterExamples where
   p/C3 = Σ A ？[ s/bool ∷ [] ]· (Σ B ？[ s/bool ∷ [] ]· (∅ ∷ []) ∷ [])
 
   t/C3/bad : [] & [] / >> round ↑ C ⊢p< mg > p/C3 → ⊥
-  t/C3/bad (t/recv R[ step/tl/I x x₁ ] conts) = ⊥-elim (x (inj₁ (_∈pr_.∈S refl)))
+  t/C3/bad (t/recv∣ R[ step/tl/I x x₁ ] _ conts) = ⊥-elim (x (inj₁ (_∈pr_.∈S refl)))
   t/C3/bad (t/skip is-recv SK[ _ , _ , ii ] _) with ii (([ step/i zero , (λ{ (∈S ()) ; (∈R ()) }) ]► (■ , tt))) -- (tr/trans (step/i zero) (λ{ (∈S ()) ; (∈R ()) }) tr/refl)
   t/C3/bad (MPST.t/skip MPST.is-recv MPST.SK[ _ , _ , _ ] _) | _ , BTheory.■ , ()
   t/C3/bad (MPST.t/skip MPST.is-recv MPST.SK[ _ , _ , _ ] _) | _ , (() BTheory.► fst) , snd
@@ -217,7 +217,7 @@ module Examples.CounterExamples where
       → ¬ (Γ T.& Δ / B ↑ P ⊢p< g > Pr)
     comm-only eq _ only T.is-send Q≢s (T.t/send {G' = B′} gr _ _)
       = Q≢s (cong A4.HeadAct.preceiver (rs-hd only {B′ = B′} gr (A4.∈S eq)))
-    comm-only eq _ only T.is-recv _ (T.t/recv (T.R[_] {B′} rt) _)
+    comm-only eq _ only T.is-recv _ (T.t/recv∣ (T.R[_] {B′} rt) _ _)
       = r≢s (trans (sym eq)
           (cong A4.HeadAct.preceiver (rs-hd only {B′ = B′} rt (A4.∈R eq))))
     comm-only eq r∈ _ _ _ (T.t/skip _ T.SK[ _ , noact , _ ] _)
@@ -231,7 +231,7 @@ module Examples.CounterExamples where
       → P ≡ r → Stuck B → NoVar Δ g → ¬ (Γ T.& Δ / B ↑ P ⊢p< g > Pr)
     stuck eq st _ (T.t/send {G' = B′} gr _ _)
       = st-noact st (T.∈-tr {∈-G′ = B′} gr (A4.∈S eq))
-    stuck eq st _ (T.t/recv (T.R[_] {B′} rt) _)
+    stuck eq st _ (T.t/recv∣ (T.R[_] {B′} rt) _ _)
       = st-noact st (T.∈-tr {∈-G′ = B′} rt (A4.∈R eq))
     stuck {B = B} eq st _ (T.t/skip {Q = Q} ic T.SK[ caus , _ , _ ] conts)
       with Q ≟f s | st-next st
