@@ -8,7 +8,7 @@ open import Data.Fin using (Fin ; zero ; suc ) renaming (_≟_ to _≟f_)
 open import Data.Fin.Subset renaming (⊥ to ⊥f)
 open import Data.Vec renaming (lookup to lu)
 open import Relation.Nullary using (Dec; yes; no ; ¬_)
-open import Relation.Nullary.Decidable using (False ; ⌊_⌋ ; isYes ; ¬? ; _⊎-dec_)
+open import Relation.Nullary.Decidable using (False ; ⌊_⌋ ; isYes ; ¬? ; _⊎?_)
 open import Relation.Binary.PropositionalEquality using (_≡_ ; refl ; cong)
 
 module Utils.Fin where
@@ -21,7 +21,7 @@ _∈p_ : ∀{N} -> (P : Fin N) -> (RS : Fin N × Fin N) -> Set
 P ∈p (R , S)  = (P ≡ R) ⊎ (P ≡ S)
 
 _∈p?_ : ∀{N} -> (P : Fin N) -> (RS : Fin N × Fin N) -> Dec (P ∈p RS)
-P ∈p? (R , S) = (P ≟f R) ⊎-dec (P ≟f S)
+P ∈p? (R , S) = (P ≟f R) ⊎? (P ≟f S)
 
 reflect-lookup : ∀{A : Set}{N}{V : Vec A N}{x : Fin N}{E} -> V [ x ]= E -> lu V x ≡ E
 reflect-lookup here = refl

@@ -52,8 +52,8 @@ The typing judgment `Γ & Δ / G ↑ P ⊢p< g > Pr` establishes that process `P
 
 ## Technical Requirements
 
-- Agda 2.8.0
-- Agda Standard Library 2.3
+- Agda 2.8.0.2
+- Agda Standard Library 2.4
 
 ## Checking the Proof and the Examples
 
