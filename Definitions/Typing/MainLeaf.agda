@@ -1,8 +1,8 @@
 {-# OPTIONS --guardedness #-}
 
 -- `waitFind`: a `WaitV` tree with an empty visited set has a leaf.  A
--- `wv/cycle` carries a `P ∈T` run; `findRun` follows it to a leaf, since
--- every ancestor is `P`-inactive.
+-- `wv/cycle` carries a run to a step of `P` (`P ∈ G`); `findRun` follows
+-- it to a leaf, since every ancestor is `P`-inactive.
 
 open import Data.Nat using (ℕ)
 
@@ -13,7 +13,9 @@ open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.Empty using (⊥-elim)
 open import Relation.Unary using () renaming (∅ to ∅S)
 
-open import Data.List.Relation.Unary.Any using (Any; here; there)
+open import Relation.Nullary using (¬_)
+open import Relation.Binary.Construct.Closure.ReflexiveTransitive
+  using (Star; ε; _◅_)
 
 open import Definitions.Typing.Declarative
 
@@ -31,7 +33,7 @@ module Definitions.Typing.MainLeaf {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
 
       anc/cons :
         ∀ {V s}
-        → (na : P not-active-in s)
+        → (na : ¬ s -⟨ P ⟩->)
         → (k  : ∀ {β u} → s -< β >-> u → WaitV P L (λ v → V v ⊎ (s ~ v)) u)
         → Anc V
         → Anc (λ v → V v ⊎ (s ~ v))
@@ -41,7 +43,7 @@ module Definitions.Typing.MainLeaf {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
       ∀ {V a}
       → Anc V
       → V a
-      → Σ[ s ∈ Behav ] s ~ a × P not-active-in s
+      → Σ[ s ∈ Behav ] s ~ a × ¬ s -⟨ P ⟩->
           × (∀ {β u} → s -< β >-> u
              → Σ[ V′ ∈ Behavs ] Anc V′ × WaitV P L V′ u)
 
@@ -53,42 +55,38 @@ module Definitions.Typing.MainLeaf {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
     ancLu (anc/cons {s = s} na k anc) (inj₂ s~a) =
       s , s~a , na , λ gr → _ , anc/cons na k anc , k gr
 
-    -- Structural on the `Any` witness: a cycle jumps back up the tree.
+    -- Structural on the run, which is kept at a state `~` to the node's:
+    -- a cycle jumps back up the tree.
     findRun :
-      ∀ {V G H αs}
+      ∀ {V G G₀ H}
       → Anc V
       → WaitV P L V G
-      → G -[ αs ]-> H
-      → Any (P ∈αˢ_) αs
+      → G ~ G₀ → G₀ -→* H → H -⟨ P ⟩->
       → ∃[ K ] L K
 
-    findRun anc (wv/leaf x) _ _ =
+    findRun anc (wv/leaf x) _ _ _ =
       _ , x
 
-    findRun anc (wv/step _ _ _) tr/refl ()
+    -- `P` acts here, but this node is `P`-inactive.
+    findRun anc (wv/step na _ _) G~ ε act =
+      ⊥-elim (¬act/~ G~ na act)
 
-    findRun anc (wv/cycle _ _) tr/refl ()
+    findRun anc (wv/step na _ k) G~ ((_ , gr) ◅ run) act =
+      let _ , gr′ , G′~ = ~R G~ gr
+      in findRun (anc/cons na k anc) (k gr′) G′~ run act
 
-    -- The run's first action is `P`'s, but this node is `P`-inactive.
-    findRun anc (wv/step na _ _) (tr/step {α = α} gr tr) (here px) =
-      ⊥-elim (∉αˢ→¬∈αˢ {P} {α} (na gr) px)
-
-    findRun anc (wv/step na _ k) (tr/step gr tr) (there mem) =
-      findRun (anc/cons na k anc) (k gr) tr mem
-
-    -- At a cycle, replay the run at the ancestor it is `~` to.
-    findRun anc (wv/cycle (_ , a∈ , a~G) _) (tr/step {α = α} gr tr) (here px)
+    -- At a cycle, go on from the ancestor it is `~` to.
+    findRun anc (wv/cycle (_ , a∈ , a~G) _) G~ ε act
       with ancLu anc a∈
     ... | _ , s~a , na , _ =
-      ⊥-elim (∉αˢ→¬∈αˢ {P} {α} (na (~R→ (~trans s~a a~G) gr)) px)
+      ⊥-elim (¬act/~ (~trans (~trans s~a a~G) G~) na act)
 
-    findRun anc (wv/cycle (_ , a∈ , a~G) _) (tr/step gr tr) (there mem)
+    findRun anc (wv/cycle (_ , a∈ , a~G) _) G~ ((_ , gr) ◅ run) act
       with ancLu anc a∈
     ... | _ , s~a , _ , k =
-      let _ , grA , A′~G′ = ~R (~trans s~a a~G) gr
-          _ , tr′ , _     = tr-transport (~sym A′~G′) tr
-          _ , anc′ , w′   = k grA
-      in findRun anc′ w′ tr′ mem
+      let _ , grA , A′~ = ~R (~trans (~trans s~a a~G) G~) gr
+          _ , anc′ , w′ = k grA
+      in findRun anc′ w′ A′~ run act
 
     -- Descend along `wv/step`'s own step; at a cycle, `findRun`.
     findLeaf :
@@ -103,8 +101,8 @@ module Definitions.Typing.MainLeaf {N : ℕ}{B : BTheory N}(wb : WellBehaved B) 
     findLeaf anc (wv/step na gr k) =
       findLeaf (anc/cons na k anc) (k gr)
 
-    findLeaf anc w@(wv/cycle _ (_ , _ , tr , mem)) =
-      findRun anc w tr mem
+    findLeaf anc w@(wv/cycle _ (_ , run , act)) =
+      findRun anc w ~refl run act
 
   waitFind :
     ∀ {P}{L : Behavs}{G}

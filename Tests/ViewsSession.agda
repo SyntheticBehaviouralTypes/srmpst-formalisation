@@ -6,12 +6,13 @@
 module Tests.ViewsSession where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Fin.Subset using (⁅_⁆; _∈_; inside; outside)
 open import Data.Vec using (Vec; []; _∷_; here; there; lookup)
 open import Data.Sum using (_⊎_)
-open import Data.Product using (∃-syntax; _×_)
+open import Data.Product using (∃-syntax; _×_; _,_)
 open import Data.List using (length)
 open import Relation.Nullary.Decidable using (from-yes)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl)
@@ -32,8 +33,8 @@ A = 0F
 B = 1F
 C = 2F
 
-token : Fin 1
-token = 0F
+token : ℕ
+token = 0
 
 round : OpenGraph 0
 round =
@@ -51,10 +52,8 @@ s₀ = initial (compile round)
 
 Ρ : Assignment 2
 Ρ = record
-  { roles   = roles
-  ; owner   = owner
-  ; owner/∈ = owner/∈
-  ; ∈/owner = ∈/owner
+  { roles     = roles
+  ; partition = λ R → owner R , owner/∈ R , ∈/owner
   }
   where
     roles : Vec PartSet 2

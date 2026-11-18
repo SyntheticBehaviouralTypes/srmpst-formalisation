@@ -1,5 +1,8 @@
 {-# OPTIONS --guardedness #-}
 
+-- Weakening and substitution for the paper's judgements, the unfolding of
+-- `rec`, and the `⊢a` faces `Safety/` uses.
+
 open import Data.Nat using (ℕ; suc)
 open import Data.Fin
   using (Fin; zero; suc; punchOut)
@@ -12,20 +15,21 @@ open import Data.Vec.Properties
     ( insertAt-punchIn
     ; insertAt-lookup
     )
+open import Data.Maybe using (just; nothing)
 open import Data.Product using (_,_)
-open import Function using (_∘_)
 open import Relation.Nullary using (yes; no)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; sym; trans; cong; subst)
 open import Data.Fin.Properties using (punchIn-punchOut)
 open import Definitions.Typing.Declarative
+open import Utils.Family using (_∋_↦_; here; there)
 
 module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   private
     module M = MPST wb
   open M
   open M.Subst
-  open import Definitions.Typing.Properties wb using (td/bisim)
+  open import Definitions.Typing.Properties wb using (td/≐; ≐ᵛ-refl)
   open import Definitions.Typing.Alg wb using (_⊢at_∶_)
   open import Definitions.Typing.AlgNorm wb using (td⇒at)
   open import Definitions.Typing.AlgDeclarative wb using (at⇒typing)
@@ -49,17 +53,18 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
     rewrite sym (insertAt-punchIn Γ x S' y) =
     te/var
 
-  subst/lu :
-    ∀ {γ δ I}
+  -- Each branch map sends the branch of `ℓ` to the branch of `ℓ`.
+  ∋/subst-expr :
+    ∀ {γ δ n ℓ}
       {E : Exp γ}
       {X}
-      (Br : Vec (Proc (suc γ) δ) (suc I))
-      (i : Fin (suc I))
-    → [ E / suc X ]e lu Br i ≡ lu ([ E / X ]ech Br) i
-  subst/lu (_ ∷ _) zero =
-    refl
-  subst/lu {I = suc _} (_ ∷ Br) (suc i) =
-    subst/lu Br i
+      {Br : Vec _ n}
+      {Pr : Proc (suc γ) δ}
+    → Br ∋ ℓ ↦ Pr
+    → [ E / X ]ech Br ∋ ℓ ↦ [ E / suc X ]e Pr
+  ∋/subst-expr here = here
+  ∋/subst-expr {Br = nothing ∷ _} (there p) = there (∋/subst-expr p)
+  ∋/subst-expr {Br = just _  ∷ _} (there p) = there (∋/subst-expr p)
 
   guarded/weaken-expr :
     ∀ {γ δ X}
@@ -89,142 +94,128 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
       (guarded/subst-expr mmgl)
       (guarded/subst-expr mmgr)
 
-  transport-proc :
-    ∀ {δ γ p p′ P G}
-      {Δ : Vec Behav δ}
-      {Γ : Vec Sort γ}
-    → p ≡ p′
-    → Γ & Δ ⊢p P ◂ p  ∶ G
-    → Γ & Δ ⊢p P ◂ p′ ∶ G
-  transport-proc = subst (λ x → _ & _ ⊢p _ ◂ x ∶ _)
-
   mutual
 
     skip/subst-expr :
-      ∀ {γ δ ξ G P E Pr}
+      ∀ {γ δ ξ G R E Pr}
         {Γ : Vec Sort (suc γ)}
-        {Δ : Vec Behav δ}
-        {Ξ : Vec Behav ξ}
+        {Δ : Vec Cls δ}
+        {Ξ : Vec Cls ξ}
         {X : Fin (suc γ)}
       → (Γ - X)     ⊢e E                 ∶ lu Γ X
-      → Γ       & Δ & Ξ ⊢skip P ◂ Pr            ∶ G
-      → (Γ - X) & Δ & Ξ ⊢skip P ◂ [ E / X ]e Pr ∶ G
-    skip/subst-expr etd (skip/main td) =
-      skip/main (typing/subst-expr etd td)
-    skip/subst-expr etd (skip/step gr na ktd) =
-      skip/step gr na
-        (λ gr′ → skip/subst-expr etd (ktd gr′))
-    skip/subst-expr etd (skip/cycle eq inT) =
-      skip/cycle eq inT
+      → Γ       & Δ & Ξ ⊢[ R ] Pr            ∶ G
+      → (Γ - X) & Δ & Ξ ⊢[ R ] [ E / X ]e Pr ∶ G
+    skip/subst-expr etd (skip-main td) =
+      skip-main (typing/subst-expr etd td)
+    skip/subst-expr etd (skip-step ex na k) =
+      skip-step ex na
+        (λ st → skip/subst-expr etd (k st))
+    skip/subst-expr etd (skip-cycle mem inT) =
+      skip-cycle mem inT
 
     typing/subst-expr :
-      ∀ {γ δ G P E Pr}
+      ∀ {γ δ G R E Pr}
         {Γ : Vec Sort (suc γ)}
-        {Δ : Vec Behav δ}
+        {Δ : Vec Cls δ}
         {X : Fin (suc γ)}
       → (Γ - X)     ⊢e E                 ∶ lu Γ X
-      → Γ       & Δ ⊢p P ◂ Pr            ∶ G
-      → (Γ - X) & Δ ⊢p P ◂ [ E / X ]e Pr ∶ G
-    typing/subst-expr etd (t/send Q∈ foc gr etd′ ptd) =
-      t/send Q∈ foc gr
+      → Γ       & Δ ⊢[ R ] Pr            ∶ G
+      → (Γ - X) & Δ ⊢[ R ] [ E / X ]e Pr ∶ G
+    typing/subst-expr etd (send fi gr etd′ ptd) =
+      send fi gr
         (exp-subst etd′ etd)
         (typing/subst-expr etd ptd)
-    typing/subst-expr {Γ = _ ∷ _} etd (t/recv {Br = Br} R∈ foc gr fr conts) =
-      t/recv R∈ foc gr fr
-        (transport-proc (subst/lu Br _)
-        ∘ typing/subst-expr (expr-weaken-lemma {x = zero} etd)
-        ∘ conts)
-    typing/subst-expr etd (t/skip std) =
-      t/skip (skip/subst-expr etd std)
-    typing/subst-expr etd (t/unskip tr eq ptd) =
-      t/unskip tr eq (typing/subst-expr etd ptd)
-    typing/subst-expr etd (t/if etd₁ ptd ptd₁) =
-      t/if
+    typing/subst-expr {Γ = _ ∷ _} etd (recv fi p∉ ex conts) =
+      recv fi p∉ ex λ gr′ →
+        let _ , br , td = conts gr′
+        in _ , ∋/subst-expr br
+             , typing/subst-expr (expr-weaken-lemma {x = zero} etd) td
+    typing/subst-expr etd (skip std) =
+      skip (skip/subst-expr etd std)
+    typing/subst-expr etd (forward ptd run) =
+      forward (typing/subst-expr etd ptd) run
+    typing/subst-expr etd (if etd₁ ptd ptd₁) =
+      if
         (exp-subst etd₁ etd)
         (typing/subst-expr etd ptd)
         (typing/subst-expr etd ptd₁)
-    typing/subst-expr etd (t/rec mmg ptd) =
-      t/rec
-        (guarded/subst-expr mmg)
+    typing/subst-expr etd (rec ptd mmg) =
+      rec
         (typing/subst-expr etd ptd)
-    typing/subst-expr etd (t/var eq) =
-      t/var eq
-    typing/subst-expr etd (t/end done₁) =
-      t/end done₁
+        (guarded/subst-expr mmg)
+    typing/subst-expr etd (var eq) =
+      var eq
+    typing/subst-expr etd (end out) =
+      end out
 
-  lookup/weaken-expr :
-    ∀ {γ δ I i x}
-    → (Br : Vec (Proc (suc γ) δ) I)
-    → weaken/proc/exp (lu Br i) x
-      ≡ lu (weaken/exp/branch Br x) i
-  lookup/weaken-expr {i = zero} (_ ∷ _) =
-    refl
-  lookup/weaken-expr {i = suc i} (_ ∷ Br) =
-    lookup/weaken-expr {i = i} Br
+  ∋/weaken-expr :
+    ∀ {γ δ n ℓ x}
+      {Br : Vec _ n}
+      {Pr : Proc (suc γ) δ}
+    → Br ∋ ℓ ↦ Pr
+    → weaken/exp/branch Br x ∋ ℓ ↦ weaken/proc/exp Pr x
+  ∋/weaken-expr here = here
+  ∋/weaken-expr {Br = nothing ∷ _} (there p) = there (∋/weaken-expr p)
+  ∋/weaken-expr {Br = just _  ∷ _} (there p) = there (∋/weaken-expr p)
 
   mutual
 
     skip/weaken-expr :
-      ∀ {γ δ ξ P Pr G S x}
+      ∀ {γ δ ξ R Pr G S x}
         {Γ : Vec Sort γ}
-        {Δ : Vec Behav δ}
-        {Ξ : Vec Behav ξ}
-      → Γ & Δ & Ξ ⊢skip P ◂ Pr ∶ G
-      → insertAt Γ x S & Δ & Ξ ⊢skip P ◂ weaken/proc/exp Pr x ∶ G
-    skip/weaken-expr (skip/main td) =
-      skip/main (typing/weaken-expr td)
-    skip/weaken-expr (skip/step gr na ktd) =
-      skip/step gr na
-        (λ gr′ → skip/weaken-expr (ktd gr′))
-    skip/weaken-expr (skip/cycle eq inT) =
-      skip/cycle eq inT
+        {Δ : Vec Cls δ}
+        {Ξ : Vec Cls ξ}
+      → Γ & Δ & Ξ ⊢[ R ] Pr ∶ G
+      → insertAt Γ x S & Δ & Ξ ⊢[ R ] weaken/proc/exp Pr x ∶ G
+    skip/weaken-expr (skip-main td) =
+      skip-main (typing/weaken-expr td)
+    skip/weaken-expr (skip-step ex na k) =
+      skip-step ex na
+        (λ st → skip/weaken-expr (k st))
+    skip/weaken-expr (skip-cycle mem inT) =
+      skip-cycle mem inT
 
     typing/weaken-expr :
-      ∀ {γ δ P Pr G S x}
+      ∀ {γ δ R Pr G S x}
         {Γ : Vec Sort γ}
-        {Δ : Vec Behav δ}
-      → Γ & Δ ⊢p P ◂ Pr ∶ G
-      → insertAt Γ x S & Δ ⊢p P ◂ weaken/proc/exp Pr x ∶ G
-    typing/weaken-expr (t/send Q∈ foc gr etd ptd) =
-      t/send Q∈ foc gr
+        {Δ : Vec Cls δ}
+      → Γ & Δ ⊢[ R ] Pr ∶ G
+      → insertAt Γ x S & Δ ⊢[ R ] weaken/proc/exp Pr x ∶ G
+    typing/weaken-expr (send fi gr etd ptd) =
+      send fi gr
         (expr-weaken-lemma etd)
         (typing/weaken-expr ptd)
-    typing/weaken-expr (t/recv {Br = Br} R∈ foc gr fr conts) =
-      t/recv R∈ foc gr fr
-        ( transport-proc (lookup/weaken-expr Br)
-        ∘ typing/weaken-expr
-        ∘ conts
-        )
-    typing/weaken-expr (t/skip std) =
-      t/skip (skip/weaken-expr std)
-    typing/weaken-expr (t/unskip tr eq ptd) =
-      t/unskip tr eq
-        (typing/weaken-expr ptd)
-    typing/weaken-expr (t/if etd ptd₁ ptd₂) =
-      t/if
+    typing/weaken-expr (recv fi p∉ ex conts) =
+      recv fi p∉ ex λ gr′ →
+        let _ , br , td = conts gr′
+        in _ , ∋/weaken-expr br , typing/weaken-expr td
+    typing/weaken-expr (skip std) =
+      skip (skip/weaken-expr std)
+    typing/weaken-expr (forward ptd run) =
+      forward (typing/weaken-expr ptd) run
+    typing/weaken-expr (if etd ptd₁ ptd₂) =
+      if
         (expr-weaken-lemma etd)
         (typing/weaken-expr ptd₁)
         (typing/weaken-expr ptd₂)
-    typing/weaken-expr (t/rec mg₁ ptd) =
-      t/rec
-        (guarded/weaken-expr mg₁)
+    typing/weaken-expr (rec ptd mg₁) =
+      rec
         (typing/weaken-expr ptd)
-    typing/weaken-expr (t/var eq) =
-      t/var eq
-    typing/weaken-expr (t/end done) =
-      t/end done
+        (guarded/weaken-expr mg₁)
+    typing/weaken-expr (var eq) =
+      var eq
+    typing/weaken-expr (end out) =
+      end out
 
-  lookup/weaken-proc :
-    ∀ {γ δ I}
-    → (Br : Vec (Proc (suc γ) δ) I)
-    → (i : Fin I)
-    → (X : Fin (suc δ))
-    → weaken/proc (lu Br i) X
-      ≡ lu (weaken/proc/branch Br X) i
-  lookup/weaken-proc (_ ∷ _) zero _ =
-    refl
-  lookup/weaken-proc (_ ∷ Br) (suc i) X =
-    lookup/weaken-proc Br i X
+  ∋/weaken-proc :
+    ∀ {γ δ n ℓ X}
+      {Br : Vec _ n}
+      {Pr : Proc (suc γ) δ}
+    → Br ∋ ℓ ↦ Pr
+    → weaken/proc/branch Br X ∋ ℓ ↦ weaken/proc Pr X
+  ∋/weaken-proc here = here
+  ∋/weaken-proc {Br = nothing ∷ _} (there p) = there (∋/weaken-proc p)
+  ∋/weaken-proc {Br = just _  ∷ _} (there p) = there (∋/weaken-proc p)
 
   guarded/weaken-proc :
     ∀ {γ δ X}
@@ -243,67 +234,65 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
   mutual
 
     skip/weaken-proc :
-      ∀ {γ δ ξ G G' P Pr X}
+      ∀ {γ δ ξ G G' R Pr X}
         {Γ : Vec Sort γ}
-        {Δ : Vec Behav δ}
-        {Ξ : Vec Behav ξ}
-      → Γ & Δ & Ξ ⊢skip P ◂ Pr ∶ G
-      → Γ & insertAt Δ X G' & Ξ ⊢skip P ◂ weaken/proc Pr X ∶ G
-    skip/weaken-proc (skip/main td) =
-      skip/main (typing/weaken-proc td)
-    skip/weaken-proc (skip/step gr na ktd) =
-      skip/step gr na
-        (λ gr′ → skip/weaken-proc (ktd gr′))
-    skip/weaken-proc (skip/cycle eq inT) =
-      skip/cycle eq inT
+        {Δ : Vec Cls δ}
+        {Ξ : Vec Cls ξ}
+      → Γ & Δ & Ξ ⊢[ R ] Pr ∶ G
+      → Γ & insertAt Δ X G' & Ξ ⊢[ R ] weaken/proc Pr X ∶ G
+    skip/weaken-proc (skip-main td) =
+      skip-main (typing/weaken-proc td)
+    skip/weaken-proc (skip-step ex na k) =
+      skip-step ex na
+        (λ st → skip/weaken-proc (k st))
+    skip/weaken-proc (skip-cycle mem inT) =
+      skip-cycle mem inT
 
     typing/weaken-proc :
-      ∀ {γ δ G G' P Pr X}
+      ∀ {γ δ G G' R Pr X}
         {Γ : Vec Sort γ}
-        {Δ : Vec Behav δ}
-      → Γ & Δ ⊢p P ◂ Pr ∶ G
-      → Γ & insertAt Δ X G' ⊢p P ◂ weaken/proc Pr X ∶ G
-    typing/weaken-proc (t/send Q∈ foc gr etd ptd) =
-      t/send Q∈ foc gr etd
+        {Δ : Vec Cls δ}
+      → Γ & Δ ⊢[ R ] Pr ∶ G
+      → Γ & insertAt Δ X G' ⊢[ R ] weaken/proc Pr X ∶ G
+    typing/weaken-proc (send fi gr etd ptd) =
+      send fi gr etd
         (typing/weaken-proc ptd)
-    typing/weaken-proc (t/recv {Br = Br} R∈ foc gr fr conts) =
-      t/recv R∈ foc gr fr
-        ( transport-proc (lookup/weaken-proc Br _ _)
-        ∘ typing/weaken-proc
-        ∘ conts
-        )
-    typing/weaken-proc (t/skip std) =
-      t/skip (skip/weaken-proc std)
-    typing/weaken-proc (t/unskip tr eq ptd) =
-      t/unskip tr eq
-        (typing/weaken-proc ptd)
-    typing/weaken-proc (t/if etd ptd ptd₁) =
-      t/if etd
+    typing/weaken-proc (recv fi p∉ ex conts) =
+      recv fi p∉ ex λ gr′ →
+        let _ , br , td = conts gr′
+        in _ , ∋/weaken-proc br , typing/weaken-proc td
+    typing/weaken-proc (skip std) =
+      skip (skip/weaken-proc std)
+    typing/weaken-proc (forward ptd run) =
+      forward (typing/weaken-proc ptd) run
+    typing/weaken-proc (if etd ptd ptd₁) =
+      if etd
         (typing/weaken-proc ptd)
         (typing/weaken-proc ptd₁)
-    typing/weaken-proc (t/rec mg₁ ptd) =
-      t/rec
-        (guarded/weaken-proc mg₁)
+    typing/weaken-proc (rec ptd mg₁) =
+      rec
         (typing/weaken-proc ptd)
+        (guarded/weaken-proc mg₁)
     typing/weaken-proc
       {G' = G'}
       {X = X}
       {Δ = Δ}
-      (t/var {X = Y} eq)
+      (var {X = Y} eq)
       rewrite sym (insertAt-punchIn Δ X G' Y) =
-      t/var eq
-    typing/weaken-proc (t/end done₁) =
-      t/end done₁
+      var eq
+    typing/weaken-proc (end out) =
+      end out
 
-  lookup/subst-proc :
-    ∀ {γ δ I Pr X i}
-    → (Br : Vec (Proc (suc γ) (suc δ)) I)
-    → [ weaken/proc/exp Pr zero / X ]pr (lu Br i)
-      ≡ lu ([ Pr / X ]prch Br) i
-  lookup/subst-proc {i = zero} (_ ∷ _) =
-    refl
-  lookup/subst-proc {i = suc i} (_ ∷ Br) =
-    lookup/subst-proc {i = i} Br
+  ∋/subst-proc :
+    ∀ {γ δ n ℓ X}
+      {Pr : Proc γ δ}
+      {Br : Vec _ n}
+      {Pr′ : Proc (suc γ) (suc δ)}
+    → Br ∋ ℓ ↦ Pr′
+    → [ Pr / X ]prch Br ∋ ℓ ↦ [ weaken/proc/exp Pr zero / X ]pr Pr′
+  ∋/subst-proc here = here
+  ∋/subst-proc {Br = nothing ∷ _} (there p) = there (∋/subst-proc p)
+  ∋/subst-proc {Br = just _  ∷ _} (there p) = there (∋/subst-proc p)
 
   guarded/subst-proc :
     ∀ {γ δ X}
@@ -323,71 +312,69 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
   mutual
 
     skip/subst-proc :
-      ∀ {γ δ ξ G G' P Pr Pr'}
+      ∀ {γ δ ξ G G' R Pr Pr'}
         {Γ : Vec Sort γ}
-        {Δ : Vec Behav δ}
-        {Ξ : Vec Behav ξ}
+        {Δ : Vec Cls δ}
+        {Ξ : Vec Cls ξ}
         {X : Fin (suc δ)}
-      → Γ & Δ ⊢p P ◂ Pr' ∶ G'
-      → Γ & insertAt Δ X G' & Ξ ⊢skip P ◂ Pr ∶ G
-      → Γ & Δ & Ξ ⊢skip P ◂ [ Pr' / X ]pr Pr ∶ G
-    skip/subst-proc ptd′ (skip/main td) =
-      skip/main (typing/subst-proc ptd′ td)
-    skip/subst-proc ptd′ (skip/step gr na ktd) =
-      skip/step gr na
-        (λ gr′ → skip/subst-proc ptd′ (ktd gr′))
-    skip/subst-proc ptd′ (skip/cycle eq inT) =
-      skip/cycle eq inT
+      → Γ & Δ ⊢[ R ] Pr' ∶ G'
+      → Γ & insertAt Δ X G' & Ξ ⊢[ R ] Pr ∶ G
+      → Γ & Δ & Ξ ⊢[ R ] [ Pr' / X ]pr Pr ∶ G
+    skip/subst-proc ptd′ (skip-main td) =
+      skip-main (typing/subst-proc ptd′ td)
+    skip/subst-proc ptd′ (skip-step ex na k) =
+      skip-step ex na
+        (λ st → skip/subst-proc ptd′ (k st))
+    skip/subst-proc ptd′ (skip-cycle mem inT) =
+      skip-cycle mem inT
 
     typing/subst-proc :
-      ∀ {γ δ G G' P Pr Pr'}
+      ∀ {γ δ G G' R Pr Pr'}
         {Γ : Vec Sort γ}
-        {Δ : Vec Behav δ}
+        {Δ : Vec Cls δ}
         {X : Fin (suc δ)}
-      → Γ & Δ ⊢p P ◂ Pr' ∶ G'
-      → Γ & insertAt Δ X G' ⊢p P ◂ Pr ∶ G
-      → Γ & Δ ⊢p P ◂ [ Pr' / X ]pr Pr ∶ G
-    typing/subst-proc ptd′ (t/send Q∈ foc gr etd ptd) =
-      t/send Q∈ foc gr etd
+      → Γ & Δ ⊢[ R ] Pr' ∶ G'
+      → Γ & insertAt Δ X G' ⊢[ R ] Pr ∶ G
+      → Γ & Δ ⊢[ R ] [ Pr' / X ]pr Pr ∶ G
+    typing/subst-proc ptd′ (send fi gr etd ptd) =
+      send fi gr etd
         (typing/subst-proc ptd′ ptd)
-    typing/subst-proc ptd′ (t/recv {Br = Br} R∈ foc gr fr conts) =
-      t/recv R∈ foc gr fr
-        ( transport-proc (lookup/subst-proc Br)
-        ∘ typing/subst-proc (typing/weaken-expr ptd′)
-        ∘ conts
-        )
-    typing/subst-proc ptd′ (t/skip std) =
-      t/skip (skip/subst-proc ptd′ std)
-    typing/subst-proc ptd′ (t/unskip tr eq ptd) =
-      t/unskip tr eq (typing/subst-proc ptd′ ptd)
-    typing/subst-proc ptd′ (t/if etd ptd ptd₁) =
-      t/if etd
+    typing/subst-proc ptd′ (recv fi p∉ ex conts) =
+      recv fi p∉ ex λ gr′ →
+        let _ , br , td = conts gr′
+        in _ , ∋/subst-proc br , typing/subst-proc (typing/weaken-expr ptd′) td
+    typing/subst-proc ptd′ (skip std) =
+      skip (skip/subst-proc ptd′ std)
+    typing/subst-proc ptd′ (forward ptd run) =
+      forward (typing/subst-proc ptd′ ptd) run
+    typing/subst-proc ptd′ (if etd ptd ptd₁) =
+      if etd
         (typing/subst-proc ptd′ ptd)
         (typing/subst-proc ptd′ ptd₁)
-    typing/subst-proc ptd′ (t/rec mg₁ ptd) =
-      t/rec
-        (guarded/subst-proc mg₁)
+    typing/subst-proc ptd′ (rec ptd mg₁) =
+      rec
         (typing/subst-proc
           (typing/weaken-proc ptd′)
           ptd)
+        (guarded/subst-proc mg₁)
     typing/subst-proc
       {G' = G'}
       {Δ = Δ}
       {X = X}
       ptd′
-      (t/var {X = X′} eq)
+      (var {X = X′} eq)
       with X ≟f X′
     ... | no ¬eq =
-      t/var
-        (subst (_~ _)
+      var
+        (subst (_≐ _)
           (trans (cong (lu (insertAt Δ X G')) (sym (punchIn-punchOut ¬eq)))
                  (insertAt-punchIn Δ X G' (punchOut ¬eq)))
           eq)
     ... | yes refl
       rewrite insertAt-lookup Δ X G' =
-      td/bisim ~ᵛ-refl eq ptd′
-    typing/subst-proc ptd′ (t/end done₁) =
-      t/end done₁
+      td/≐ ≐ᵛ-refl eq ptd′
+    typing/subst-proc ptd′ (end out) =
+      end out
 
   -- ══════════════════════════════════════════════════════════════════
   --  `rec` unfolding, and the `⊢a` faces
@@ -395,42 +382,42 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
 
   mutual
 
-    t/rec/unfold :
-      ∀ {G P Pr}
-      → [] & [] ⊢p P ◂ rec Pr ∶ G
-      → [] & [] ⊢p P ◂ unfold/proc Pr ∶ G
+    rec/unfold :
+      ∀ {G R Pr}
+      → [] & [] ⊢[ R ] rec Pr ∶ G
+      → [] & [] ⊢[ R ] unfold/proc Pr ∶ G
 
-    t/rec/unfold (t/rec mmg ptd) =
-      typing/subst-proc (t/rec mmg ptd) ptd
+    rec/unfold (rec ptd mmg) =
+      typing/subst-proc (rec ptd mmg) ptd
 
-    t/rec/unfold (t/skip std) =
-      t/skip (skip/rec/unfold std)
+    rec/unfold (skip std) =
+      skip (skip/rec/unfold std)
 
-    t/rec/unfold (t/unskip tr eq td) =
-      t/unskip tr eq (t/rec/unfold td)
+    rec/unfold (forward td run) =
+      forward (rec/unfold td) run
 
     skip/rec/unfold :
       ∀ {ξ}
-        {Ξ : Vec Behav ξ}
-        {G P Pr}
-      → [] & [] & Ξ ⊢skip P ◂ rec Pr ∶ G
-      → [] & [] & Ξ ⊢skip P ◂ unfold/proc Pr ∶ G
-    skip/rec/unfold (skip/main td) =
-      skip/main (t/rec/unfold td)
-    skip/rec/unfold (skip/step gr na ktd) =
-      skip/step gr na
-        (λ gr′ → skip/rec/unfold (ktd gr′))
-    skip/rec/unfold (skip/cycle eq inT) =
-      skip/cycle eq inT
+        {Ξ : Vec Cls ξ}
+        {G R Pr}
+      → [] & [] & Ξ ⊢[ R ] rec Pr ∶ G
+      → [] & [] & Ξ ⊢[ R ] unfold/proc Pr ∶ G
+    skip/rec/unfold (skip-main td) =
+      skip-main (rec/unfold td)
+    skip/rec/unfold (skip-step ex na k) =
+      skip-step ex na
+        (λ st → skip/rec/unfold (k st))
+    skip/rec/unfold (skip-cycle mem inT) =
+      skip-cycle mem inT
 
-  -- The `⊢a` operations `Safety/` uses, each a round trip through `⊢p`.
+  -- The `⊢a` operations `Safety/` uses, each a round trip through `⊢`.
   module _ (bal : Balanced B) where
 
     at/rec/unfold :
       ∀ {G P Pr}
       → [] ⊢at P ◂ rec Pr ∶ ([] , G)
       → [] ⊢at P ◂ unfold/proc Pr ∶ ([] , G)
-    at/rec/unfold td = td⇒at bal (t/rec/unfold (at⇒typing td))
+    at/rec/unfold td = td⇒at bal (rec/unfold (at⇒typing td))
 
     at/subst-expr :
       ∀ {γ δ G P E Pr}
@@ -451,4 +438,5 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
       → G″ ~ G′
       → Γ ⊢at P ◂ Pr ∶ (ws , G)
       → Γ ⊢at P ◂ Pr ∶ (ws , G′)
-    at/unskip tr eq td = td⇒at bal (t/unskip tr eq (at⇒typing td))
+    at/unskip tr eq td =
+      td⇒at bal (td/≐ ≐ᵛ-refl eq (forward (at⇒typing td) (run⇒ᶜ tr)))

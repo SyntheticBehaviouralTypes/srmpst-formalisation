@@ -1,106 +1,134 @@
 {-# OPTIONS --guardedness #-}
 
+-- Typing at a class depends on the class only: both judgements are
+-- invariant under `_≐_`, in the state and pointwise in the contexts.
+
+open import Data.List using (List; [])
 open import Data.Nat using (ℕ)
-open import Data.Vec using (Vec)
-open import Data.Vec.Relation.Binary.Pointwise.Inductive using ([]; _∷_)
-open import Data.Product using (_,_)
-open import Function using (_∘_)
+open import Data.Product using (_,_; _×_)
+open import Data.Sum using (_⊎_; inj₁; inj₂)
+open import Data.Vec using (Vec; []; _∷_) renaming (lookup to lu)
+import Data.Vec.Relation.Binary.Pointwise.Inductive as Pointwise
+open Pointwise using (Pointwise; []; _∷_)
+open import Data.Vec.Relation.Unary.Any using (Any; here; there)
+open import Relation.Binary.PropositionalEquality using (_≡_; refl)
+open import Relation.Binary.Construct.Closure.ReflexiveTransitive
+  using (Star; ε; _◅_)
 open import Definitions.Typing
 
 module Definitions.Typing.Properties {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   open MPST wb
 
+  -- ══════════════════════════════════════════════════════════════════
+  --  Contexts, pointwise
+  -- ══════════════════════════════════════════════════════════════════
+
+  infix 4 _≐ᵛ_
+
+  _≐ᵛ_ : ∀ {n} → Vec Cls n → Vec Cls n → Set
+  _≐ᵛ_ = Pointwise _≐_
+
+  ≐ᵛ-refl : ∀ {n}{Δ : Vec Cls n} → Δ ≐ᵛ Δ
+  ≐ᵛ-refl = Pointwise.refl ≐-refl
+
+  ∈ᵛ/≐ :
+    ∀ {n}{Ξ Ξ′ : Vec Cls n}{G G′}
+    → Ξ ≐ᵛ Ξ′ → G ≐ G′ → G ∈ᵛ Ξ → G′ ∈ᵛ Ξ′
+  ∈ᵛ/≐ (e ∷ _)  G≐ (here x)  = here (≐-trans (≐-sym e) (≐-trans x G≐))
+  ∈ᵛ/≐ (_ ∷ es) G≐ (there a) = there (∈ᵛ/≐ es G≐ a)
+
+  -- ══════════════════════════════════════════════════════════════════
+  --  Class steps and runs, along `≐`
+  -- ══════════════════════════════════════════════════════════════════
+
+  -- A step out of `G` is one out of every `G′ ≐ G`, to the same class.
+  stepᶜ/≐ : ∀ {G G′ α H} → G ≐ G′ → G C.-< α >-> H → G′ C.-< α >-> H
+  stepᶜ/≐ G≐ (H″ , H″~ , gr) =
+    let K , gr′ , H″~K = ~L G≐ gr
+    in K , ~trans (~sym H″~K) H″~ , gr′
+
+  evᶜ/≐ :
+    ∀ {G G′ P e H} → G ≐ G′ → G C.-<[ P ↦ e ]>-> H → G′ C.-<[ P ↦ e ]>-> H
+  evᶜ/≐ G≐ (α , eq , st) = α , eq , stepᶜ/≐ G≐ st
+
+  first-in/≐ :
+    ∀ {r R G G′} → G ≐ G′ → r C.first-in (R , G) → r C.first-in (R , G′)
+  first-in/≐ G≐ fi = first-in⇒ᶜ (first-in/~ G≐ (first-inᶜ⇒ fi))
+
+  ∈Tᶜ/≐ : ∀ {R G G′} → G ≐ G′ → R C.∈T G → R C.∈T G′
+  ∈Tᶜ/≐ G≐ inT = ∈T⇒ᶜ (∈~ G≐ (∈Tᶜ⇒ inT))
+
+  -- A run ending at `G` ends at every `G′ ≐ G`, unless it is empty.
+  run/≐ :
+    ∀ {R G₀ G G′}
+    → G₀ C.-[¬ R ]->* G → G ≐ G′
+    → G₀ ≐ G′ ⊎ G₀ C.-[¬ R ]->* G′
+  run/≐ ε e = inj₁ e
+  run/≐ ((α , (H″ , H″~ , gr) , R∉) ◅ run) e with run/≐ run e
+  ... | inj₁ e′   = inj₂ ((α , (H″ , ~trans H″~ e′ , gr) , R∉) ◅ ε)
+  ... | inj₂ run′ = inj₂ ((α , (H″ , H″~ , gr) , R∉) ◅ run′)
+
+  -- ══════════════════════════════════════════════════════════════════
+  --  `≐`-invariance
+  -- ══════════════════════════════════════════════════════════════════
+
   mutual
 
-    skip-td/bisim :
-      ∀ {γ δ ξ G G′ P Pr}
+    skip-td/≐ :
+      ∀ {γ δ ξ R P G G′}
         {Γ : Vec Sort γ}
-        {Δ Δ′ : Vec Behav δ}
-        {Ξ Ξ′ : Vec Behav ξ}
-      → Δ ~ᵛ Δ′
-      → Ξ ~ᵛ Ξ′
-      → G ~ G′
-      → Γ & Δ  & Ξ  ⊢skip P ◂ Pr ∶ G
-      → Γ & Δ′ & Ξ′ ⊢skip P ◂ Pr ∶ G′
+        {Δ Δ′ : Vec Cls δ}
+        {Ξ Ξ′ : Vec Cls ξ}
+      → Δ ≐ᵛ Δ′ → Ξ ≐ᵛ Ξ′ → G ≐ G′
+      → Γ & Δ  & Ξ  ⊢[ R ] P ∶ G
+      → Γ & Δ′ & Ξ′ ⊢[ R ] P ∶ G′
 
-    skip-td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (skip/main td) =
-      skip/main (td/bisim Δ~Δ′ G~G′ td)
+    skip-td/≐ Δ~ Ξ~ G≐ (skip-main td) =
+      skip-main (td/≐ Δ~ G≐ td)
 
-    skip-td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (skip/step gr na ktd) =
-      skip/step
-        (~L→ G~G′ gr)
-        (na ∘ ~R→ G~G′)
-        (λ gr′ →
-          skip-td/bisim
-            Δ~Δ′
-            (G~G′ ∷ Ξ~Ξ′)
-            (~R→~ G~G′ gr′)
-            (ktd (~R→ G~G′ gr′)))
+    skip-td/≐ Δ~ Ξ~ G≐ (skip-cycle mem inT) =
+      skip-cycle (∈ᵛ/≐ Ξ~ G≐ mem) (∈Tᶜ/≐ G≐ inT)
 
-    skip-td/bisim Δ~Δ′ Ξ~Ξ′ G~G′ (skip/cycle eq inT) =
-      skip/cycle (~trans (lookup/~ᵛ Ξ~Ξ′ _ eq) G~G′) (∈~ G~G′ inT)
+    skip-td/≐ Δ~ Ξ~ G≐ (skip-step (α , H , st) ¬act k) =
+      skip-step
+        (α , H , stepᶜ/≐ G≐ st)
+        (λ { (H′ , β , st′ , own) →
+             ¬act (H′ , β , stepᶜ/≐ (≐-sym G≐) st′ , own) })
+        (λ st′ →
+          skip-td/≐ Δ~ (G≐ ∷ Ξ~) ≐-refl (k (stepᶜ/≐ (≐-sym G≐) st′)))
 
-    td/bisim :
-      ∀ {γ δ G G′ P Pr}
+    td/≐ :
+      ∀ {γ δ R P G G′}
         {Γ : Vec Sort γ}
-        {Δ Δ′ : Vec Behav δ}
-      → Δ ~ᵛ Δ′
-      → G ~ G′
-      → Γ & Δ  ⊢p P ◂ Pr ∶ G
-      → Γ & Δ′ ⊢p P ◂ Pr ∶ G′
+        {Δ Δ′ : Vec Cls δ}
+      → Δ ≐ᵛ Δ′ → G ≐ G′
+      → Γ & Δ  ⊢[ R ] P ∶ G
+      → Γ & Δ′ ⊢[ R ] P ∶ G′
 
-    td/bisim Δ~Δ′ G~G′ (t/send Q∈ foc (α , eq , gr) etd ptd) =
-      t/send Q∈
-        (focus/~ G~G′ foc)
-        (α , eq , ~L→ G~G′ gr)
-        etd
-        (td/bisim Δ~Δ′ (~L→~ G~G′ gr) ptd)
+    td/≐ Δ~ G≐ (send fi gr etd td) =
+      send (first-in/≐ G≐ fi) (evᶜ/≐ G≐ gr) etd (td/≐ Δ~ ≐-refl td)
 
-    td/bisim Δ~Δ′ G~G′ (t/recv R∈ foc (α , eq , gr) fr conts) =
-      t/recv R∈
-        (focus/~ G~G′ foc)
-        (α , eq , ~L→ G~G′ gr)
-        fr
-        (λ { (α′ , eq′ , gr′) →
-          td/bisim
-            Δ~Δ′
-            (~R→~ G~G′ gr′)
-            (conts (α′ , eq′ , ~R→ G~G′ gr′)) })
+    td/≐ Δ~ G≐ (recv fi p∉ (c , H , ex) conts) =
+      recv (first-in/≐ G≐ fi) p∉ (c , H , evᶜ/≐ G≐ ex)
+        λ gr′ →
+          let Pℓ , br , td = conts (evᶜ/≐ (≐-sym G≐) gr′)
+          in Pℓ , br , td/≐ Δ~ ≐-refl td
 
-    td/bisim Δ~Δ′ G~G′ (t/skip std) =
-      t/skip (skip-td/bisim Δ~Δ′ [] G~G′ std)
+    td/≐ Δ~ G≐ (skip std) =
+      skip (skip-td/≐ Δ~ [] G≐ std)
 
-    td/bisim Δ~Δ′ G~G′ (t/unskip tr eq ptd) =
-      t/unskip tr (~trans eq G~G′) (td/bisim Δ~Δ′ ~refl ptd)
+    td/≐ Δ~ G≐ (forward td run) with run/≐ run G≐
+    ... | inj₁ G₀≐  = td/≐ Δ~ G₀≐ td
+    ... | inj₂ run′ = forward (td/≐ Δ~ ≐-refl td) run′
 
-    td/bisim Δ~Δ′ G~G′ (t/if etd ttd ftd) =
-      t/if
-        etd
-        (td/bisim Δ~Δ′ G~G′ ttd)
-        (td/bisim Δ~Δ′ G~G′ ftd)
+    td/≐ Δ~ G≐ (if etd ttd ftd) =
+      if etd (td/≐ Δ~ G≐ ttd) (td/≐ Δ~ G≐ ftd)
 
-    td/bisim Δ~Δ′ G~G′ (t/rec guarded td) =
-      t/rec guarded (td/bisim (G~G′ ∷ Δ~Δ′) G~G′ td)
+    td/≐ Δ~ G≐ (end out) =
+      end λ inT → out (∈Tᶜ/≐ (≐-sym G≐) inT)
 
-    td/bisim Δ~Δ′ G~G′ (t/var eq) =
-      t/var (~trans (lookup/~ᵛ Δ~Δ′ _ eq) G~G′)
+    td/≐ Δ~ G≐ (rec td mg) =
+      rec (td/≐ (G≐ ∷ Δ~) G≐ td) mg
 
-    td/bisim Δ~Δ′ G~G′ (t/end done) =
-      t/end (done ∘ ∈~ (~sym G~G′))
-
-  -- Rewriting a `⊢skip` tree's leaf family, needed only at `PPr`.
-  skip/map :
-    ∀ {γ δ ξ}{L₁ L₂ : NProc γ δ → Behav → Set}
-      {Ξ : Vec Behav ξ}{PPr G}
-    → (∀ {H} → L₁ PPr H → L₂ PPr H)
-    → L₁ & Ξ ⊢skip PPr ∶ G
-    → L₂ & Ξ ⊢skip PPr ∶ G
-
-  skip/map f (skip/main x) =
-    skip/main (f x)
-
-  skip/map f (skip/step gr na ktd) =
-    skip/step gr na (λ gr′ → skip/map f (ktd gr′))
-
-  skip/map f (skip/cycle eq inT) =
-    skip/cycle eq inT
+    td/≐ Δ~ G≐ (var {X = X} eq) =
+      var (≐-trans (≐-sym (Pointwise.lookup Δ~ X)) (≐-trans eq G≐))

@@ -19,11 +19,11 @@ open import Definitions.Expr using (Sort)
 module Definitions.Actions (N : ℕ) where
   open import Definitions.Common(N)
 
+  -- A label and the sort of its payload.
   record Choice : Set where
     constructor _<_>
     field
-      {nchoices} : ℕ
-      label : Fin (suc nchoices)
+      label : ℕ
       sort : Sort
 
   infix 5 _<_>
@@ -58,23 +58,22 @@ module Definitions.Actions (N : ℕ) where
   comm : Action → Comm
   comm = map (mapᵐ Event.shape)
 
-  nchoices : Event → ℕ
-  nchoices e = Choice.nchoices (Event.choice e)
-
   infix 4 _∈α_ _∉α_
 
+  -- r ∈ α: `r` has an event in `α`; r ∉ α is its negation.
   _∈α_ : Part → Action → Set
   P ∈α α = ∃[ e ] ev α P ≡ just e
 
   _∉α_ : Part → Action → Set
-  P ∉α α = ev α P ≡ nothing
+  P ∉α α = ¬ P ∈α α
 
-  ∉α→¬∈α : ∀ {P α} → P ∉α α → ¬ P ∈α α
-  ∉α→¬∈α P∉ (e , eq) with trans (sym P∉) eq
+  -- `P ∉ α` is `P`'s having no event in `α`.
+  ≡nothing→∉α : ∀ {P α} → ev α P ≡ nothing → P ∉α α
+  ≡nothing→∉α P∉ (e , eq) with trans (sym P∉) eq
   ... | ()
 
-  ¬∈α→∉α : ∀ {P α} → ¬ P ∈α α → P ∉α α
-  ¬∈α→∉α {P} {α} ¬∈ with ev α P
+  ∉α→≡nothing : ∀ {P α} → P ∉α α → ev α P ≡ nothing
+  ∉α→≡nothing {P} {α} ¬∈ with ev α P
   ... | nothing = refl
   ... | just e  = ⊥-elim (¬∈ (e , refl))
 
@@ -84,42 +83,41 @@ module Definitions.Actions (N : ℕ) where
   ... | just e  = yes (e , refl)
 
   _∉α?_ : (P : Part) → (α : Action) → Dec (P ∉α α)
-  P ∉α? α with ev α P
-  ... | nothing = yes refl
-  ... | just _  = no λ ()
+  P ∉α? α = ¬? (P ∈α? α)
 
-  -- A role of `Ps` takes part; no role of `Ps` does.
+  -- R ∈ α: a role of `R` takes part; R ∉ α is its negation.
   _∈αˢ_ : PartSet → Action → Set
   Ps ∈αˢ α = ∃[ P ] P ∈ Ps × P ∈α α
 
   _∉αˢ_ : PartSet → Action → Set
-  Ps ∉αˢ α = ∀ P → P ∈ Ps → P ∉α α
+  Ps ∉αˢ α = ¬ Ps ∈αˢ α
 
   infix 4 _∈αˢ_ _∉αˢ_
 
-  ∉αˢ→¬∈αˢ : ∀ {Ps α} → Ps ∉αˢ α → ¬ Ps ∈αˢ α
-  ∉αˢ→¬∈αˢ {α = α} Ps∉ (P , P∈ , P∈α) = ∉α→¬∈α {P} {α} (Ps∉ P P∈) P∈α
+  -- `Ps ∉ α`, one role at a time.
+  ∉αˢ-at : ∀ {Ps α P} → Ps ∉αˢ α → P ∈ Ps → P ∉α α
+  ∉αˢ-at Ps∉ P∈ P∈α = Ps∉ (_ , P∈ , P∈α)
 
-  ¬∈αˢ→∉αˢ : ∀ {Ps α} → ¬ Ps ∈αˢ α → Ps ∉αˢ α
-  ¬∈αˢ→∉αˢ {α = α} ¬∈ P P∈ = ¬∈α→∉α {P} {α} λ P∈α → ¬∈ (P , P∈ , P∈α)
+  ∀∉→∉αˢ : ∀ {Ps α} → (∀ P → P ∈ Ps → P ∉α α) → Ps ∉αˢ α
+  ∀∉→∉αˢ f (P , P∈ , P∈α) = f P P∈ P∈α
 
   _∈αˢ?_ : (Ps : PartSet) → (α : Action) → Dec (Ps ∈αˢ α)
   Ps ∈αˢ? α = FinP.any? λ P → (P ∈? Ps) ×? (P ∈α? α)
 
   _∉αˢ?_ : (Ps : PartSet) → (α : Action) → Dec (Ps ∉αˢ α)
-  Ps ∉αˢ? α = FinP.all? λ P → (P ∈? Ps) →? (P ∉α? α)
+  Ps ∉αˢ? α = ¬? (Ps ∈αˢ? α)
 
   -- A single role is the singleton set.
   ∈α→∈αˢ⁅⁆ : ∀ {P α} → P ∈α α → ⁅ P ⁆ ∈αˢ α
   ∈α→∈αˢ⁅⁆ {P} P∈α = P , x∈⁅x⁆ P , P∈α
 
   ∉α→∉αˢ⁅⁆ : ∀ {P α} → P ∉α α → ⁅ P ⁆ ∉αˢ α
-  ∉α→∉αˢ⁅⁆ {P} P∉ X X∈ with x∈⁅y⁆⇒x≡y P X∈
-  ... | refl = P∉
+  ∉α→∉αˢ⁅⁆ {P} P∉ (X , X∈ , X∈α) with x∈⁅y⁆⇒x≡y P X∈
+  ... | refl = P∉ X∈α
 
   -- An action in which `P` acts differs from one in which it does not.
   ∈∉→≢ : ∀ {P α β} → P ∈α α → P ∉α β → α ≢ β
-  ∈∉→≢ {P} {α} P∈α P∉β refl = ∉α→¬∈α {P} {α} P∉β P∈α
+  ∈∉→≢ P∈α P∉β refl = P∉β P∈α
 
   Recv : Action → Part → Set
   Recv α Q = ∃[ P ] ∃[ c ] ev α Q ≡ just ((？ P) # c)
@@ -142,13 +140,6 @@ module Definitions.Actions (N : ℕ) where
   ... | just ((! Qs) # c) = yes (Qs , c , refl)
   ... | just ((？ P) # c)  = no λ { (_ , _ , ()) }
 
-  -- `α` is sent by a role outside `Q`.
-  Foreign : PartSet → Action → Set
-  Foreign Q α = ∃[ S ] S ∉ Q × Send α S
-
-  Foreign? : (Q : PartSet) → (α : Action) → Dec (Foreign Q α)
-  Foreign? Q α = FinP.any? λ S → ¬? (S ∈? Q) ×? Send? α S
-
   infix 4 _⋄_
 
   -- Independence: distinct actions, no receiver of either taking part in
@@ -169,6 +160,12 @@ module Definitions.Actions (N : ℕ) where
 
   _⟶_#_ : Part → PartSet → Choice → Action
   P ⟶ Qs # c = tabulate (⟶-at P Qs c)
+
+  -- The paper's point-to-point label `p ⇾ q : ℓ(t)`.
+  infix 4.5 _⇾_#_
+
+  _⇾_#_ : Part → Part → Choice → Action
+  p ⇾ q # c = p ⟶ ⁅ q ⁆ # c
 
   private
     at-sender : ∀ {P Qs c} → ⟶-at P Qs c P ≡ just ((! Qs) # c)

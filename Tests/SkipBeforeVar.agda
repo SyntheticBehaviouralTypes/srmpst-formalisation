@@ -1,15 +1,16 @@
 {-# OPTIONS --guardedness #-}
 
--- `t/skip` before `t/var` cannot be replaced by `t/unskip tr (t/var eq)`.
+-- `skip` before `var` cannot be replaced by `forward (var eq) run`.
 --
 --   s --β--> K --β--> ended        (β = B ⟶ C, so `A` is never active)
 --
--- With `Δ = K ∷ []`, `v 0F` types at `s` by stepping to `K`.  Nothing
--- reaches `s`, and `K ≁ s`, so no trace-only derivation exists.
+-- With `Δ = [ K ] ∷ []`, `v 0F` types at `[ s ]` by stepping to `K`.
+-- Nothing reaches `s`, and `K ≁ s`, so no trace-only derivation exists.
 
 module Tests.SkipBeforeVar where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
@@ -20,13 +21,15 @@ open import Data.Unit using (tt)
 open import Data.Empty using (⊥; ⊥-elim)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl)
 open import Relation.Nullary using (¬_)
+open import Relation.Binary.Construct.Closure.ReflexiveTransitive
+  using (Star; ε; _◅_)
 open import Relation.Nullary.Decidable using (from-yes)
 open import Function.Bundles using (Equivalence)
 
 open import Definitions.Expr using (s/unit)
 import Definitions.Typing as Typing
 
-open import Definitions.Graph.Algebra 3
+open import Definitions.Graph.Algebra 3 hiding (var)
 open import Definitions.Graph.Core 3 using (State; graphTheory; step⇒listed; gstep)
 open import Definitions.Graph.Decision 3 using (wellBehaved?)
 open import Definitions.Graph.Bisimulation 3
@@ -42,8 +45,8 @@ C = 2F
 
 -- a typed label pins `nchoices`: an unsolved one blocks every decision on
 -- the graph.
-tick : Fin 1
-tick = 0F
+tick : ℕ
+tick = 0
 
 β : Action
 β = B ⟶ ⁅ C ⁆ # tick < s/unit >
@@ -67,26 +70,29 @@ K = 1F
 E = 2F
 
 A∉β : A ∉α β
-A∉β = refl
+A∉β = ≡nothing→∉α {A} {β} refl
 
-na : ⁅ A ⁆ not-active-in s
-na gr with step⇒listed gr
-... | here refl = ∉α→∉αˢ⁅⁆ {A} {β} A∉β
+na : ¬ s -⟨ ⁅ A ⁆ ⟩->
+na (_ , _ , gr , own) with step⇒listed gr
+... | here refl = ∉α→∉αˢ⁅⁆ {A} {β} A∉β own
 ... | there ()
 
--- (1) `v 0F` DOES type at `s`, by walking forward to `K`.
+-- (1) `v 0F` DOES type at `[ s ]`, by walking forward to `K`.
 ktd :
-  ∀ {G″ β′} → (gr : s -< β′ >-> G″)
-  → (v[] & (K v∷ v[]) ⊢p_∶_) & (s v∷ v[]) ⊢skip ⁅ A ⁆ ◂ (v 0F) ∶ G″
-ktd gr with step⇒listed gr
-... | here refl = skip/main (t/var ~refl)
+  ∀ {β′ G″} → [ s ] C.-< β′ >-> G″
+  → v[] & ([ K ] v∷ v[]) & ([ s ] v∷ v[]) ⊢[ ⁅ A ⁆ ] v 0F ∶ G″
+ktd (_ , H″~ , gr) with step⇒listed gr
+... | here refl = skip-main (var H″~)
 ... | there ()
 
--- `{G' = K}` (ASCII apostrophe) must be given, since `wb` is opaque.
-typed-via-skip : v[] & (K v∷ v[]) ⊢p ⁅ A ⁆ ◂ (v 0F) ∶ s
-typed-via-skip = t/skip (skip/step {α = β} {G' = K} (gstep tt) na ktd)
+typed-via-skip : v[] & ([ K ] v∷ v[]) ⊢[ ⁅ A ⁆ ] v 0F ∶ [ s ]
+typed-via-skip =
+  skip
+    (skip-step (β , [ K ] , step⇒ᶜ {G′ = K} (gstep tt))
+      (λ act → na (actᶜ⇒ act))
+      ktd)
 
--- (2) … but no `t/unskip tr (t/var eq)` can: nothing reaches `s`.
+-- (2) … but no `forward (var eq) run` can: nothing reaches `s`.
 no-edge-into-s : ∀ {H α} → ¬ (H -< α >-> s)
 no-edge-into-s {0F} gr with step⇒listed gr
 ... | here ()
@@ -99,12 +105,9 @@ no-edge-into-s {2F} gr with step⇒listed gr
 ... | ()
 
 reaches-s→≡ : ∀ {H} → H -[¬ ⁅ A ⁆ ]->* s → H ≡ s
-reaches-s→≡ (_ , tr , _) = go tr
-  where
-  go : ∀ {H αs} → H -[ αs ]-> s → H ≡ s
-  go tr/refl = refl
-  go {H} (tr/step {G′ = M} gr tr) with go tr
-  ... | refl = ⊥-elim (no-edge-into-s {H = H} gr)
+reaches-s→≡ ε = refl
+reaches-s→≡ {H} ((_ , gr , _) ◅ run) with reaches-s→≡ run
+... | refl = ⊥-elim (no-edge-into-s {H = H} gr)
 
 -- `K ≁ s`, decided at the graph level (`bisim?`), which does not mention
 -- `wb`.

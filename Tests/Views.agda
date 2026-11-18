@@ -6,6 +6,7 @@
 module Tests.Views where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 import Data.Bool as Bool
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
@@ -30,8 +31,8 @@ A = 0F
 B = 1F
 C = 2F
 
-token : Fin 1
-token = 0F
+token : ℕ
+token = 0
 
 -- A → B → C → A.  Block {A,B}: `A→B` is internal.
 module RoundRobin where

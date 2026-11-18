@@ -17,7 +17,7 @@ import Relation.Binary.Construct.Closure.ReflexiveTransitive as Star
 open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.Vec using () renaming (lookup to lu)
 open import Relation.Binary.Construct.Closure.ReflexiveTransitive
-  using (Star; ε; _◅_)
+  using (Star; ε; _◅_; _◅◅_)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; sym; trans; cong; subst)
 open import Relation.Nullary using (¬_; yes; no)
@@ -68,14 +68,14 @@ module Definitions.View.Lemmas
   singleton⇒ :
     ∀ {X G α G″} → G -< α >-> G″ → _-<_>->ᵛ_ ⁅ X ⁆ G α G″
   singleton⇒ {X} {α = α} gr with ⁅ X ⁆ ∈αˢ? α
-  ... | yes X∈ = inj₂ (singleton/external gr , X∈ , _ , ε , gr)
-  ... | no  X∉ = inj₁ (¬∈αˢ→∉αˢ {⁅ X ⁆} {α} X∉ , gr)
+  ... | yes X∈ = V-Own X∈ (singleton/external gr) ε gr
+  ... | no  X∉ = V-Ext (X∉) gr
 
   singleton⇐ :
     ∀ {X G α G″} → _-<_>->ᵛ_ ⁅ X ⁆ G α G″ → G -< α >-> G″
-  singleton⇐ (inj₁ (_ , gr))                            = gr
-  singleton⇐ (inj₂ (_ , _ , _ , ε , gr))                 = gr
-  singleton⇐ (inj₂ (_ , _ , _ , (_ , g , int) ◅ _ , _)) =
+  singleton⇐ (V-Ext _ gr)                        = gr
+  singleton⇐ (V-Own _ _ ε gr)                    = gr
+  singleton⇐ (V-Own _ _ ((_ , g , int) ◅ _) _) =
     ⊥-elim (singleton/external g int)
 
   -- ══════════════════════════════════════════════════════════════════
@@ -99,9 +99,8 @@ module Definitions.View.Lemmas
     where
       ind : a ⋄ b
       ind =
-        (λ { refl → actor grb λ Z Z∈ → ∉α→¬∈α {Z} {b} (apart Z Z∈) Z∈ })
-        , (λ Q rQ → ¬∈α→∉α {Q} {b} λ Q∈b →
-             ∉α→¬∈α {Q} {a} (apart Q Q∈b) (Recv→∈α {a} {Q} rQ))
+        (λ { refl → actor grb λ Z Z∈ → apart Z Z∈ Z∈ })
+        , (λ Q rQ Q∈b → apart Q Q∈b (Recv→∈α {a} {Q} rQ))
         , (λ Q rQ → apart Q (Recv→∈α {b} {Q} rQ))
         where
           actor : ∀ {u v} → u -< b >-> v → (∀ Z → Z ∈α b → ⊥) → ⊥
@@ -136,8 +135,8 @@ module Definitions.View.Lemmas
 
     τs/~ :
       ∀ {G H G₁}
-      → G ~ H → Star (_-τ->_ Ps) G G₁
-      → ∃[ H₁ ] Star (_-τ->_ Ps) H H₁ × G₁ ~ H₁
+      → G ~ H → Star (_-[⊆ Ps ]->_) G G₁
+      → ∃[ H₁ ] Star (_-[⊆ Ps ]->_) H H₁ × G₁ ~ H₁
     τs/~ G~H ε = _ , ε , G~H
     τs/~ G~H ((γ , gr , int) ◅ τs) =
       let _ , gr′ , G′~H′ = ~L G~H gr
@@ -155,7 +154,7 @@ module Definitions.View.Lemmas
       → Star (Mixed/ Q) G G₁
       → ∃[ H ] ∃[ H₁ ]
           (∃[ bs ] G -[ bs ]-> H × All (λ b → Q b × Ps ∉αˢ b) bs)
-          × Star (_-τ->_ Ps) H H₁ × H₁ ~ G₁
+          × Star (_-[⊆ Ps ]->_) H H₁ × H₁ ~ G₁
     split/ ε = _ , _ , ([] , tr/refl , []) , ε , ~refl
     split/ ((γ , gr , q , inj₂ idle) ◅ rest) =
       let H , H₁ , (bs , tr , qs) , τs , H₁~G₁ = split/ rest
@@ -165,8 +164,7 @@ module Definitions.View.Lemmas
     ... | H , H₁ , (bs , tr , qs) , τs , H₁~G₁
       with push-aux gr ~refl tr
              (All.map
-                (λ {b} (_ , idle) Z Z∈b → ¬∈α→∉α {Z} {γ} λ Z∈γ →
-                   ∉α→¬∈α {Z} {b} (idle Z (int Z Z∈γ)) Z∈b)
+                (λ {b} (_ , idle) Z Z∈b Z∈γ → idle (Z , int Z Z∈γ , Z∈b))
                 qs)
     ... | H₀ , H′ , tr′ , grγ , H′~H =
       let H₁′ , τs′ , H₁~H₁′ = τs/~ (~sym H′~H) τs
@@ -177,12 +175,12 @@ module Definitions.View.Lemmas
       ∀ {G G₁}
       → Star Mixed G G₁
       → ∃[ H ] ∃[ H₁ ]
-          G -[¬ Ps ]->* H × Star (_-τ->_ Ps) H H₁ × H₁ ~ G₁
+          G -[¬ Ps ]->* H × Star (_-[⊆ Ps ]->_) H H₁ × H₁ ~ G₁
     split mixed
       with split/ {Q = λ _ → ⊤}
              (Star.map (λ (γ , gr , m) → γ , gr , tt , m) mixed)
     ... | H , H₁ , (bs , tr , qs) , τs , H₁~G₁ =
-      H , H₁ , (bs , tr , All.map proj₂ qs) , τs , H₁~G₁
+      H , H₁ , tr⇒run tr (All.map proj₂ qs) , τs , H₁~G₁
 
   -- ══════════════════════════════════════════════════════════════════
   --  The local view of a block
@@ -195,21 +193,18 @@ module Definitions.View.Lemmas
 
     local/idle :
       ∀ {G α G″} → Ps ∉αˢ α → G -< α >-> G″ → _-<_>->ᵛ_ Ps G α G″
-    local/idle idle gr = inj₁ (idle , gr)
+    local/idle idle gr = V-Ext idle gr
 
     -- Bisimilar in `B`, bisimilar in the local view.
-    mutual
-      ≲ᴸ : ∀ {G H} → G ~ H → G V.≲ H
-      ≲ᴸ G~H .V._≲_.simulate (inj₁ (idle , gr)) =
-        let _ , gr′ , b = ~L G~H gr
-        in _ , inj₁ (idle , gr′) , local/~ b
-      ≲ᴸ G~H .V._≲_.simulate (inj₂ (¬int , own , G₁ , τs , gr)) =
-        let H₁ , τs′ , G₁~H₁ = τs/~ G~H τs
-            _ , gr′ , b = ~L G₁~H₁ gr
-        in _ , inj₂ (¬int , own , H₁ , τs′ , gr′) , local/~ b
-
-      local/~ : ∀ {G H} → G ~ H → G V.~ H
-      local/~ G~H = ≲ᴸ G~H , ≲ᴸ (~sym G~H)
+    local/~ : ∀ {G H} → G ~ H → G V.~ H
+    local/~ G~H .V._~_.sym = local/~ (~sym G~H)
+    local/~ G~H .V._~_.step (V-Ext idle gr) =
+      let _ , gr′ , b = ~L G~H gr
+      in _ , V-Ext idle gr′ , local/~ b
+    local/~ G~H .V._~_.step (V-Own own ¬int τs gr) =
+      let H₁ , τs′ , G₁~H₁ = τs/~ G~H τs
+          _ , gr′ , b = ~L G₁~H₁ gr
+      in _ , V-Own own ¬int τs′ gr′ , local/~ b
 
   -- ══════════════════════════════════════════════════════════════════
   --  The global view of an assignment
@@ -231,7 +226,7 @@ module Definitions.View.Lemmas
       in G′ , ¬hid , G₁ , τs′ , grα′
       where
         apart/α : ∀ Z → Z ∈α α → Z ∉α β
-        apart/α Z Z∈α = apart Z Z∈α Z (owner/∈ Z)
+        apart/α Z Z∈α Z∈β = apart Z Z∈α (Z , owner/∈ Z , Z∈β)
 
         pull :
           ∀ {G u u′ t₁ t″}
@@ -243,7 +238,8 @@ module Definitions.View.Lemmas
         pull grβ u′~u ((γ , grγ , X , X∈α , int) ◅ τs) grα =
           let _ , grγ′ , v′~v = ~R u′~u grγ
               _ , _ , grγG , grβ′ , Y′~v′ =
-                swap grβ grγ′ (λ Z Z∈γ → apart X X∈α Z (int Z Z∈γ))
+                swap grβ grγ′
+                  (λ Z Z∈γ Z∈β → apart X X∈α (Z , int Z Z∈γ , Z∈β))
               G₁ , G′ , τs′ , grα′ = pull grβ′ (~trans Y′~v′ v′~v) τs grα
           in G₁ , G′ , (γ , grγG , X , X∈α , int) ◅ τs′ , grα′
 
@@ -268,24 +264,22 @@ module Definitions.View.Lemmas
         ... | yes X∈ =
           γ , gr , inj₁ (subst (λ b → Internal b γ) (Ps-block X∈) int)
         ... | no X∉ =
-          γ , gr , inj₂ λ Z Z∈Ps → ¬∈α→∉α {Z} {γ} λ Z∈γ →
-            outside X∉ (int Z Z∈γ) Z∈Ps
+          γ , gr , inj₂ λ (Z , Z∈Ps , Z∈γ) → outside X∉ (int Z Z∈γ) Z∈Ps
 
         idle* :
           ∀ {G G₁ α} → Ps ∉αˢ α → Star τ⟨ α ⟩ G G₁ → G -[¬ Ps ]->* G₁
-        idle* idle ε = skip/refl
+        idle* idle ε = ε
         idle* {α = α} idle ((γ , gr , X , X∈α , int) ◅ τs) =
-          tr¬/step gr
-            (λ Z Z∈Ps → ¬∈α→∉α {Z} {γ} λ Z∈γ →
-               outside (λ X∈Ps → ∉α→¬∈α {X} {α} (idle X X∈Ps) X∈α)
-                 (int Z Z∈γ) Z∈Ps)
-            (idle* {α = α} idle τs)
+          (γ , gr ,
+            λ (Z , Z∈Ps , Z∈γ) →
+              outside (λ X∈Ps → idle (X , X∈Ps , X∈α)) (int Z Z∈γ) Z∈Ps)
+          ◅ idle* {α = α} idle τs
 
       -- `Ps` takes no part: outsiders' steps only.
       project/idle :
         ∀ {G α G′} → Ps ∉αˢ α → G -< α >->ᵍ G′ → G -[¬ Ps ]->* G′
       project/idle {α = α} idle (_ , _ , τs , gr) =
-        skip/cat (idle* {α = α} idle τs) (skip/one gr idle)
+        idle* {α = α} idle τs ◅◅ skip/one gr idle
 
       -- `Ps` takes part: outsiders' steps, then a step of the local view.
       project/own :
@@ -297,7 +291,7 @@ module Definitions.View.Lemmas
       ... | H , H₁ , tr , τs′ , H₁~G₁
         with ~R H₁~G₁ gr
       ... | H′ , gr′ , H′~G′ =
-        H , H′ , tr , inj₂ (¬int , own , H₁ , τs′ , gr′) , H′~G′
+        H , H′ , tr , V-Own own ¬int τs′ gr′ , H′~G′
         where
           ¬int : ¬ Internal Ps α
           ¬int int =
@@ -307,9 +301,9 @@ module Definitions.View.Lemmas
       -- An own step of the local view is a global step.
       own/global :
         ∀ {G α G″} → Ps ∈αˢ α → _-<_>->ᵛ_ Ps G α G″ → G -< α >->ᵍ G″
-      own/global {α = α} (X , X∈ , X∈α) (inj₁ (idle , _)) =
-        ⊥-elim (∉α→¬∈α {X} {α} (idle X X∈) X∈α)
-      own/global {α = α} _ (inj₂ (¬int , (X₀ , X₀∈ , X₀∈α) , G₁ , τs , gr)) =
+      own/global {α = α} (X , X∈ , X∈α) (V-Ext idle _) =
+        ⊥-elim (idle (X , X∈ , X∈α))
+      own/global {α = α} _ (V-Own {G″ = G₁} (X₀ , X₀∈ , X₀∈α) ¬int τs gr) =
         ¬hid , G₁ , Star.map lift τs , gr
         where
           ¬hid : ¬ Hidden α
@@ -320,7 +314,7 @@ module Definitions.View.Lemmas
                        (Ps-block X₀∈))
                 (int Z Z∈α)
 
-          lift : ∀ {u v} → _-τ->_ Ps u v → τ⟨ α ⟩ u v
+          lift : ∀ {u v} → u -[⊆ Ps ]-> v → τ⟨ α ⟩ u v
           lift (γ , grγ , int) =
             γ , grγ , X₀ , X₀∈α
             , subst (λ b → Internal b γ) (sym (Ps-block X₀∈)) int

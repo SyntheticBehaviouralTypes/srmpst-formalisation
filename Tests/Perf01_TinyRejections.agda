@@ -6,6 +6,7 @@
 module Tests.Perf01_TinyRejections where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Unit using (tt)
@@ -19,9 +20,8 @@ open import Definitions.Expr using (s/bool)
 open import Check
 import Definitions.Typing as Typing
 
--- Pins `nchoices = 0`; a bare `0F` leaves it unsolved.
-bit : Fin 1
-bit = 0F
+bit : ℕ
+bit = 0
 
 open import Data.Fin.Subset using (⁅_⁆)
 
@@ -137,9 +137,9 @@ module Size2Choice where
   A = 0F
   B = 1F
 
-  left right : Fin 2
-  left  = 0F
-  right = 1F
+  left right : ℕ
+  left  = 0
+  right = 1
 
   round : OpenGraph 0
   round =
@@ -172,9 +172,9 @@ module Size3Choice where
   B = 1F
   C = 2F
 
-  left right : Fin 2
-  left  = 0F
-  right = 1F
+  left right : ℕ
+  left  = 0
+  right = 1
 
   round : OpenGraph 0
   round =

@@ -8,7 +8,7 @@ open import Data.Fin
 import Data.Fin.Properties as FinP
 open import Data.Fin.Subset using (_∈_; Side; inside)
 open import Data.Fin.Subset.Properties using (_∈?_)
-open import Data.Product using (∃-syntax; _×_; _,_; proj₂)
+open import Data.Product using (∃-syntax; Σ-syntax; ∃!; _×_; _,_; proj₁; proj₂)
 open import Data.List using (List)
 import Data.List as L
 open import Data.Vec
@@ -22,6 +22,7 @@ open import Relation.Binary.PropositionalEquality
   using (_≡_; _≢_; refl; trans; sym; cong)
 
 open import Definitions.Expr
+open import Utils.Family using (_∋_↦_)
 
 module Definitions.Proc (N : ℕ) where
 
@@ -30,14 +31,15 @@ module Definitions.Proc (N : ℕ) where
 
   -- γ and δ count expression and recursion binders, respectively.
   data Proc (γ δ : ℕ) : Set where
-    -- Role `P` sends to every role in `Qs`.
+    -- Role `P` sends label `ℓ` to every role in `Qs`.
     _⇒_!_<_>∙_ :
-      Part → PartSet → {I : ℕ} → Fin (suc I) → Exp γ → Proc γ δ → Proc γ δ
-    -- Role `R` receives from `P`.  Branch sorts come from the matched step,
-    -- not from the process.
+      Part → PartSet → ℕ → Exp γ → Proc γ δ → Proc γ δ
+    -- Role `R` receives from `P`.  The branches are a family indexed by
+    -- the labels `𝓛` they define (`Utils.Family`).  Branch sorts come from
+    -- the matched step, not from the process.
     _⇐_？·_ :
-      Part → Part → {I : ℕ}
-      → Vec (Proc (suc γ) δ) (suc I) → Proc γ δ
+      Part → Part → {n : ℕ}
+      → Vec (Maybe (Proc (suc γ) δ)) n → Proc γ δ
     ifp_then_else_ : Exp γ → Proc γ δ → Proc γ δ → Proc γ δ
     rec : Proc γ (suc δ) → Proc γ δ
     v : Fin δ → Proc γ δ
@@ -56,15 +58,15 @@ module Definitions.Proc (N : ℕ) where
   -- A `rec` body starts with a message on every branch of its `if`s.
   data MessageGuarded {γ δ} : Proc γ δ → Set where
     mg/send :
-      ∀ {Q} {Qs : PartSet} {I}
-        {i  : Fin (suc I)}
+      ∀ {Q} {Qs : PartSet}
+        {i  : ℕ}
         {E  : Exp γ}
         {Pr : Proc γ δ}
       → MessageGuarded (Q ⇒ Qs ! i < E >∙ Pr)
 
     mg/recv :
-      ∀ {R P I}
-        {Br : Vec (Proc (suc γ) δ) (suc I)}
+      ∀ {R P n}
+        {Br : Vec (Maybe (Proc (suc γ) δ)) n}
       → MessageGuarded (R ⇐ P ？· Br)
 
     mg/if :
@@ -96,13 +98,15 @@ module Definitions.Proc (N : ℕ) where
       weaken/proc ∅ X = ∅
 
       weaken/proc/branch :
-        ∀ {γ δ I}
-        → Vec (Proc γ δ) I
+        ∀ {γ δ n}
+        → Vec (Maybe (Proc γ δ)) n
         → Fin (suc δ)
-        → Vec (Proc γ (suc δ)) I
+        → Vec (Maybe (Proc γ (suc δ))) n
       weaken/proc/branch [] X = []
-      weaken/proc/branch (Pr ∷ Br) X =
-        weaken/proc Pr X ∷ weaken/proc/branch Br X
+      weaken/proc/branch (nothing ∷ Br) X =
+        nothing ∷ weaken/proc/branch Br X
+      weaken/proc/branch (just Pr ∷ Br) X =
+        just (weaken/proc Pr X) ∷ weaken/proc/branch Br X
 
     mutual
       weaken/proc/exp :
@@ -120,13 +124,15 @@ module Definitions.Proc (N : ℕ) where
       weaken/proc/exp ∅ x = ∅
 
       weaken/exp/branch :
-        ∀ {γ δ I}
-        → Vec (Proc (suc γ) δ) I
+        ∀ {γ δ n}
+        → Vec (Maybe (Proc (suc γ) δ)) n
         → Fin (suc (suc γ))
-        → Vec (Proc (suc (suc γ)) δ) I
+        → Vec (Maybe (Proc (suc (suc γ)) δ)) n
       weaken/exp/branch [] x = []
-      weaken/exp/branch (Pr ∷ Br) x =
-        weaken/proc/exp Pr x ∷ weaken/exp/branch Br x
+      weaken/exp/branch (nothing ∷ Br) x =
+        nothing ∷ weaken/exp/branch Br x
+      weaken/exp/branch (just Pr ∷ Br) x =
+        just (weaken/proc/exp Pr x) ∷ weaken/exp/branch Br x
 
     mutual
       [_/_]pr_ :
@@ -143,14 +149,16 @@ module Definitions.Proc (N : ℕ) where
       [ Pr / y ]pr ∅ = ∅
 
       [_/_]prch_ :
-        ∀ {γ δ I}
+        ∀ {γ δ n}
         → Proc γ δ
         → Fin (suc δ)
-        → Vec (Proc (suc γ) (suc δ)) I
-        → Vec (Proc (suc γ) δ) I
+        → Vec (Maybe (Proc (suc γ) (suc δ))) n
+        → Vec (Maybe (Proc (suc γ) δ)) n
       [ Pr / y ]prch [] = []
-      [ Pr / y ]prch (Pr′ ∷ Br) =
-        [ weaken/proc/exp Pr zero / y ]pr Pr′ ∷ [ Pr / y ]prch Br
+      [ Pr / y ]prch (nothing ∷ Br) =
+        nothing ∷ [ Pr / y ]prch Br
+      [ Pr / y ]prch (just Pr′ ∷ Br) =
+        just ([ weaken/proc/exp Pr zero / y ]pr Pr′) ∷ [ Pr / y ]prch Br
 
     mutual
       [_/_]e_ : ∀{γ δ} -> Exp γ -> Fin (suc γ) -> Proc (suc γ) δ -> Proc γ δ
@@ -167,11 +175,14 @@ module Definitions.Proc (N : ℕ) where
       [ E / y ]e ∅ = ∅
 
       [_/_]ech_ :
-        ∀ {γ δ I}
-        → Exp γ → Fin γ → Vec (Proc (suc γ) δ) I → Vec (Proc γ δ) I
+        ∀ {γ δ n}
+        → Exp γ → Fin γ
+        → Vec (Maybe (Proc (suc γ) δ)) n → Vec (Maybe (Proc γ δ)) n
       [ E / y ]ech [] = []
-      [ E / y ]ech (Pr′ ∷ Br) =
-        [ E / suc y ]e Pr′ ∷ [ E / y ]ech Br
+      [ E / y ]ech (nothing ∷ Br) =
+        nothing ∷ [ E / y ]ech Br
+      [ E / y ]ech (just Pr′ ∷ Br) =
+        just ([ E / suc y ]e Pr′) ∷ [ E / y ]ech Br
 
   unfold/proc : ∀{γ} -> Proc γ 1 -> Proc γ 0
   unfold/proc Pr = Subst.[ (rec Pr) / zero ]pr Pr
@@ -180,24 +191,33 @@ module Definitions.Proc (N : ℕ) where
   --  Sessions: one process per block of an assignment
   -- ════════════════════════════════════════════════════════════════════
 
-  -- A partition of the roles into `K` blocks; process `j` owns `roles j`.
+  -- A partition of the roles into `K` blocks, the paper's
+  -- `∀ r. ∃! k. r ∈ R_k`; process `j` owns `roles j`.
   record Assignment (K : ℕ) : Set where
     field
-      roles   : Vec PartSet K
-      owner   : Part → Fin K
-      owner/∈ : ∀ R → R ∈ lu roles (owner R)
-      ∈/owner : ∀ {j R} → R ∈ lu roles j → owner R ≡ j
+      roles     : Vec PartSet K
+      partition : ∀ r → ∃! _≡_ (λ k → r ∈ lu roles k)
+
+    owner : Part → Fin K
+    owner r = proj₁ (partition r)
+
+    owner/∈ : ∀ R → R ∈ lu roles (owner R)
+    owner/∈ R = proj₁ (proj₂ (partition R))
+
+    ∈/owner : ∀ {j R} → R ∈ lu roles j → owner R ≡ j
+    ∈/owner {R = R} = proj₂ (proj₂ (partition R))
 
   -- The assignment of an owner map: block `j` is the roles `owner` sends
   -- to `j`.
   byOwner : ∀ {K} → (Part → Fin K) → Assignment K
   byOwner {K} own = record
-    { roles   = roles
-    ; owner   = own
-    ; owner/∈ = λ R → lookup⇒[]= R (lu roles (own R)) (side/self R)
-    ; ∈/owner = λ {j} {R} R∈ → side/inside (trans (sym (lookup∘tabulate _ R))
-                  (trans (cong (λ v → lu v R) (sym (lookup∘tabulate _ j)))
-                    ([]=⇒lookup R∈)))
+    { roles     = roles
+    ; partition = λ R →
+        own R
+        , lookup⇒[]= R (lu roles (own R)) (side/self R)
+        , λ {j} R∈ → side/inside (trans (sym (lookup∘tabulate _ R))
+            (trans (cong (λ v → lu v R) (sym (lookup∘tabulate _ j)))
+              ([]=⇒lookup R∈)))
     }
     where
       side : Fin K → Part → Side
@@ -220,6 +240,10 @@ module Definitions.Proc (N : ℕ) where
   -- One process per role: the single-role sessions.
   singletons : Assignment N
   singletons = byOwner λ R → R
+
+  -- A session step's label, the paper's `λ ::= α | τ`.
+  pattern msg α = just α
+  pattern τ     = nothing
 
   module Over {K : ℕ} (Ρ : Assignment K) where
 
@@ -283,48 +307,50 @@ module Definitions.Proc (N : ℕ) where
     data _[_]⇒_ (M : Session) : Maybe Action → Session → Set where
       -- Role `P` of `j` sends; every other process owning a role of `Qs`
       -- receives.
-      s/comm :
-        ∀ {P Qs I} {i : Fin (suc I)} {E V Pr}
+      -- Each receiver `k` has a branch `Cont k` for label `ℓ`.
+      P-Com :
+        ∀ {P Qs ℓ E V Pr}
           {Rk : Fin K → Part}
-          {Br : Fin K → Vec (Proc 1 0) (suc I)}
+          {Cont : Fin K → Proc 1 0}
         → (j : Fin K)
         → P ∈ lu roles j
-        → M [ j ]= P ⇒ Qs ! i < E >∙ Pr
+        → M [ j ]= P ⇒ Qs ! ℓ < E >∙ Pr
         → E ⇓ V
         → (recvs : ∀ k → Receives j Qs k
                    → Rk k ∈ Qs × Rk k ∈ lu roles k
-                   × M [ k ]= Rk k ⇐ P ？· Br k)
-        → M [ just (P ⟶ Qs # i < sort/value V >) ]⇒
-            (M [ j ↦ Pr ∣ Qs ↦ (λ k → Subst.[ val V / zero ]e lu (Br k) i) ])
+                   × ∃[ n ] Σ[ Br ∈ Vec (Maybe (Proc 1 0)) n ]
+                       M [ k ]= Rk k ⇐ P ？· Br × Br ∋ ℓ ↦ Cont k)
+        → M [ msg (P ⟶ Qs # ℓ < sort/value V >) ]⇒
+            (M [ j ↦ Pr ∣ Qs ↦ (λ k → Subst.[ val V / zero ]e Cont k) ])
 
-      s/if/true :
+      P-If1 :
         ∀ {E Pr Pr′}
         → (j : Fin K)
         → M [ j ]= ifp E then Pr else Pr′
         → E ⇓ v/bool true
-        → M [ nothing ]⇒ (M [ j ]≔ Pr)
+        → M [ τ ]⇒ (M [ j ]≔ Pr)
 
-      s/if/false :
+      P-If2 :
         ∀ {E Pr Pr′}
         → (j : Fin K)
         → M [ j ]= ifp E then Pr else Pr′
         → E ⇓ v/bool false
-        → M [ nothing ]⇒ (M [ j ]≔ Pr′)
+        → M [ τ ]⇒ (M [ j ]≔ Pr′)
 
-      s/rec :
+      P-Rec :
         ∀ {Pr}
         → (j : Fin K)
         → M [ j ]= rec Pr
-        → M [ nothing ]⇒ (M [ j ]≔ unfold/proc Pr)
+        → M [ τ ]⇒ (M [ j ]≔ unfold/proc Pr)
 
     -- A run, recording its communications; silent steps anywhere.
     infix 4 _=[_]⇒*_
 
     data _=[_]⇒*_ (M : Session) : List Action → Session → Set where
       run/end  : M =[ L.[] ]⇒* M
-      run/τ    : ∀ {M′ M″ αs} → M [ nothing ]⇒ M′ → M′ =[ αs ]⇒* M″ → M =[ αs ]⇒* M″
+      run/τ    : ∀ {M′ M″ αs} → M [ τ ]⇒ M′ → M′ =[ αs ]⇒* M″ → M =[ αs ]⇒* M″
       run/comm : ∀ {M′ M″ α αs}
-               → M [ just α ]⇒ M′ → M′ =[ αs ]⇒* M″ → M =[ α L.∷ αs ]⇒* M″
+               → M [ msg α ]⇒ M′ → M′ =[ αs ]⇒* M″ → M =[ α L.∷ αs ]⇒* M″
 
     infixr 5 _++ʳ_
 
@@ -343,7 +369,7 @@ module Definitions.Proc (N : ℕ) where
       coinductive
       field
         ∞-M    : Session
-        ∞-step : M [ nothing ]⇒ ∞-M
+        ∞-step : M [ τ ]⇒ ∞-M
         ∞-next : ∞-M ⇒∞
 
     -- Every process is done.

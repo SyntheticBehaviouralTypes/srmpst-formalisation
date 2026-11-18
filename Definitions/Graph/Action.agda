@@ -44,23 +44,22 @@ module Definitions.Graph.Action (N : ℕ) where
   _≟Comm_ : DecidableEquality Comm
   _≟Comm_ = VecP.≡-dec (MaybeP.≡-dec _≟Shape_)
 
-  -- `_≟Choice_` goes through this encoding: matching `nchoices` directly
-  -- needs K.
+  -- `_≟Choice_` goes through this encoding.
   ChoiceCode : Set
-  ChoiceCode = Σ ℕ λ I → Σ (Fin (suc I)) λ _ → Sort
+  ChoiceCode = Σ ℕ λ _ → Sort
 
+  -- The label alone.
   ChoiceKey : Set
-  ChoiceKey = Σ ℕ λ I → Fin (suc I)
+  ChoiceKey = ℕ
 
   choiceCode : Choice → ChoiceCode
-  choiceCode c =
-    Choice.nchoices c , Choice.label c , Choice.sort c
+  choiceCode c = Choice.label c , Choice.sort c
 
   choiceKey : Choice → ChoiceKey
-  choiceKey c = Choice.nchoices c , Choice.label c
+  choiceKey = Choice.label
 
   choiceFromCode : ChoiceCode → Choice
-  choiceFromCode (_ , i , S) = i < S >
+  choiceFromCode (ℓ , S) = ℓ < S >
 
   -- `choiceFromCode` undoes `choiceCode` definitionally.
   choiceCode-injective :
@@ -68,12 +67,10 @@ module Definitions.Graph.Action (N : ℕ) where
   choiceCode-injective = cong choiceFromCode
 
   _≟ChoiceCode_ : DecidableEquality ChoiceCode
-  _≟ChoiceCode_ =
-    Product.≡-dec Nat._≟_
-      (Product.≡-dec _≟Fin_ (λ _ _ → _≟Sort_ _ _))
+  _≟ChoiceCode_ = Product.≡-dec Nat._≟_ (λ _ _ → _≟Sort_ _ _)
 
   _≟ChoiceKey_ : DecidableEquality ChoiceKey
-  _≟ChoiceKey_ = Product.≡-dec Nat._≟_ _≟Fin_
+  _≟ChoiceKey_ = Nat._≟_
 
   _≟Choice_ : DecidableEquality Choice
   c ≟Choice c′ =
@@ -188,23 +185,17 @@ module Definitions.Graph.Action (N : ℕ) where
   eqShape-refl (？ P) = eqFin-refl P
 
   eqChoice : Choice → Choice → Bool
-  eqChoice (_<_> {I} i S) (_<_> {I′} i′ S′) =
-    (I ≡ᵇ I′) ∧ (toℕ i ≡ᵇ toℕ i′) ∧ eqSort S S′
+  eqChoice (ℓ < S >) (ℓ′ < S′ >) = (ℓ ≡ᵇ ℓ′) ∧ eqSort S S′
 
   eqChoice-sound : ∀ c c′ → T (eqChoice c c′) → c ≡ c′
-  eqChoice-sound (_<_> {I} i S) (_<_> {I′} i′ S′) x
+  eqChoice-sound (ℓ < S >) (ℓ′ < S′ >) x
     with Equivalence.to T-∧ x
-  ... | m , x₁ with Equivalence.to T-∧ x₁
-  ... | l , s with Nat.≡ᵇ⇒≡ I I′ m
-  ... | refl
-    with FinP.toℕ-injective {i = i} {i′} (Nat.≡ᵇ⇒≡ (toℕ i) (toℕ i′) l)
-       | eqSort-sound {S} {S′} s
+  ... | l , s with Nat.≡ᵇ⇒≡ ℓ ℓ′ l | eqSort-sound {S} {S′} s
   ... | refl | refl = refl
 
   eqChoice-refl : ∀ c → T (eqChoice c c)
-  eqChoice-refl (_<_> {I} i S) =
-    Equivalence.from T-∧ (Nat.≡⇒≡ᵇ I I refl ,
-    Equivalence.from T-∧ (Nat.≡⇒≡ᵇ (toℕ i) (toℕ i) refl , eqSort-refl S))
+  eqChoice-refl (ℓ < S >) =
+    Equivalence.from T-∧ (Nat.≡⇒≡ᵇ ℓ ℓ refl , eqSort-refl S)
 
   eqEvent : Event → Event → Bool
   eqEvent (sh # c) (sh′ # c′) = eqShape sh sh′ ∧ eqChoice c c′

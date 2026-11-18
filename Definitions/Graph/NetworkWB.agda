@@ -79,14 +79,14 @@ module Definitions.Graph.NetworkWB (N : ℕ) where
       → NStep n₁ a α a′ → NStep n₂ b β b′
       → Recv α Q → Q ∈α β → ⊥
     dis-recv₁ {β = β} {Q = Q} st₁ st₂ rQ Q∈β =
-      ∉α→¬∈α {Q} {β} (proj₁ (proj₂ (dis-⋄ st₁ st₂)) Q rQ) Q∈β
+      (proj₁ (proj₂ (dis-⋄ st₁ st₂)) Q rQ) Q∈β
 
     dis-recv₂ :
       ∀ {a α a′ b β b′ Q}
       → NStep n₁ a α a′ → NStep n₂ b β b′
       → Recv β Q → Q ∈α α → ⊥
     dis-recv₂ {α = α} {Q = Q} st₁ st₂ rQ Q∈α =
-      ∉α→¬∈α {Q} {α} (proj₂ (proj₂ (dis-⋄ st₁ st₂)) Q rQ) Q∈α
+      (proj₂ (proj₂ (dis-⋄ st₁ st₂)) Q rQ) Q∈α
 
     -- … and they can never carry the same communication.
     dis-¬share :
@@ -127,26 +127,19 @@ module Definitions.Graph.NetworkWB (N : ℕ) where
 
     -- ── product bisimilarity: pairing ──
 
-    mutual
-      ≲-pair :
-        ∀ {a₁ b₁ a₂ b₂}
-        → a₁ T₁.~ a₂ → b₁ T₂.~ b₂
-        → mkPair a₁ b₁ T∥.≲ mkPair a₂ b₂
-      ≲-pair {a₁} {b₁} {a₂} {b₂} pa pb .T∥._≲_.simulate st
-        with pstep-inv n₁ n₂ {a = a₁} {b = b₁} st
-      ... | inj₁ (a₁′ , st₁ , refl) =
-        let a₂′ , st₂ , pa′ = T₁.~L pa st₁
-        in mkPair a₂′ b₂ , stepL {a = a₂} {a′ = a₂′} b₂ st₂ , ~-pair pa′ pb
-      ... | inj₂ (b₁′ , st₁ , refl) =
-        let b₂′ , st₂ , pb′ = T₂.~L pb st₁
-        in mkPair a₂ b₂′ , stepR {b = b₂} {b′ = b₂′} a₂ st₂ , ~-pair pa pb′
-
-      ~-pair :
-        ∀ {a₁ b₁ a₂ b₂}
-        → a₁ T₁.~ a₂ → b₁ T₂.~ b₂
-        → mkPair a₁ b₁ T∥.~ mkPair a₂ b₂
-      ~-pair pa pb =
-        ≲-pair pa pb , ≲-pair (T₁.~sym pa) (T₂.~sym pb)
+    ~-pair :
+      ∀ {a₁ b₁ a₂ b₂}
+      → a₁ T₁.~ a₂ → b₁ T₂.~ b₂
+      → mkPair a₁ b₁ T∥.~ mkPair a₂ b₂
+    ~-pair pa pb .T∥._~_.sym = ~-pair (T₁.~sym pa) (T₂.~sym pb)
+    ~-pair {a₁} {b₁} {a₂} {b₂} pa pb .T∥._~_.step st
+      with pstep-inv n₁ n₂ {a = a₁} {b = b₁} st
+    ... | inj₁ (a₁′ , st₁ , refl) =
+      let a₂′ , st₂ , pa′ = T₁.~L pa st₁
+      in mkPair a₂′ b₂ , stepL {a = a₂} {a′ = a₂′} b₂ st₂ , ~-pair pa′ pb
+    ... | inj₂ (b₁′ , st₁ , refl) =
+      let b₂′ , st₂ , pb′ = T₂.~L pb st₁
+      in mkPair a₂ b₂′ , stepR {b = b₂} {b′ = b₂′} a₂ st₂ , ~-pair pa pb′
 
     -- ── the axioms ──
 
@@ -191,19 +184,6 @@ module Definitions.Graph.NetworkWB (N : ℕ) where
       ⊥-elim (dis-recv₂ dis st₁′ st₂ (_ , _ , eq) (_ , eq′))
     ... | inj₂ (_ , st₂ , _) | inj₂ (_ , st₂′ , _) =
       W₂.step-sort-det st₂ st₂′ eq eq′
-    parWB .WellBehaved.step-arity-det {G} st st′ eq eq′
-      with pairView n₁ n₂ G
-    ... | is-pair a b
-      with pstep-inv n₁ n₂ {a = a} {b = b} st
-         | pstep-inv n₁ n₂ {a = a} {b = b} st′
-    ... | inj₁ (_ , st₁ , _) | inj₁ (_ , st₁′ , _) =
-      W₁.step-arity-det st₁ st₁′ eq eq′
-    ... | inj₁ (_ , st₁ , _) | inj₂ (_ , st₂′ , _) =
-      ⊥-elim (dis-recv₁ dis st₁ st₂′ (_ , _ , eq) (_ , eq′))
-    ... | inj₂ (_ , st₂ , _) | inj₁ (_ , st₁′ , _) =
-      ⊥-elim (dis-recv₂ dis st₁′ st₂ (_ , _ , eq) (_ , eq′))
-    ... | inj₂ (_ , st₂ , _) | inj₂ (_ , st₂′ , _) =
-      W₂.step-arity-det st₂ st₂′ eq eq′
     parWB .WellBehaved.no-new-branch/step {G} {G′} st idle stᵢ stⱼ′ ceq
       with pairView n₁ n₂ G
     ... | is-pair a b

@@ -72,28 +72,28 @@ module Three where
   C = 2F
 
   -- labels of the protocols below, by their example
-  token auth item price notify announce value : Fin 1
-  token    = 0F
-  auth     = 0F
-  item     = 0F
-  price    = 0F
-  notify   = 0F
-  announce = 0F
-  value    = 0F
+  token auth item price notify announce value : ℕ
+  token    = 0
+  auth     = 0
+  item     = 0
+  price    = 0
+  notify   = 0
+  announce = 0
+  value    = 0
 
-  login passwd split yes buy accept asNat cancel quit no reject asBool : Fin 2
-  login  = 0F
-  passwd = 0F
-  split  = 0F
-  yes    = 0F
-  buy    = 0F
-  accept = 0F
-  asNat  = 0F
-  cancel = 1F
-  quit   = 1F
-  no     = 1F
-  reject = 1F
-  asBool = 1F
+  login passwd split yes buy accept asNat cancel quit no reject asBool : ℕ
+  login  = 0
+  passwd = 0
+  split  = 0
+  yes    = 0
+  buy    = 0
+  accept = 0
+  asNat  = 0
+  cancel = 1
+  quit   = 1
+  no     = 1
+  reject = 1
+  asBool = 1
 
   AB AC BC : _
   AB = ⁅ A ⁆ ∪ ⁅ B ⁆
@@ -275,18 +275,18 @@ module Four where
   open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
   open Judge 4
 
-  report relay ping pong : Fin 1
-  report = 0F
-  relay  = 0F
-  ping   = 0F
-  pong   = 0F
+  report relay ping pong : ℕ
+  report = 0
+  relay  = 0
+  ping   = 0
+  pong   = 0
 
-  datum continue left stop right : Fin 2
-  datum    = 0F
-  continue = 0F
-  left     = 0F
-  stop     = 1F
-  right    = 1F
+  datum continue left stop right : ℕ
+  datum    = 0
+  continue = 0
+  left     = 0
+  stop     = 1
+  right    = 1
 
   -- Examples/RecMW.agda.
   module RecMW where
@@ -516,15 +516,15 @@ module Five where
   open import Utils.Branch using (⟪_⟫; _↦_; _∣_)
   open Judge 5
 
-  ping warm pong idle : Fin 1
-  ping = 0F
-  warm = 0F
-  pong = 0F
-  idle = 0F
+  ping warm pong idle : ℕ
+  ping = 0
+  warm = 0
+  pong = 0
+  idle = 0
 
-  left right : Fin 2
-  left  = 0F
-  right = 1F
+  left right : ℕ
+  left  = 0
+  right = 1
 
   -- `(P → Q) ∥ (R → T . R → S)` under {P,S}.  `P→Q` and `R→S` are
   -- a mixed choice at state 1, which the idle `R→T` reaches from 0.

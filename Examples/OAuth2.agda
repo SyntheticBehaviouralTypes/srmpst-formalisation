@@ -7,6 +7,7 @@
 module Examples.OAuth2 where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
@@ -34,18 +35,18 @@ C = 1F
 A = 2F
 
 -- `A`'s verdict to `S`
-auth : Fin 1
-auth = 0F
+auth : ℕ
+auth = 0
 
 -- the S→C choice: login/cancel (both carry a nat)
-login cancel : Fin 2
-login  = 0F
-cancel = 1F
+login cancel : ℕ
+login  = 0
+cancel = 1
 
 -- the C→A choice: passwd (nat) / quit (bool)
-passwd quit : Fin 2
-passwd = 0F
-quit   = 1F
+passwd quit : ℕ
+passwd = 0
+quit   = 1
 
 -- s0 --S→C[login]--> s1 --C→A[passwd]--> s2 --A→S[auth]--> ended
 -- s0 --S→C[cancel]--> s3 --C→A[quit]----------------------> ended

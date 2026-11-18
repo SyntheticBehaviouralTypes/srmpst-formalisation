@@ -19,7 +19,7 @@ open import Data.List.Relation.Unary.All
 import Data.List.Relation.Unary.All as All
 open import Data.List using (List)
 open import Data.List.Relation.Unary.Any using (Any; here; there)
-open import Data.Maybe using (just; nothing)
+open import Data.Maybe using (Maybe; just; nothing)
 open import Data.Product using (Σ-syntax; ∃-syntax; _,_; _×_; proj₁; proj₂)
 open import Data.Sum using (_⊎_; inj₁; inj₂; map₂; [_,_]′)
 open import Data.Vec using (Vec; []; replicate; _[_]=_) renaming (lookup to lu)
@@ -37,6 +37,7 @@ open import Definitions.Behav using (BTheory; WellBehaved; Balanced; Synchronous
 open import Definitions.Typing.Declarative using (module MPST)
 import Definitions.Proc as A
 import Safety.Preservation as Views
+open import Utils.Family using (_∋_↦_)
 
 module Safety.Progress
   {N : ℕ} {B : BTheory N} (wb : WellBehaved B) (sync : Synchronous B)
@@ -103,8 +104,7 @@ module Safety.Progress
     ... | yes refl = (γ , gr , ib , inj₁ int) ◅ walk/mixed k walk
     ... | no b≢k =
       ( γ , gr , ib
-      , inj₂ λ Z Z∈ → ¬∈α→∉α {Z} {γ} λ Z∈γ →
-          b≢k (same-block {β = γ} Z∈ Z∈γ int) )
+      , inj₂ λ (Z , Z∈ , Z∈γ) → b≢k (same-block {β = γ} Z∈ Z∈γ int) )
       ◅ walk/mixed k walk
 
     run/walk :
@@ -114,7 +114,7 @@ module Safety.Progress
     run/walk (tr/step gr tr) ((ib , _) ∷ᴬ qs) =
       (_ , gr , ib) ◅ run/walk tr qs
 
-    τs/walk : ∀ {k u v} → Star (_-τ->_ (lu roles k)) u v → Star Walk u v
+    τs/walk : ∀ {k u v} → Star (_-[⊆ lu roles k ]->_) u v → Star Walk u v
     τs/walk {k} = Star.map λ (γ , gr , int) → γ , gr , k , int
 
     -- A step at the end of a walk that its sender's block takes part in
@@ -151,15 +151,21 @@ module Safety.Progress
       ∀ k {E Pr Pr′}
       → [] ⊢e E ∶ s/bool → M [ k ]= ifp E then Pr else Pr′ → Progress M
     if/progress k etd lu≡ with eval-bool etd
-    ... | inj₁ e⇓t = nothing , _ , s/if/true k lu≡ e⇓t
-    ... | inj₂ e⇓f = nothing , _ , s/if/false k lu≡ e⇓f
+    ... | inj₁ e⇓t = nothing , _ , P-If1 k lu≡ e⇓t
+    ... | inj₂ e⇓f = nothing , _ , P-If2 k lu≡ e⇓f
+
+    -- Block `k` is ready for `P`'s multicast of label `ℓ`: at a receive
+    -- from `P`, at a role of `Qs`, with a branch `C` for `ℓ`.
+    ReadyAt : Part → PartSet → ℕ → Fin K → Set
+    ReadyAt P Qs ℓ k =
+      Σ[ R ∈ Part ] Σ[ C ∈ Proc 1 0 ]
+        R ∈ Qs × R ∈ lu roles k
+        × ∃[ n ] Σ[ Br ∈ Vec (Maybe (Proc 1 0)) n ]
+            M [ k ]= R ⇐ P ？· Br × Br ∋ ℓ ↦ C
 
     -- A receiving block, ready for `P`'s multicast.
     Ready : Fin K → Part → PartSet → ℕ → Fin K → Set
-    Ready l P Qs I k =
-      Receives l Qs k
-      → Σ[ R ∈ Part ] Σ[ Br ∈ Vec (Proc 1 0) (suc I) ]
-          R ∈ Qs × R ∈ lu roles k × M [ k ]= R ⇐ P ？· Br
+    Ready l P Qs ℓ k = Receives l Qs k → ReadyAt P Qs ℓ k
 
     -- ════════════════════════════════════════════════════════════════
     --  One block, at the end of a walk
@@ -177,8 +183,7 @@ module Safety.Progress
         using ( _⊢at_∶_; a/send; a/recv; a/if; a/end; a/var; a/rec
               ; waitLeaf; waitActive; at/send-inv; at/recv-inv )
       open WellBehaved (wbL k) public
-        using () renaming ( recv-overlap to recv-overlapᴸ
-                          ; step-arity-det to step-arity-detᴸ )
+        using () renaming ( recv-overlap to recv-overlapᴸ )
 
       -- `k`'s derivation at any state its outsiders lead to.
       der :
@@ -186,7 +191,7 @@ module Safety.Progress
         → G -[ bs ]-> H → All (λ b → InBlock b × Ps ∉αˢ b) bs
         → M [ k ]= Pr → [] ⊢at Ps ◂ Pr ∶ ([] , H)
       der tr qs lu≡ =
-        Per.unskip k (Per.lift k (_ , tr , All.map proj₂ qs)) ~reflᴸ
+        Per.unskip k (Per.lift k (tr⇒run tr (All.map proj₂ qs))) ~reflᴸ
           (td/lookup ts lu≡)
 
       -- `k`'s external step at the end of a walk, as a step of its view.
@@ -209,17 +214,17 @@ module Safety.Progress
         with ~R H₁~u gr
       ... | t′ , gr′ , _ =
         record { H = H ; bs = bs ; run = tr ; qs = qs ; t′ = t′
-               ; step = inj₂ (¬int , own , H₁ , τs , gr′) }
+               ; step = V-Own own ¬int τs gr′ }
 
       -- An own step of `k`'s view is a step of `B` after `k`'s internal
       -- steps.
       own/b :
         ∀ {H β t}
         → _-<_>->ᵛ_ Ps H β t → Ps ∈αˢ β
-        → ∃[ H₁ ] Star (_-τ->_ Ps) H H₁ × ∃[ t₁ ] H₁ -< β >-> t₁
-      own/b {β = β} (inj₁ (idle , _)) own =
-        ⊥-elim (∉αˢ→¬∈αˢ {Ps} {β} idle own)
-      own/b (inj₂ (_ , _ , H₁ , τs , gr)) _ = H₁ , τs , _ , gr
+        → ∃[ H₁ ] Star (_-[⊆ Ps ]->_) H H₁ × ∃[ t₁ ] H₁ -< β >-> t₁
+      own/b {β = β} (V-Ext idle _) own =
+        ⊥-elim (idle own)
+      own/b (V-Own {G″ = H₁} _ _ τs gr) _ = H₁ , τs , _ , gr
 
       -- An own step of `k`'s view at the end of a walk: `k`'s internal
       -- steps, then an `Active` step.
@@ -228,39 +233,37 @@ module Safety.Progress
         → Star Walk G u → _-<_>->ᵛ_ Ps u α t → Ps ∈αˢ α → Active
       own/active {α = α} walk vα own@(X , X∈ , X∈α)
         with own/b vα own | vα
-      ... | _ | inj₁ (idle , _) = ⊥-elim (∉αˢ→¬∈αˢ {Ps} {α} idle own)
-      ... | H₁ , τs , _ , gr | inj₂ (¬intk , _)
+      ... | _ | V-Ext idle _ = ⊥-elim (idle own)
+      ... | H₁ , τs , _ , gr | V-Own _ ¬intk _ _
         with classify (walk ◅◅ τs/walk τs) gr
       ...   | inj₂ act = act
       ...   | inj₁ (_ , l , int) =
         ⊥-elim (¬intk (subst (λ o → Internal (lu roles o) α)
                          (same-block {β = α} X∈ X∈α int) int))
 
-      -- Along a trace of `k`'s view on which `k` acts, the walk meets an
-      -- `Active` step.
-      trace/active :
-        ∀ {u αs u′}
-        → Star Walk G u → u V.-[ αs ]-> u′ → Any (Ps ∈αˢ_) αs → Active
-      trace/active walk (V.tr/step {α = α} vα tr) mem
+      -- Along a run of `k`'s view to a step of `k` (`Ps ∈ u`), the walk
+      -- meets an `Active` step.
+      run/active :
+        ∀ {u u′}
+        → Star Walk G u → u V.-→* u′ → u′ V.-⟨ Ps ⟩-> → Active
+      run/active walk ε (_ , _ , vα , own) = own/active walk vα own
+      run/active walk ((α , vα) ◅ run) act
         with Ps ∈αˢ? α
       ... | yes own = own/active walk vα own
-      ... | no ¬own with vα | mem
-      ...   | inj₂ (_ , own , _) | _          = ⊥-elim (¬own own)
-      ...   | inj₁ _             | here own   = ⊥-elim (¬own own)
-      ...   | inj₁ (_ , gr)      | there mem′ with classify walk gr
-      ...     | inj₂ act         = act
-      ...     | inj₁ (walk′ , _) = trace/active walk′ tr mem′
+      ... | no ¬own with vα
+      ...   | V-Own own _ _ _ = ⊥-elim (¬own own)
+      ...   | V-Ext _ gr with classify walk gr
+      ...     | inj₂ a           = a
+      ...     | inj₁ (walk′ , _) = run/active walk′ run act
 
       -- A receiving block of `P`'s multicast is at a receive from `P`, at a
-      -- role of `Qs`, of the same arity; or it has a τ step.
+      -- role of `Qs`, with a branch for the label; or it has a τ step.
       recv-head :
-        ∀ {P Qs I} {i : Fin (suc I)} {S u t}
+        ∀ {P Qs} {i : ℕ} {S u t}
         → Star Walk G u → u -< P ⟶ Qs # i < S > >-> t → P ∉ Ps
         → ∀ R → R ∈ Qs → R ∈ Ps
-        → (Σ[ R′ ∈ Part ] Σ[ Br ∈ Vec (Proc 1 0) (suc I) ]
-             R′ ∈ Qs × R′ ∈ Ps × M [ k ]= R′ ⇐ P ？· Br)
-          ⊎ Progress M
-      recv-head {P} {Qs} {I} {i} {S} walk gr P∉ R R∈Qs R∈ =
+        → ReadyAt P Qs i k ⊎ Progress M
+      recv-head {P} {Qs} {i} {S} walk gr P∉ R R∈Qs R∈ =
         go (lookup⇒[]= k M refl) (der run qs (lookup⇒[]= k M refl))
         where
           α = P ⟶ Qs # i < S >
@@ -283,77 +286,77 @@ module Safety.Progress
 
           go :
             ∀ {Pr} → M [ k ]= Pr → [] ⊢at Ps ◂ Pr ∶ ([] , H)
-            → (Σ[ R′ ∈ Part ] Σ[ Br ∈ Vec (Proc 1 0) (suc I) ]
-                 R′ ∈ Qs × R′ ∈ Ps × M [ k ]= R′ ⇐ P ？· Br)
-              ⊎ Progress M
+            → ReadyAt P Qs i k ⊎ Progress M
           go lu≡ (_ , a/end done , mem) =
             ⊥-elim (done {[] , H} mem (V.in/α step own))
           go lu≡ (_ , a/var {X = ()} _ , _)
           go lu≡ (_ , a/if etd _ _ , _) = inj₂ (if/progress k etd lu≡)
-          go lu≡ (_ , a/rec _ _ _ , _) = inj₂ (nothing , _ , s/rec k lu≡)
+          go lu≡ (_ , a/rec _ _ _ , _) = inj₂ (nothing , _ , P-Rec k lu≡)
           -- `k` sends: the shared role receives in `α`, so `α` is the same
           -- communication, and its sender `P` would be `k`'s.
           go lu≡ td@(_ , a/send X∈ _ _ _ , _)
             with at/send-inv td
           ... | _ , _ , w , _
             with waitLeaf step own w
-          ... | foc , _ , α‴ , eqX , vα‴
+          ... | (_ , foc) , _ , α‴ , eqX , vα‴
             with comm-ev (recv-overlapᴸ step vα‴
-                            (recvs X∈ (foc V.skip/refl step own)) (_ , eqX))
+                            (recvs X∈ (foc ε step own)) (_ , eqX))
                    (ev-sender {P} {Qs} {i < S >})
           ... | _ , eqP
             with own/b vα‴ (_ , X∈ , _ , eqX)
           ... | _ , _ , _ , gr‴ =
             ⊥-elim (P∉ (subst (_∈ Ps) (sym (sender/same gr‴ eqX eqP)) X∈))
           -- `k` receives: the same communication, so from `P`, at a role
-          -- of `Qs`, with `α`'s arity.
+          -- of `Qs`; its typing gives the branch of `α`'s label.
           go lu≡ td@(_ , a/recv {R = R′} {Br = Br′} R′∈ _ _ , _)
             with waitLeaf step own (proj₁ (at/recv-inv td))
-          ... | foc , _ , _ , _ , (α‴ , eqR′ , vα‴) , _
+          ... | (_ , foc) , _ , _ , _ , _ , (α‴ , eqR′ , vα‴)
             with comm-ev (sym (recv-overlapᴸ step vα‴
-                                 (recvs R′∈ (foc V.skip/refl step own))
+                                 (recvs R′∈ (foc ε step own))
                                  (_ , eqR′)))
                    eqR′
           ... | _ , eq′
             with ev-inv {P} {Qs} {i < S >} eq′
           ... | inj₁ (_ , ())
           ... | inj₂ (R′≢P , R′∈Qs , refl)
-            with step-arity-detᴸ step vα‴
-                   (ev-recv {P} {Qs} {i < S >} R′≢P R′∈Qs) eqR′
-          ... | refl = inj₁ (R′ , Br′ , R′∈Qs , R′∈ , lu≡)
+            with proj₂ (at/recv-inv td) ε
+                   (α , ev-recv {P} {Qs} {i < S >} R′≢P R′∈Qs , step)
+          ... | C , br , _ = inj₁ (R′ , C , R′∈Qs , R′∈ , _ , Br′ , lu≡ , br)
 
     -- ════════════════════════════════════════════════════════════════
     --  The multicast fires
     -- ════════════════════════════════════════════════════════════════
 
     fire :
-      ∀ l {P Qs I} {i : Fin (suc I)} {E Pr V}
+      ∀ l {P Qs} {i : ℕ} {E Pr V}
       → P ∈ lu roles l → M [ l ]= P ⇒ Qs ! i < E >∙ Pr → E ⇓ V
-      → (∀ k → Ready l P Qs I k) → Progress M
-    fire l {P} {Qs} {I} P∈ snd e⇓v all =
+      → (∀ k → Ready l P Qs i k) → Progress M
+    fire l {P} {Qs} {i} P∈ snd e⇓v all =
       just _ , _
-      , s/comm {Rk = λ k → proj₁ (pick k)}
-               {Br = λ k → proj₁ (proj₂ (pick k))}
+      , P-Com {Rk = λ k → proj₁ (pick k)}
+               {Cont = λ k → proj₁ (proj₂ (pick k))}
           l P∈ snd e⇓v (λ k r → proj₂ (proj₂ (pick k)) r)
       where
         pick :
-          ∀ k → Σ[ R ∈ Part ] Σ[ Br ∈ Vec (Proc 1 0) (suc I) ]
+          ∀ k → Σ[ R ∈ Part ] Σ[ C ∈ Proc 1 0 ]
                   (Receives l Qs k
-                   → R ∈ Qs × R ∈ lu roles k × M [ k ]= R ⇐ P ？· Br)
+                   → R ∈ Qs × R ∈ lu roles k
+                   × ∃[ n ] Σ[ Br ∈ Vec (Maybe (Proc 1 0)) n ]
+                       M [ k ]= R ⇐ P ？· Br × Br ∋ i ↦ C)
         pick k with receives? l Qs k
-        ... | yes r = let R , Br , x = all k r in R , Br , λ _ → x
-        ... | no ¬r = P , replicate (suc I) ∅ , λ r → ⊥-elim (¬r r)
+        ... | yes r = let R , C , x = all k r in R , C , λ _ → x
+        ... | no ¬r = P , ∅ , λ r → ⊥-elim (¬r r)
 
     -- `P`'s multicast, found at the end of a walk: every receiving block
     -- is ready, or some block has a τ step.
     receivers :
-      ∀ l {P Qs I} {i : Fin (suc I)} {S E Pr u t}
+      ∀ l {P Qs} {i : ℕ} {S E Pr u t}
       → P ∈ lu roles l → M [ l ]= P ⇒ Qs ! i < E >∙ Pr → [] ⊢e E ∶ S
       → Star Walk G u → u -< P ⟶ Qs # i < S > >-> t → Progress M
-    receivers l {P} {Qs} {I} P∈ snd etd walk gr
-      with fin-collect {A = Ready l P Qs I} each
+    receivers l {P} {Qs} {i} P∈ snd etd walk gr
+      with fin-collect {A = Ready l P Qs i} each
       where
-        each : ∀ k → Ready l P Qs I k ⊎ Progress M
+        each : ∀ k → Ready l P Qs i k ⊎ Progress M
         each k with receives? l Qs k
         ... | no ¬r = inj₁ λ r → ⊥-elim (¬r r)
         ... | yes (k≢l , R , R∈Qs , ownR)
@@ -393,15 +396,17 @@ module Safety.Progress
             ⊥-elim (done {[] , H} mem (V.in/α step own))
           go lu≡ (_ , a/var {X = ()} _ , _)
           go lu≡ (_ , a/if etd _ _ , _) = if/progress k etd lu≡
-          go lu≡ (_ , a/rec _ _ _ , _) = nothing , _ , s/rec k lu≡
+          go lu≡ (_ , a/rec _ _ _ , _) = nothing , _ , P-Rec k lu≡
           go lu≡ td@(_ , a/recv R∈ _ _ , _)
             with waitLeaf step own (proj₁ (at/recv-inv td))
-          ... | foc , _ , _ , _ , (α‴ , eqR , vα‴) , (S′ , S′∉ , _ , _ , eqS′)
+          ... | (_ , foc) , S′∉ , _ , _ , _ , (α‴ , eqR , vα‴)
+            with Balanced.recv-send (balL k) vα‴ eqR
+          ... | _ , _ , eqS′
             with own/b step own
           ... | _ , _ , _ , grβ =
             let _ , eqβS′ =
                   comm-ev (recv-overlapᴸ vα‴ step (_ , _ , eqR)
-                             (foc V.skip/refl step own))
+                             (foc ε step own))
                     eqS′
             in ⊥-elim (S′∉ (subst (_∈ Ps) (sym (sender/same grβ eqS eqβS′))
                               S∈))
@@ -424,17 +429,17 @@ module Safety.Progress
       status lu≡ (_ , a/var {X = ()} _ , _)
       status lu≡ (_ , a/if etd _ _ , _) = inj₂ (inj₁ (if/progress k etd lu≡))
       status lu≡ (_ , a/rec _ _ _ , _) =
-        inj₂ (inj₁ (nothing , _ , s/rec k lu≡))
+        inj₂ (inj₁ (nothing , _ , P-Rec k lu≡))
       status lu≡ td@(_ , a/send P∈ _ _ _ , _)
         with at/send-inv td
       ... | _ , _ , w , _
         with waitActive (λ { (_ , _ , _ , eq , vα) → V.in/ev vα P∈ eq }) w
-      ... | _ , _ , tr , mem = inj₂ (inj₂ (trace/active ε tr mem))
+      ... | _ , run , act = inj₂ (inj₂ (run/active ε run act))
       status lu≡ td@(_ , a/recv R∈ _ _ , _)
         with waitActive
-               (λ { (_ , _ , _ , _ , (_ , eq , vα) , _) → V.in/ev vα R∈ eq })
+               (λ { (_ , _ , _ , _ , _ , (_ , eq , vα)) → V.in/ev vα R∈ eq })
                (proj₁ (at/recv-inv td))
-      ... | _ , _ , tr , mem = inj₂ (inj₂ (trace/active ε tr mem))
+      ... | _ , run , act = inj₂ (inj₂ (run/active ε run act))
 
     active : Active → Progress M
     active a = Head.sender l walk gr S∈ snd ¬int

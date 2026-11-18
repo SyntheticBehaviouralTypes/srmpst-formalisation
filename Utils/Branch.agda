@@ -8,12 +8,12 @@
 -- `Definitions.Graph.Algebra`, the branches of a receive in
 -- `Definitions.Proc.Syntax`.
 
-open import Data.Bool using (T)
-open import Data.Fin using (Fin; _≟_)
+open import Data.Fin using (toℕ)
 open import Data.List using (List; []; _∷_)
 open import Data.List.NonEmpty using (List⁺; [_]; _⁺++⁺_; toList)
-open import Data.Maybe using (Maybe; just; nothing; is-just; _>>=_)
-open import Data.Vec using (Vec; []; _∷_; tabulate)
+open import Data.Maybe using (Maybe; just; nothing)
+open import Data.Nat using (ℕ; zero; suc; _⊔_; _≟_)
+open import Data.Vec using (Vec; tabulate)
 open import Relation.Nullary using (yes; no)
 
 module Utils.Branch where
@@ -46,24 +46,21 @@ module Utils.Branch where
   ⟪_⟫ : ∀ {K V R : Set} {{_ : Closes K V R}} → Branches K V → R
   ⟪ bs ⟫ = close bs
 
-  -- ── branches over labels, as a vector ──
+  -- ── branches over labels, as a family ──
   --
-  -- The body of each label `0 … n-1`, in label order; `nothing` if a label
-  -- has no branch.  Branches may come in any order; for a repeated label,
-  -- the first one counts.
+  -- Entry `ℓ` is the body of label `ℓ`, `nothing` if it has none
+  -- (`Utils.Family`); the vector runs up to the largest label.  Branches
+  -- may come in any order; for a repeated label, the first one counts.
   private
-    find : ∀ {n} {V : Set} → Fin n → List (Branch (Fin n) V) → Maybe V
-    find i [] = nothing
-    find i (branch k x ∷ bs) with i ≟ k
+    find : ∀ {V : Set} → ℕ → List (Branch ℕ V) → Maybe V
+    find ℓ [] = nothing
+    find ℓ (branch k x ∷ bs) with ℓ ≟ k
     ... | yes _ = just x
-    ... | no  _ = find i bs
+    ... | no  _ = find ℓ bs
 
-    all : ∀ {n} {V : Set} → Vec (Maybe V) n → Maybe (Vec V n)
-    all [] = just []
-    all (mx ∷ mxs) = mx >>= λ x → all mxs >>= λ xs → just (x ∷ xs)
+    width : ∀ {V : Set} → List (Branch ℕ V) → ℕ
+    width []                = zero
+    width (branch k _ ∷ bs) = suc k ⊔ width bs
 
-  byLabel : ∀ {n} {V : Set} → Branches (Fin n) V → Maybe (Vec V n)
-  byLabel bs = all (tabulate λ i → find i (toList bs))
-
-  fromJust : ∀ {A : Set} (m : Maybe A) → T (is-just m) → A
-  fromJust (just x) _ = x
+  family : ∀ {V : Set} (bs : Branches ℕ V) → Vec (Maybe V) (width (toList bs))
+  family bs = tabulate λ i → find (toℕ i) (toList bs)

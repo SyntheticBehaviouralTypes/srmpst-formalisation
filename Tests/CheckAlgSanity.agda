@@ -6,6 +6,7 @@
 module Tests.CheckAlgSanity where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 import Data.Bool as Bool
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
@@ -35,9 +36,8 @@ module ∈T?-sanity where
   B = 1F
   C = 2F
 
-  -- typed labels pin `nchoices`: an unsolved one blocks every decision
-  tick : Fin 1
-  tick = 0F
+  tick : ℕ
+  tick = 0
 
   -- s0 --A⟶B<unit>--> s1 --A⟶B<unit>--> ended
   g : OpenGraph 0
@@ -91,9 +91,8 @@ module unskip?-sanity where
   B = 1F
   C = 2F
 
-  -- typed labels pin `nchoices`: an unsolved one blocks every decision
-  tick : Fin 1
-  tick = 0F
+  tick : ℕ
+  tick = 0
 
   -- s0 --B⟶C--> s1 --A⟶B--> ended
   g : OpenGraph 0
@@ -144,9 +143,8 @@ module Wait?-sanity where
   B = 1F
   C = 2F
 
-  -- typed labels pin `nchoices`: an unsolved one blocks every decision
-  tick : Fin 1
-  tick = 0F
+  tick : ℕ
+  tick = 0
 
   g : OpenGraph 0
   g =

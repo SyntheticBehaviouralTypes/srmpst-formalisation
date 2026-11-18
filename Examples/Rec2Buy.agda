@@ -8,6 +8,7 @@
 module Examples.Rec2Buy where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
@@ -35,24 +36,24 @@ A = 0F
 B = 1F
 S = 2F
 
-item price : Fin 1
-item  = 0F
-price = 0F
+item price : ℕ
+item  = 0
+price = 0
 
 -- `A` to `B`: propose a split, or cancel
-split cancel : Fin 2
-split  = 0F
-cancel = 1F
+split cancel : ℕ
+split  = 0
+cancel = 1
 
 -- `B` to `A`: accept the split, or not
-yes no : Fin 2
-yes = 0F
-no  = 1F
+yes no : ℕ
+yes = 0
+no  = 1
 
 -- `A` to `S`: buy, or quit
-buy quit : Fin 2
-buy  = 0F
-quit = 1F
+buy quit : ℕ
+buy  = 0
+quit = 1
 
 -- `A` asks for an item, `S` quotes both buyers, then `A` proposes splits
 -- until `B` says `yes` (then `A` buys) or `A` cancels (then quits); a `no`

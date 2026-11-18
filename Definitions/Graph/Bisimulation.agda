@@ -497,7 +497,6 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
 
   module Sound (G : Graph) where
     open BTheory (graphTheory G)
-    open _≲_
 
     match :
       ∀ (relation : Matrix G)
@@ -545,33 +544,20 @@ module Definitions.Graph.Bisimulation (N : ℕ) where
               (listed⇒step member)
           , rel
 
-    mutual
-      fromStable :
-        ∀ (relation : Matrix G)
-        → Stable G relation
-        → Symmetric G relation
-        → ∀ {s t}
-        → T (related G relation s t)
-        → s ~ t
-      fromStable relation stable symmetric {s} {t} holds =
-        fromStable/forward relation stable symmetric holds
-        , fromStable/forward relation stable symmetric
-            (symmetric s t holds)
-
-      fromStable/forward :
-        ∀ (relation : Matrix G)
-        → Stable G relation
-        → Symmetric G relation
-        → ∀ {s t}
-        → T (related G relation s t)
-        → s ≲ t
-      simulate
-        (fromStable/forward relation stable symmetric holds)
-        gr
-        with match relation stable holds gr
-      ... | v , gr′ , later =
-        v , gr′
-          , fromStable relation stable symmetric later
+    -- A stable symmetric relation is a bisimulation, so it is in `~`.
+    fromStable :
+      ∀ (relation : Matrix G)
+      → Stable G relation
+      → Symmetric G relation
+      → ∀ {s t}
+      → T (related G relation s t)
+      → s ~ t
+    fromStable relation stable symmetric {s} {t} holds ._~_.sym =
+      fromStable relation stable symmetric (symmetric s t holds)
+    fromStable relation stable symmetric holds ._~_.step gr
+      with match relation stable holds gr
+    ... | v , gr′ , later =
+      v , gr′ , fromStable relation stable symmetric later
 
   approximation/sound :
     ∀ {G s t}

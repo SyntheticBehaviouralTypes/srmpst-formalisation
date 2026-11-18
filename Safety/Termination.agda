@@ -53,14 +53,14 @@ module Safety.Termination
     ∀ {M M′ G} → ⊢ᴸ M ∶ G → M [ nothing ]⇒ M′
     → τ-depth/processes M′ < τ-depth/processes M
   τ-depth/decrease {M} _
-    (s/if/true {E = E} {Pr = Pr} {Pr′ = Pr′} j lu≡ _) =
+    (P-If1 {E = E} {Pr = Pr} {Pr′ = Pr′} j lu≡ _) =
     sum/map-update< (τ-depth/proc {γ = 0} {δ = 0}) M j
       (τ-depth/lookup< lu≡ (τ-depth/if-then {E = E} {Pr = Pr} {Pr′ = Pr′}))
   τ-depth/decrease {M} _
-    (s/if/false {E = E} {Pr = Pr} {Pr′ = Pr′} j lu≡ _) =
+    (P-If2 {E = E} {Pr = Pr} {Pr′ = Pr′} j lu≡ _) =
     sum/map-update< (τ-depth/proc {γ = 0} {δ = 0}) M j
       (τ-depth/lookup< lu≡ (τ-depth/if-else {E = E} {Pr = Pr} {Pr′ = Pr′}))
-  τ-depth/decrease {M} ts (s/rec j lu≡) =
+  τ-depth/decrease {M} ts (P-Rec j lu≡) =
     sum/map-update< (τ-depth/proc {γ = 0} {δ = 0}) M j
       (τ-depth/lookup< lu≡
         (τ-depth/unfold<rec (Per.guarded j (td/lookup ts lu≡))))
@@ -82,15 +82,15 @@ module Safety.Termination
   lookup-done {j = j} d lu≡ rewrite sym ([]=⇒lookup lu≡) = d j
 
   still-done : ∀ {M M′} → M [ nothing ]⇒ M′ → done M → done M′
-  still-done {M} (s/if/true {Pr = Pr} j lu≡ _) d l
+  still-done {M} (P-If1 {Pr = Pr} j lu≡ _) d l
     with l ≟f j | lookup-done d lu≡
   ... | yes refl | done-if dPr _ rewrite lookup∘update l M Pr = dPr
   ... | no l≢j   | _            rewrite lookup∘update′ l≢j M Pr = d l
-  still-done {M} (s/if/false {Pr′ = Pr′} j lu≡ _) d l
+  still-done {M} (P-If2 {Pr′ = Pr′} j lu≡ _) d l
     with l ≟f j | lookup-done d lu≡
   ... | yes refl | done-if _ dPr′ rewrite lookup∘update l M Pr′ = dPr′
   ... | no l≢j   | _             rewrite lookup∘update′ l≢j M Pr′ = d l
-  still-done (s/rec j lu≡) d l with lookup-done d lu≡
+  still-done (P-Rec j lu≡) d l with lookup-done d lu≡
   ... | ()
 
   still-done* : ∀ {M M′} → M τ⇒ M′ → done M → done M′
@@ -99,15 +99,15 @@ module Safety.Termination
 
   still-ended :
     ∀ {M M′} (l : Fin K) → M [ nothing ]⇒ M′ → lu M l ≡ ∅ → lu M′ l ≡ ∅
-  still-ended {M} l (s/if/true {Pr = Pr} j lu≡ _) ended with l ≟f j
+  still-ended {M} l (P-If1 {Pr = Pr} j lu≡ _) ended with l ≟f j
   ... | no l≢j rewrite lookup∘update′ l≢j M Pr = ended
   ... | yes refl rewrite []=⇒lookup lu≡ with ended
   ...   | ()
-  still-ended {M} l (s/if/false {Pr′ = Pr′} j lu≡ _) ended with l ≟f j
+  still-ended {M} l (P-If2 {Pr′ = Pr′} j lu≡ _) ended with l ≟f j
   ... | no l≢j rewrite lookup∘update′ l≢j M Pr′ = ended
   ... | yes refl rewrite []=⇒lookup lu≡ with ended
   ...   | ()
-  still-ended {M} l (s/rec {Pr = Pr} j lu≡) ended with l ≟f j
+  still-ended {M} l (P-Rec {Pr = Pr} j lu≡) ended with l ≟f j
   ... | no l≢j rewrite lookup∘update′ l≢j M (unfold/proc Pr) = ended
   ... | yes refl rewrite []=⇒lookup lu≡ with ended
   ...   | ()
@@ -130,12 +130,12 @@ module Safety.Termination
     (ifp E then Pr else Pr′) ts lu≡ (done-if dPr dPr′)
     with eval-bool (Per.guard j (td/lookup ts (lookup⇒[]= j M lu≡)))
   ...   | inj₁ e⇓true =
-    let st = s/if/true j (lookup⇒[]= j M lu≡) e⇓true
+    let st = P-If1 j (lookup⇒[]= j M lu≡) e⇓true
         M′ , r , ended =
           final-run/proc Pr (preservation/τ ts st) (lookup∘update j M Pr) dPr
     in M′ , run/τ st r , ended
   ...   | inj₂ e⇓false =
-    let st = s/if/false j (lookup⇒[]= j M lu≡) e⇓false
+    let st = P-If2 j (lookup⇒[]= j M lu≡) e⇓false
         M′ , r , ended =
           final-run/proc Pr′ (preservation/τ ts st) (lookup∘update j M Pr′)
             dPr′

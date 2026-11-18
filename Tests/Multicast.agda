@@ -14,6 +14,7 @@
 module Tests.Multicast where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Fin.Subset using (⁅_⁆; _∪_; ⊥)
@@ -42,8 +43,8 @@ B = 1F
 C = 2F
 
 -- `A`'s one message (a single label pins `I = 0`)
-announce : Fin 1
-announce = 0F
+announce : ℕ
+announce = 0
 
 BC CB : PartSet
 BC = ⁅ B ⁆ ∪ ⁅ C ⁆

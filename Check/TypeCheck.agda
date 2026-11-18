@@ -1,7 +1,8 @@
 {-# OPTIONS --guardedness #-}
 
--- Deciding `⊢p` over a graph: `⊢p` at `(Δ , G)` is `⊢a` at that state
--- (`alg⇒typing`, `typing⇒alg`).
+-- Deciding the paper's judgement over a graph, at the class of a state and
+-- with the anchors as classes: it is `⊢a` at that state (`alg⇒typing`,
+-- `typing⇒alg`).
 
 open import Data.Nat using (ℕ)
 open import Data.Vec using (Vec)
@@ -38,7 +39,7 @@ module Check.TypeCheck (N : ℕ) where
       ∀ {γ δ}
         (Γ : Vec Sort γ)(Δ : Vec Behav δ)(P : PartSet)(Pr : Proc γ δ)
         (s : Behav)
-      → Dec (Γ & Δ ⊢p P ◂ Pr ∶ s)
+      → Dec (Γ & classes Δ ⊢[ P ] Pr ∶ [ s ])
     tc? Γ Δ P Pr s =
       map′ (λ d → alg⇒typing d refl)
            (λ td → alg/mono (λ { refl → td }) (typing⇒alg bal Pr td))

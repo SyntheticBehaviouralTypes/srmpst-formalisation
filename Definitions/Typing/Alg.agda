@@ -29,12 +29,15 @@ open import Relation.Nullary using (¬_)
 open import Relation.Unary using (Pred; _∈_; _⊆_; _∪_; _∩_; Satisfiable)
   renaming (∅ to ∅S)
 
-open import Data.Fin.Subset using () renaming (_∈_ to _∈ˢ_)
+open import Data.Fin.Subset using () renaming (_∈_ to _∈ˢ_; _∉_ to _∉ˢ_)
 
 open import Relation.Binary.Construct.Closure.ReflexiveTransitive
   using (Star; ε; _◅_)
 
+open import Data.Maybe using (Maybe)
+
 open import Definitions.Typing.Declarative
+open import Utils.Family using (_∋_↦_)
 
 module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   open MPST wb
@@ -71,7 +74,7 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
 
     wv/step :
       ∀ {V s α t}
-      → (na : P not-active-in s)
+      → (na : ¬ s -⟨ P ⟩->)
       → (gr : s -< α >-> t)
       → (k  : ∀ {β u} → s -< β >-> u → WaitV P L (V ∪ (s ~_)) u)
       → WaitV P L V s
@@ -115,7 +118,7 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
 
   wait/~ c G~H (wv/step na gr k) =
     wv/step
-      (na-bisim G~H na)
+      (¬act/~ G~H na)
       (~L→ G~H gr)
       (λ gr′ →
         waitV/mono (map₂ (~trans (~sym G~H)))
@@ -142,8 +145,8 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
 
   waitLeaf _  _  (wv/leaf x)             = x
   waitLeaf _  _  (wv/cycle (_ , () , _) _)
-  waitLeaf {P} {α = α} gr px (wv/step na _ _) =
-    ⊥-elim (∉αˢ→¬∈αˢ {P} {α} (na gr) px)
+  waitLeaf gr px (wv/step na _ _) =
+    ⊥-elim (na (_ , _ , gr , px))
 
   -- Re-rooting: each cycle back to the top `G` becomes `G`'s own tree.  The
   -- inclusion is a function so the recursion stays structural.
@@ -196,23 +199,19 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   Post : Part → Event → States δ → States δ
   Post P e = PostBy (_-<[ P ↦ e ]>->_)
 
-  -- `P` acts at `Q` only, and a step with event `e` at `Q` is enabled.
+  -- `Q` is first in `P`, and a step with event `e` at `Q` is enabled.
   Dom : PartSet → Part → Event → States δ
-  Dom P Q e (_ , s) = Focus P Q s × ∃[ t ] s -<[ Q ↦ e ]>-> t
+  Dom P Q e (_ , s) = Q first-in (P , s) × ∃[ t ] s -<[ Q ↦ e ]>-> t
 
-  -- A role of `P` can act.
-  Active : PartSet → Behav → Set
-  Active P s = ∃[ α ] ∃[ t ] s -< α >-> t × P ∈αˢ α
-
+  -- A role of `P` can act: `s —P→`.
   Act : PartSet → States δ
-  Act P (_ , s) = Active P s
+  Act P (_ , s) = s -⟨ P ⟩->
 
-  -- Role `R` of `Q` can receive from outsider `P`, at arity `suc I`.
-  Offers : PartSet → Part → Part → ℕ → States δ
-  Offers Q P R I (_ , s) =
-    Focus Q R s
-    × Σ[ j ∈ Fin (suc I) ] ∃[ U ] ∃[ t ]
-        Σ[ gr ∈ s -<[ R ↦ (？ P) # j < U > ]>-> t ] Foreign Q (action-of gr)
+  -- Role `R` of `Q` can receive from outsider `P`.
+  Offers : PartSet → Part → Part → States δ
+  Offers Q P R (_ , s) =
+    R first-in (Q , s) × P ∉ˢ Q
+    × ∃[ ℓ ] ∃[ U ] ∃[ t ] s -<[ R ↦ (？ P) # ℓ < U > ]>-> t
 
   -- `P` never acts again.
   Ended : PartSet → States δ
@@ -220,7 +219,7 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
 
   -- One step out of a `P`-idle state.
   _⇝[_]_ : Behav → PartSet → Behav → Set
-  s ⇝[ P ] t = P not-active-in s × ∃[ β ] s -< β >-> t
+  s ⇝[ P ] t = ¬ s -⟨ P ⟩-> × ∃[ β ] s -< β >-> t
 
   -- Idle-reachable states: `Post*` of `_⇝[ P ]_`.
   Reach : PartSet → States δ → States δ
@@ -281,7 +280,7 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
 
     -- The process `P` waits; its role `Q` sends.
     a/send :
-      ∀ {P Q Qs I}{i : Fin (suc I)}{S E Pr}{𝒮 : States δ}
+      ∀ {P Q Qs}{i : ℕ}{S E Pr}{𝒮 : States δ}
       → let e = (! Qs) # i < S > in
         (Q∈  : Q ∈ˢ P)
       → (etd : Γ ⊢e E ∶ S)
@@ -289,14 +288,16 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
       → (td  : Γ ⊢a P ◂ Pr ∶ Post Q e (Front P 𝒮))
       → Γ ⊢a P ◂ Q ⇒ Qs ! i < E >∙ Pr ∶ 𝒮
 
-    -- Every offered branch `(j , U)` is typed; unoffered ones need not be.
+    -- Every offered label `(ℓ , U)` has a typed branch; unoffered ones need
+    -- not.
     a/recv :
-      ∀ {P Q R I}{Br : Vec (Proc (suc γ) δ) (suc I)}{𝒮 : States δ}
+      ∀ {P Q R n}{Br : Vec (Maybe (Proc (suc γ) δ)) n}{𝒮 : States δ}
       → (R∈    : R ∈ˢ Q)
-      → (rdy   : 𝒮 ⊆ Wait Q (Offers Q P R I))
-      → (conts : ∀ {j U} → let e = (？ P) # j < U > in
+      → (rdy   : 𝒮 ⊆ Wait Q (Offers Q P R))
+      → (conts : ∀ {ℓ U} → let e = (？ P) # ℓ < U > in
                  Satisfiable (Post R e (Front Q 𝒮))
-               → (U ∷ Γ) ⊢a Q ◂ lu Br j ∶ Post R e (Front Q 𝒮))
+               → ∃[ Pr ] Br ∋ ℓ ↦ Pr
+                 × (U ∷ Γ) ⊢a Q ◂ Pr ∶ Post R e (Front Q 𝒮))
       → Γ ⊢a Q ◂ R ⇐ P ？· Br ∶ 𝒮
 
     a/if :
@@ -337,10 +338,11 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
 
   alg/mono {𝒮 = 𝒮}{𝒮′} f (a/recv {P = P}{R = R} R∈ rdy conts) =
     a/recv R∈ (rdy ∘ f)
-      (λ { {j}{U} (x , x∈) →
-           let mono = after/mono {step = _-<[ R ↦ (？ P) # j < U > ]>->_}
+      (λ { {ℓ}{U} (x , x∈) →
+           let mono = after/mono {step = _-<[ R ↦ (？ P) # ℓ < U > ]>->_}
                         {𝒮 = 𝒮}{𝒮′} f
-           in alg/mono mono (conts (x , mono {x} x∈)) })
+               Pr , br , td = conts (x , mono {x} x∈)
+           in Pr , br , alg/mono mono td })
 
   alg/mono f (a/if etd ttd ftd) =
     a/if etd (alg/mono f ttd) (alg/mono f ftd)
@@ -369,7 +371,7 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
   -- A send: the sort, the `Wait`, and the continuation after any idle walk
   -- followed by the send.
   at/send-inv :
-    ∀ {Γ : Vec Sort γ}{P Q Qs I}{i : Fin (suc I)}{E}{Pr : Proc γ δ}{ws G}
+    ∀ {Γ : Vec Sort γ}{P Q Qs}{i : ℕ}{E}{Pr : Proc γ δ}{ws G}
     → Γ ⊢at P ◂ Q ⇒ Qs ! i < E >∙ Pr ∶ (ws , G)
     → ∃[ S ] let e = (! Qs) # i < S > in
         (Γ ⊢e E ∶ S)
@@ -381,24 +383,25 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
     _ , etd , rdy {ws , G} mem ,
     λ { run (α , eq , g) →
           _ , td ,
-          ( _ , ((G , mem , run) , (α , _ , g , (_ , Q∈ , _ , eq)))
+          ( _ , ((G , mem , run) , (_ , α , g , (_ , Q∈ , _ , eq)))
           , (α , eq , g)) }
 
   -- A receive: the `Wait`, and every offered branch after any idle walk.
   at/recv-inv :
-    ∀ {Γ : Vec Sort γ}{P Q R I}{Br : Vec (Proc (suc γ) δ) (suc I)}{ws G}
+    ∀ {Γ : Vec Sort γ}{P Q R n}{Br : Vec (Maybe (Proc (suc γ) δ)) n}{ws G}
     → Γ ⊢at Q ◂ R ⇐ P ？· Br ∶ (ws , G)
-    → (ws , G) ∈ Wait Q (Offers Q P R I)
-    × (∀ {u j U t} → Star (_⇝[ Q ]_) G u
-                   → u -<[ R ↦ (？ P) # j < U > ]>-> t
-                   → (U ∷ Γ) ⊢at Q ◂ lu Br j ∶ (ws , t))
+    → (ws , G) ∈ Wait Q (Offers Q P R)
+    × (∀ {u ℓ U t} → Star (_⇝[ Q ]_) G u
+                   → u -<[ R ↦ (？ P) # ℓ < U > ]>-> t
+                   → ∃[ Pr ] Br ∋ ℓ ↦ Pr × (U ∷ Γ) ⊢at Q ◂ Pr ∶ (ws , t))
 
   at/recv-inv {ws = ws}{G} (_ , a/recv R∈ rdy conts , mem) =
     rdy {ws , G} mem ,
     λ { run (α , eq , g) →
-          let x∈ = _ , ((G , mem , run) , (α , _ , g , (_ , R∈ , _ , eq)))
+          let x∈ = _ , ((G , mem , run) , (_ , α , g , (_ , R∈ , _ , eq)))
                      , (α , eq , g)
-          in _ , conts (_ , x∈) , x∈ }
+              Pr , br , td = conts (_ , x∈)
+          in Pr , br , (_ , td , x∈) }
 
   at/rec-guarded :
     ∀ {Γ : Vec Sort γ}{P}{Pr : Proc γ (suc δ)}{x}

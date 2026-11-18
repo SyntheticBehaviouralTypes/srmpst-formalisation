@@ -43,12 +43,13 @@ module Definitions.View {N : ℕ} (B : BTheory N) where
     internal? : ∀ α → Dec (Internal α)
     internal? α = FinP.all? λ X → (X ∈α? α) →? (X ∈? Ps)
 
-    infix 4 _-τ->_
-
-    _-τ->_ : Behav → Behav → Set
-    G -τ-> G′ = ∃[ γ ] G -< γ >-> G′ × Internal γ
-
   open Block public
+
+  infix 4 _-[⊆_]->_
+
+  -- G —⊆R→ G′: a step internal to `R`.
+  _-[⊆_]->_ : Behav → PartSet → Behav → Set
+  G -[⊆ R ]-> G′ = ∃[ γ ] G -< γ >-> G′ × Internal R γ
 
   -- ══════════════════════════════════════════════════════════════════
   --  The local view of a block
@@ -56,17 +57,25 @@ module Definitions.View {N : ℕ} (B : BTheory N) where
 
   module Local (Ps : PartSet) where
 
-    Idle : Action → Set
-    Idle α = Ps ∉αˢ α
-
     infix 4 _-<_>->ᵛ_
 
-    -- An outsider's step, or an own step after own internal steps.
-    _-<_>->ᵛ_ : Behav → Action → Behav → Set
-    G -< α >->ᵛ G″ =
-        (Idle α × G -< α >-> G″)
-      ⊎ ( ¬ Internal Ps α × Ps ∈αˢ α
-        × ∃[ G₁ ] Star (_-τ->_ Ps) G G₁ × G₁ -< α >-> G″ )
+    -- The paper's →V-Ext and →V-Own: an outsiders' step, or an own step
+    -- after own internal steps.
+    data _-<_>->ᵛ_ : Behav → Action → Behav → Set where
+
+      V-Ext :
+        ∀ {G α G′}
+        → Ps ∉αˢ α
+        → G -< α >-> G′
+        → G -< α >->ᵛ G′
+
+      V-Own :
+        ∀ {G α G″ G′}
+        → Ps ∈αˢ α
+        → ¬ Internal Ps α
+        → Star (_-[⊆ Ps ]->_) G G″
+        → G″ -< α >-> G′
+        → G -< α >->ᵛ G′
 
     view : BTheory N
     view = record { Behav = Behav ; _-<_>->_ = _-<_>->ᵛ_ }
@@ -74,8 +83,8 @@ module Definitions.View {N : ℕ} (B : BTheory N) where
     -- A view step is a step of `B` with the same label.
     balanced/view : Balanced B → Balanced view
     balanced/view bal = record
-      { balanced = λ { (inj₁ (_ , gr)) → Balanced.balanced bal gr
-                     ; (inj₂ (_ , _ , _ , _ , gr)) → Balanced.balanced bal gr } }
+      { balanced = λ { (V-Ext _ gr)       → Balanced.balanced bal gr
+                     ; (V-Own _ _ _ gr) → Balanced.balanced bal gr } }
 
   open Local public
 

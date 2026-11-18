@@ -17,8 +17,8 @@ open import Data.Fin.Subset.Properties using (_∈?_)
 open import Data.List using ([]; _∷_)
 open import Data.List.Relation.Unary.All using ([]; _∷_)
 open import Data.List.Relation.Unary.Any using (here; there)
-open import Data.Maybe using (just; nothing)
-open import Data.Product using (∃-syntax; _,_; _×_; proj₁; proj₂)
+open import Data.Maybe using (Maybe; just; nothing)
+open import Data.Product using (∃-syntax; Σ-syntax; _,_; _×_; proj₁; proj₂)
 open import Data.Sum using (_⊎_; inj₁; inj₂; [_,_]′)
 open import Function using (id)
 open import Data.Vec using (Vec; []; _∷_; _[_]=_; _[_]≔_)
@@ -37,6 +37,7 @@ open import Definitions.Behav using (BTheory; WellBehaved; Balanced; Synchronous
 open import Definitions.Typing.Declarative using (module MPST)
 import Definitions.Typing.Alg as Alg
 import Definitions.Proc as A
+open import Utils.Family using (_∋_↦_; ∋-functional)
 
 module Safety.Preservation
   {N : ℕ} {B : BTheory N} (wb : WellBehaved B) (sync : Synchronous B)
@@ -84,8 +85,7 @@ module Safety.Preservation
       private
         Ps = lu roles j
       open MPST (wbL j) using ()
-        renaming (_-[¬_]->*_ to _-[¬_]->ᴸ*_; _~_ to _~ᴸ_; ~refl to ~reflᴸ
-                 ; skip/refl to skip/reflᴸ)
+        renaming (_-[¬_]->*_ to _-[¬_]->ᴸ*_; _~_ to _~ᴸ_; ~refl to ~reflᴸ)
       open import Definitions.Typing.Alg (wbL j)
         using ( at/send-inv; at/recv-inv; at/if-inv; at/rec-guarded
               ; waitLeaf; Wait; Dom )
@@ -104,10 +104,8 @@ module Safety.Preservation
 
       -- Outsiders' steps of `B` are steps of the local view.
       lift : ∀ {G G′} → G -[¬ Ps ]->* G′ → G -[¬ Ps ]->ᴸ* G′
-      lift (_ , tr/refl , []) = [] , BTheory.tr/refl , []
-      lift (_ ∷ _ , tr/step gr tr , idle ∷ idles) =
-        let _ , trL , idlesL = lift (_ , tr , idles)
-        in _ , BTheory.tr/step (local/idle idle gr) trL , idle ∷ idlesL
+      lift ε                       = ε
+      lift ((α , gr , idle) ◅ run) = (α , local/idle idle gr , idle) ◅ lift run
 
       idle :
         ∀ {Pr G α G′}
@@ -117,7 +115,7 @@ module Safety.Preservation
       idle td P∉ gv = unskip (lift (project/idle P∉ gv)) ~reflᴸ td
 
       send :
-        ∀ {P Qs I} {i : Fin (suc I)} {E V Pr G G′}
+        ∀ {P Qs} {i : ℕ} {E V Pr G G′}
         → P ∈ Ps
         → [] ⊢ᴸ[ j ] Ps ◂ P ⇒ Qs ! i < E >∙ Pr ∶ G
         → E ⇓ V
@@ -130,32 +128,35 @@ module Safety.Preservation
         with at/send-inv (unskip (lift tr) ~reflᴸ td)
       ... | _ , etd , _ , k with sort/value-typed (exp-pres etd e⇓v)
       ...   | refl =
-        unskip skip/reflᴸ (local/~ H′~G′)
+        unskip ε (local/~ H′~G′)
           (k ε (_ , ev-sender {P} {Qs} {i < sort/value V >} , gr))
 
       -- An own role is not an outsider.
       own≢out : ∀ {R P} → R ∈ Ps → P ∉ Ps → R ≢ P
       own≢out R∈ P∉ refl = P∉ R∈
 
+      -- `Cont` is the branch of label `i`.
       recv :
-        ∀ {P R Qs I} {i : Fin (suc I)} {V} {Br : Vec (Proc 1 0) (suc I)}
+        ∀ {P R Qs n} {i : ℕ} {V} {Br : Vec (Maybe (Proc 1 0)) n} {Cont}
           {G G′}
-        → R ∈ Ps → R ∈ Qs → P ∉ Ps
+        → R ∈ Ps → R ∈ Qs → P ∉ Ps → Br ∋ i ↦ Cont
         → [] ⊢ᴸ[ j ] Ps ◂ R ⇐ P ？· Br ∶ G
         → G -< P ⟶ Qs # i < sort/value V > >->ᵍ G′
-        → [] ⊢ᴸ[ j ] Ps ◂ Subst.[ val V / zero ]e lu Br i ∶ G′
-      recv {P} {R} {Qs} {i = i} {V} R∈ R∈Qs P∉ td gv
+        → [] ⊢ᴸ[ j ] Ps ◂ Subst.[ val V / zero ]e Cont ∶ G′
+      recv {P} {R} {Qs} {i = i} {V} {G′ = G′} R∈ R∈Qs P∉ br td gv
         with project/own
                ( R , R∈ , _
                , ev-recv {P} {Qs} {i < sort/value V >} (own≢out R∈ P∉) R∈Qs )
                gv
-      ... | H , H′ , tr , gr , H′~G′ =
-        unskip skip/reflᴸ (local/~ H′~G′)
-          (at/subst-expr (balL j) (te/val (value/sort V))
-            (proj₂ (at/recv-inv (unskip (lift tr) ~reflᴸ td))
-              ε (_ , eqR , gr)))
-        where
-          eqR = ev-recv {P} {Qs} {i < sort/value V >} (own≢out R∈ P∉) R∈Qs
+      ... | H , H′ , tr , gr , H′~G′
+        with proj₂ (at/recv-inv (unskip (lift tr) ~reflᴸ td)) ε
+               (_ , ev-recv {P} {Qs} {i < sort/value V >} (own≢out R∈ P∉) R∈Qs
+                  , gr)
+      ... | _ , br′ , tdc =
+        subst (λ X → [] ⊢ᴸ[ j ] Ps ◂ Subst.[ val V / zero ]e X ∶ G′)
+          (sym (∋-functional br br′))
+          (unskip ε (local/~ H′~G′)
+            (at/subst-expr (balL j) (te/val (value/sort V)) tdc))
 
       if-true :
         ∀ {E Pr Pr′ G}
@@ -171,7 +172,7 @@ module Safety.Preservation
 
       -- For `existence`: the sender's wait tree.
       send/wait :
-        ∀ {P Qs I} {i : Fin (suc I)} {E Pr G}
+        ∀ {P Qs} {i : ℕ} {E Pr G}
         → [] ⊢ᴸ[ j ] Ps ◂ P ⇒ Qs ! i < E >∙ Pr ∶ G
         → ∃[ S ] ([] ⊢e E ∶ S) × Wait Ps (Dom Ps P ((! Qs) # i < S >)) ([] , G)
       send/wait td = let S , etd , w , _ = at/send-inv td in S , etd , w
@@ -179,22 +180,22 @@ module Safety.Preservation
       -- For `existence`: a block at a receive from `P` takes part only
       -- internally in a step without `P`.
       receiver/busy :
-        ∀ {P R I} {Br : Vec (Proc 1 0) (suc I)} {G H H₁ β t}
+        ∀ {P R n} {Br : Vec (Maybe (Proc 1 0)) n} {G H H₁ β t}
         → [] ⊢ᴸ[ j ] Ps ◂ R ⇐ P ？· Br ∶ G
-        → G -[¬ Ps ]->* H → Star (_-τ->_ Ps) H H₁ → H₁ -< β >-> t
+        → G -[¬ Ps ]->* H → Star (_-[⊆ Ps ]->_) H H₁ → H₁ -< β >-> t
         → Ps ∈αˢ β → ¬ Internal Ps β → P ∉α β → ⊥
       receiver/busy {P} {H = H} {β = β} {t} td tr τs grβ own ¬int P∉β =
-        go (inj₂ (¬int , own , _ , τs , grβ))
+        go (V-Own own ¬int τs grβ)
         where
           go : _-<_>->ᵛ_ Ps H β t → ⊥
           go vβ
             with waitLeaf vβ own
                    (proj₁ (at/recv-inv (unskip (lift tr) ~reflᴸ td)))
-          ... | foc , _ , _ , _ , (α′ , eq , vα′) , _ =
-            ∉α→¬∈α {P} {β} P∉β
+          ... | (_ , foc) , _ , _ , _ , _ , (α′ , eq , vα′) =
+            P∉β
               (comm-∈α {α′} {β} {P}
                 (WellBehaved.recv-overlap (wbL j) vα′ vβ (_ , _ , eq)
-                  (foc (BTheory.skip/refl (Local j)) vβ own))
+                  (foc ε vβ own))
                 (Balanced.recv-sender (balL j) vα′ eq))
 
       -- For `Safety/Termination.agda`.
@@ -232,11 +233,11 @@ module Safety.Preservation
 
     preservation/τ :
       ∀ {M M′ G} → ⊢ᴸ M ∶ G → M [ nothing ]⇒ M′ → ⊢ᴸ M′ ∶ G
-    preservation/τ {M} ts (s/if/true j lu≡ _) =
+    preservation/τ {M} ts (P-If1 j lu≡ _) =
       ⊢ᴸ-update M ts (Per.if-true j (td/lookup ts lu≡))
-    preservation/τ {M} ts (s/if/false j lu≡ _) =
+    preservation/τ {M} ts (P-If2 j lu≡ _) =
       ⊢ᴸ-update M ts (Per.if-false j (td/lookup ts lu≡))
-    preservation/τ {M} ts (s/rec j lu≡) =
+    preservation/τ {M} ts (P-Rec j lu≡) =
       ⊢ᴸ-update M ts (Per.unfold j (td/lookup ts lu≡))
 
     -- A block that neither sends nor receives takes no part in the step.
@@ -244,11 +245,12 @@ module Safety.Preservation
       ∀ {j l P Qs c}
       → P ∈ lu roles j → l ≢ j → ¬ Receives j Qs l
       → lu roles l ∉αˢ (P ⟶ Qs # c)
-    other/idle {j} {l} {P} {Qs} {c} P∈ l≢j ¬r X X∈ with X ≟f P
+    other/idle {j} {l} {P} {Qs} {c} P∈ l≢j ¬r (X , X∈ , X∈α) with X ≟f P
     ... | yes refl = ⊥-elim (l≢j (trans (sym (∈/owner X∈)) (∈/owner P∈)))
     ... | no X≢P with X ∈? Qs
     ...   | yes X∈Qs = ⊥-elim (¬r (l≢j , X , X∈Qs , ∈/owner X∈))
-    ...   | no X∉Qs = ev-other {P} {Qs} {c} {X} X≢P X∉Qs
+    ...   | no X∉Qs =
+      ≡nothing→∉α {X} {P ⟶ Qs # c} (ev-other {P} {Qs} {c} {X} X≢P X∉Qs) X∈α
 
     -- Roles of different blocks differ.
     apart : ∀ {j k X Y} → k ≢ j → X ∈ lu roles k → Y ∈ lu roles j → X ≢ Y
@@ -260,23 +262,23 @@ module Safety.Preservation
       → ⊢ᴸ M ∶ G → M [ just α ]⇒ M′ → G -< α >->ᵍ G′
       → ⊢ᴸ M′ ∶ G′
     follow {M}
-      ts (s/comm {P = P} {Qs} {i = i} {V = V} {Pr} {Rk} {Br}
+      ts (P-Com {P = P} {Qs} {V = V} {Pr} {Rk} {Cont}
                  j P∈ snd e⇓v recvs) gv l
       with l ≟f j
     ... | yes refl
       rewrite upd/sender {M} {l} {Pr} {Qs}
-                {λ k → Subst.[ val V / zero ]e lu (Br k) i} =
+                {λ k → Subst.[ val V / zero ]e Cont k} =
       Per.send l P∈ (td/lookup ts snd) e⇓v gv
     ... | no l≢j with receives? j Qs l
     ...   | yes r
       rewrite upd/recv {M} {j} {Pr} {Qs}
-                {λ k → Subst.[ val V / zero ]e lu (Br k) i} {l} r =
-      let R∈Qs , R∈ , rcv = recvs l r
-      in Per.recv l R∈ R∈Qs (λ P∈l → apart l≢j P∈l P∈ refl)
+                {λ k → Subst.[ val V / zero ]e Cont k} {l} r =
+      let R∈Qs , R∈ , _ , _ , rcv , br = recvs l r
+      in Per.recv l R∈ R∈Qs (λ P∈l → apart l≢j P∈l P∈ refl) br
            (td/lookup ts rcv) gv
     ...   | no ¬r
       rewrite upd/other {M} {j} {Pr} {Qs}
-                {λ k → Subst.[ val V / zero ]e lu (Br k) i} {l} l≢j ¬r =
+                {λ k → Subst.[ val V / zero ]e Cont k} {l} l≢j ¬r =
       Per.idle l (ts l) (other/idle P∈ l≢j ¬r) gv
 
     preservation/τ* :
@@ -295,11 +297,12 @@ module Safety.Preservation
       module Comm
         {j : Fin K} {P : Part} {Qs : PartSet} {c : Choice}
         (P∈ : P ∈ lu roles j)
-        {I : ℕ} {Rk : Fin K → Part} {Br : Fin K → Vec (Proc 1 0) (suc I)}
+        {Rk : Fin K → Part}
         {G₀ : Behav}
         (recvs : ∀ k → Receives j Qs k
                  → Rk k ∈ Qs × Rk k ∈ lu roles k
-                 × [] ⊢ᴸ[ k ] lu roles k ◂ Rk k ⇐ P ？· Br k ∶ G₀)
+                 × ∃[ n ] Σ[ Br ∈ Vec (Maybe (Proc 1 0)) n ]
+                     [] ⊢ᴸ[ k ] lu roles k ◂ Rk k ⇐ P ？· Br ∶ G₀)
         where
 
         private
@@ -332,8 +335,7 @@ module Safety.Preservation
           with k′ ≟f k
         ... | yes refl = (β , gr , inj₁ int) ◅ walk/mixed r walk
         ... | no k′≢k =
-          (β , gr , inj₂ λ Z Z∈ → ¬∈α→∉α {Z} {β} λ Z∈β →
-             apart k′≢k (int Z Z∈β) Z∈ refl)
+          (β , gr , inj₂ λ (Z , Z∈ , Z∈β) → apart k′≢k (int Z Z∈β) Z∈ refl)
           ◅ walk/mixed r walk
 
         -- (iii) A receiving block is never involved externally.
@@ -346,8 +348,8 @@ module Safety.Preservation
         ... | H , H₁ , tr , τs , H₁~u
           with ~R H₁~u grβ
         ... | _ , grβ′ , _ =
-          let _ , _ , td = recvs k r
-          in Per.receiver/busy k td tr τs grβ′ own ¬int (idle P P∈)
+          let _ , _ , _ , _ , td = recvs k r
+          in Per.receiver/busy k td tr τs grβ′ own ¬int (λ P∈β → idle (P , P∈ , P∈β))
 
         -- (i) A receiving block's internal step joins the hidden prefix.
         extend :
@@ -372,12 +374,13 @@ module Safety.Preservation
         pull {β = β} grβ idleJ idleR (_ , gv) = pullback Ρ grβ blocks gv
           where
             blocks : ∀ X → X ∈α α → block X ∉αˢ β
-            blocks X (_ , eqX) Z Z∈ with ev-inv {P} {Qs} {c} {X} eqX
+            blocks X (_ , eqX) (Z , Z∈ , Z∈β) with ev-inv {P} {Qs} {c} {X} eqX
             ... | inj₁ (refl , _) =
-              idleJ Z (subst (λ o → Z ∈ lu roles o) (∈/owner P∈) Z∈)
+              idleJ (Z , subst (λ o → Z ∈ lu roles o) (∈/owner P∈) Z∈ , Z∈β)
             ... | inj₂ (_ , X∈Qs , _) with owner X ≟f j
-            ...   | yes eq = idleJ Z (subst (λ o → Z ∈ lu roles o) eq Z∈)
-            ...   | no ne  = idleR (owner X) (ne , X , X∈Qs , refl) Z Z∈
+            ...   | yes eq = idleJ (Z , subst (λ o → Z ∈ lu roles o) eq Z∈ , Z∈β)
+            ...   | no ne  =
+              idleR (owner X) (ne , X , X∈Qs , refl) (Z , Z∈ , Z∈β)
 
         -- Which blocks a step the sender's block is idle in involves.
         data Kind (β : Action) : Set where
@@ -393,7 +396,7 @@ module Safety.Preservation
         kind β
           with FinP.any? (λ k → receives? j Qs k ×? (lu roles k ∈αˢ? β))
         ... | no none =
-          k/idle λ k r → ¬∈αˢ→∉αˢ {lu roles k} {β} λ own → none (k , r , own)
+          k/idle λ k r own → none (k , r , own)
         ... | yes (k , r , own) with internal? (lu roles k) β
         ...   | yes int  = k/internal k r int
         ...   | no ¬int  = k/external k r own ¬int
@@ -401,17 +404,17 @@ module Safety.Preservation
         -- A view step of an idle block is a step of `B`.
         b-step :
           ∀ {u β v} → Ps ∉αˢ β → _-<_>->ᵛ_ Ps u β v → u -< β >-> v
-        b-step _ (inj₁ (_ , gr)) = gr
-        b-step {β = β} idle (inj₂ (_ , own , _)) =
-          ⊥-elim (∉αˢ→¬∈αˢ {Ps} {β} idle own)
+        b-step _ (V-Ext _ gr) = gr
+        b-step {β = β} idle (V-Own own _ _ _) =
+          ⊥-elim (idle own)
 
         -- The sender's leaves.
         𝒮 : Behavs
         𝒮 u = Dom Ps P ((! Qs) # c) ([] , u)
 
         c𝒮 : Closed 𝒮
-        c𝒮 G~H (foc , _ , α′ , eq , g) =
-          VJ.focus/~ G~H foc , _ , α′ , eq , VJ.~L→ G~H g
+        c𝒮 G~H (fi , _ , α′ , eq , g) =
+          VJ.first-in/~ G~H fi , _ , α′ , eq , VJ.~L→ G~H g
 
         -- A leaf is a global step.
         leaf : ∀ {u} → 𝒮 u → ∃[ G′ ] u -< α >->ᵍ G′
@@ -446,31 +449,30 @@ module Safety.Preservation
         ready-or-∈T walk (wv/leaf x)      = inj₁ (leaf x)
         ready-or-∈T walk (wv/cycle _ inT) = inj₂ inT
         ready-or-∈T walk (wv/step na gr k) =
-          advance⊎ (VJ.in/later gr) walk gr (na gr) λ walk′ →
+          advance⊎ (VJ.in/later gr) walk gr (VJ.¬act⇒∉ na gr) λ walk′ →
             ready-or-∈T walk′ (k gr)
 
-        -- After a cycle: walk the `∈T` run, re-rooting the tree each step.
+        -- After a cycle: walk the run to `Ps`'s step (`Ps ∈ u`),
+        -- re-rooting the tree each step.
         ready-from-∈T :
-          ∀ {u} → Star Walk G₀ u → WaitV Ps 𝒮 ∅S u → Ps VJ.∈T u
+          ∀ {u H} → Star Walk G₀ u → WaitV Ps 𝒮 ∅S u
+          → u VJ.-→* H → H VJ.-⟨ Ps ⟩->
           → ∃[ G′ ] u -< α >->ᵍ G′
-        ready-from-∈T walk (wv/leaf x) _ = leaf x
-        ready-from-∈T walk (wv/cycle (_ , () , _) _) _
-        ready-from-∈T walk (wv/step na _ _)
-          (_ , _ , VJ.tr/step {α = β} gr′ _ , here px) =
-          ⊥-elim (∉αˢ→¬∈αˢ {Ps} {β} (na gr′) px)
-        ready-from-∈T walk top@(wv/step na _ kP)
-          (_ , H , VJ.tr/step gr′ tr , there mem) =
+        ready-from-∈T walk (wv/leaf x) _ _ = leaf x
+        ready-from-∈T walk (wv/cycle (_ , () , _) _) _ _
+        ready-from-∈T walk (wv/step na _ _) ε act = ⊥-elim (na act)
+        ready-from-∈T walk top@(wv/step na _ kP) ((_ , gr′) ◅ run) act =
           [ id , ⊥-elim ]′
-            (advance⊎ {X = ∅S} id walk gr′ (na gr′) λ walk′ →
+            (advance⊎ {X = ∅S} id walk gr′ (VJ.¬act⇒∉ na gr′) λ walk′ →
                inj₁ (ready-from-∈T walk′
                        (waitV/unfold-top c𝒮 top (λ w → w) (kP gr′))
-                       (_ , H , tr , mem)))
+                       run act))
 
         existence :
           Wait Ps (Dom Ps P ((! Qs) # c)) ([] , G₀) → ∃[ G′ ] G₀ -< α >->ᵍ G′
         existence wP with ready-or-∈T ε wP
-        ... | inj₁ res = res
-        ... | inj₂ inT = ready-from-∈T ε wP inT
+        ... | inj₁ res              = res
+        ... | inj₂ (_ , run , act) = ready-from-∈T ε wP run act
 
       -- The global step a session step corresponds to exists, and every
       -- process follows it.
@@ -479,14 +481,14 @@ module Safety.Preservation
         → ⊢ᴸ M ∶ G → M [ just α ]⇒ M′
         → ∃[ G′ ] G -< α >->ᵍ G′ × ⊢ᴸ M′ ∶ G′
       preservation/comm ts
-        st@(s/comm {P = P} {Qs} {i = i} {V = V} {Rk = Rk} {Br}
+        st@(P-Com {P = P} {Qs} {V = V} {Rk = Rk}
                    j P∈ snd e⇓v recvs)
         with Per.send/wait j (td/lookup ts snd)
       ... | S , etd , wP with sort/value-typed (exp-pres etd e⇓v)
       ...   | refl =
         let G′ , gv =
-              Comm.existence P∈ {Rk = Rk} {Br}
-                (λ k r → let R∈Qs , R∈ , rcv = recvs k r
-                         in R∈Qs , R∈ , td/lookup ts rcv)
+              Comm.existence P∈ {Rk = Rk}
+                (λ k r → let R∈Qs , R∈ , n , Br , rcv , _ = recvs k r
+                         in R∈Qs , R∈ , n , Br , td/lookup ts rcv)
                 wP
         in G′ , gv , follow ts st gv

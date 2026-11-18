@@ -75,13 +75,13 @@ module Definitions.Graph.View (N : ℕ) where
 
     path⇒τs :
       ∀ {s t k} → PathVia Gτ (λ _ → true) s t k
-      → Star (V._-τ->_ Ps) s t
+      → Star (λ a b → a V.-[⊆ Ps ]-> b) s t
     path⇒τs path/nil = ε
     path⇒τs (path/cons _ gr rest) =
       let gr′ , int = edgeτ⇒ gr in (_ , gr′ , int) ◅ path⇒τs rest
 
     τs⇒path :
-      ∀ {s t} → Star (V._-τ->_ Ps) s t
+      ∀ {s t} → Star (λ a b → a V.-[⊆ Ps ]-> b) s t
       → ∃[ k ] PathVia Gτ (λ _ → true) s t k
     τs⇒path ε = _ , path/nil
     τs⇒path ((_ , gr , int) ◅ τs) =
@@ -92,14 +92,14 @@ module Definitions.Graph.View (N : ℕ) where
     closure s =
       filter (_∈ˢ? reachVia Gτ (λ _ → true) s) (allFin n)
 
-    closure⇒ : ∀ {s u} → u ∈L closure s → Star (V._-τ->_ Ps) s u
+    closure⇒ : ∀ {s u} → u ∈L closure s → Star (λ a b → a V.-[⊆ Ps ]-> b) s u
     closure⇒ {s} {u} mem =
       let _ , bit =
             ∈-filter⁻ (_∈ˢ? reachVia Gτ (λ _ → true) s) {xs = allFin n} mem
           _ , p = reachVia-sound Gτ _ s bit
       in path⇒τs p
 
-    ⇒closure : ∀ {s u} → Star (V._-τ->_ Ps) s u → u ∈L closure s
+    ⇒closure : ∀ {s u} → Star (λ a b → a V.-[⊆ Ps ]-> b) s u → u ∈L closure s
     ⇒closure {s} {u} τs =
       let _ , p = τs⇒path τs
       in ∈-filter⁺ (_∈ˢ? reachVia Gτ (λ _ → true) s)
@@ -131,19 +131,19 @@ module Definitions.Graph.View (N : ℕ) where
       with ∈-++⁻ (idleOut s) (subst (_ ∈L_) (out≡ s) (step⇒listed gr))
     ... | inj₁ mem =
       let mem′ , idle = ∈-filter⁻ (λ e → Ps ∉αˢ? proj₁ e) mem
-      in inj₁ (idle , listed⇒step mem′)
+      in V.V-Ext idle (listed⇒step mem′)
     ... | inj₂ mem =
       let u , u∈ , memᵤ = find (∈-concatMap⁻ ownOut mem)
           mem′ , ¬int , own = ∈-filter⁻ (λ e → external? (proj₁ e)) memᵤ
-      in inj₂ (¬int , own , u , closure⇒ u∈ , listed⇒step mem′)
+      in V.V-Own own ¬int (closure⇒ u∈) (listed⇒step mem′)
 
     view⇐ :
       ∀ {s α t} → V._-<_>->ᵛ_ Ps s α t → _-<_>->_ {viewGraph} s α t
-    view⇐ {s} (inj₁ (idle , gr)) =
+    view⇐ {s} (V.V-Ext idle gr) =
       listed⇒step
         (subst (_ ∈L_) (sym (out≡ s))
           (∈-++⁺ˡ (∈-filter⁺ (λ e → Ps ∉αˢ? proj₁ e) (step⇒listed gr) idle)))
-    view⇐ {s} (inj₂ (¬int , own , u , τs , gr)) =
+    view⇐ {s} (V.V-Own own ¬int τs gr) =
       listed⇒step
         (subst (_ ∈L_) (sym (out≡ s))
           (∈-++⁺ʳ (idleOut s)

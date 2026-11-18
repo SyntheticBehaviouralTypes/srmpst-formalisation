@@ -6,6 +6,7 @@
 module Examples.RoundRobin where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using ([]; _∷_)
@@ -30,8 +31,8 @@ A = 0F
 B = 1F
 C = 2F
 
-token : Fin 1
-token = 0F
+token : ℕ
+token = 0
 
 -- The partitions with two blocks, as owner maps.
 own/AB∣C own/AC∣B own/A∣BC : Fin 3 → Fin 2

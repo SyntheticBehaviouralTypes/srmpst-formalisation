@@ -49,35 +49,23 @@ module Definitions.Graph.NetworkPresent (N : ℕ) where
     -- Index equations are arguments matched as `refl`; a `subst` around the
     -- corecursive call would break guardedness.
 
-    mutual
-      ≲N→G/eq :
-        ∀ {s t i j}
-        → nix n s ≡ i → nix n t ≡ j
-        → TN._≲_ s t → TG._≲_ i j
-      TG._≲_.simulate (≲N→G/eq {s} {t} refl refl sim) {α} {j₁} gr =
-        let u , stU , rel = TN._≲_.simulate sim (stepGN' {s = s} gr)
-        in nix n u , step⇒pres n stU , ~N→G/eq (nix-nst n j₁) refl rel
+    ~N→G/eq :
+      ∀ {s t i j}
+      → nix n s ≡ i → nix n t ≡ j
+      → TN._~_ s t → TG._~_ i j
+    ~N→G/eq eq₁ eq₂ sim .TG._~_.sym = ~N→G/eq eq₂ eq₁ (TN.~sym sim)
+    ~N→G/eq {s} {t} refl refl sim .TG._~_.step {α} {j₁} gr =
+      let u , stU , rel = TN.~L sim (stepGN' {s = s} gr)
+      in nix n u , step⇒pres n stU , ~N→G/eq (nix-nst n j₁) refl rel
 
-      ~N→G/eq :
-        ∀ {s t i j}
-        → nix n s ≡ i → nix n t ≡ j
-        → TN._~_ s t → TG._~_ i j
-      ~N→G/eq eq₁ eq₂ (l , r) = ≲N→G/eq eq₁ eq₂ l , ≲N→G/eq eq₂ eq₁ r
-
-    mutual
-      ≲G→N/eq :
-        ∀ {i j s t}
-        → nst n i ≡ s → nst n j ≡ t
-        → TG._≲_ i j → TN._≲_ s t
-      TN._≲_.simulate (≲G→N/eq {i} {j} refl refl sim) {α} {u} stN =
-        let j′ , grJ , rel = TG._≲_.simulate sim (stepNG' {i = i} stN)
-        in nst n j′ , pres⇒step n grJ , ~G→N/eq (nst-nix n u) refl rel
-
-      ~G→N/eq :
-        ∀ {i j s t}
-        → nst n i ≡ s → nst n j ≡ t
-        → TG._~_ i j → TN._~_ s t
-      ~G→N/eq eq₁ eq₂ (l , r) = ≲G→N/eq eq₁ eq₂ l , ≲G→N/eq eq₂ eq₁ r
+    ~G→N/eq :
+      ∀ {i j s t}
+      → nst n i ≡ s → nst n j ≡ t
+      → TG._~_ i j → TN._~_ s t
+    ~G→N/eq eq₁ eq₂ sim .TN._~_.sym = ~G→N/eq eq₂ eq₁ (TG.~sym sim)
+    ~G→N/eq {i} {j} refl refl sim .TN._~_.step {α} {u} stN =
+      let j′ , grJ , rel = TG.~L sim (stepNG' {i = i} stN)
+      in nst n j′ , pres⇒step n grJ , ~G→N/eq (nst-nix n u) refl rel
 
     ~N→G : ∀ {s t} → TN._~_ s t → TG._~_ (nix n s) (nix n t)
     ~N→G {s} {t} = ~N→G/eq {s = s} {t = t} refl refl
@@ -98,8 +86,6 @@ module Definitions.Graph.NetworkPresent (N : ℕ) where
             (WG.step-deterministic (step⇒pres n st₁) (step⇒pres n st₂))
       ; step-sort-det = λ st₁ st₂ →
           WG.step-sort-det (step⇒pres n st₁) (step⇒pres n st₂)
-      ; step-arity-det = λ st₁ st₂ →
-          WG.step-arity-det (step⇒pres n st₁) (step⇒pres n st₂)
       ; no-new-branch/step = λ {G} st idle stᵢ stⱼ′ ceq →
           let Gⱼ , grⱼ =
                 WG.no-new-branch/step (step⇒pres n st) idle
@@ -124,8 +110,6 @@ module Definitions.Graph.NetworkPresent (N : ℕ) where
             (WN.step-deterministic (pres⇒step n st₁) (pres⇒step n st₂))
       ; step-sort-det = λ st₁ st₂ →
           WN.step-sort-det (pres⇒step n st₁) (pres⇒step n st₂)
-      ; step-arity-det = λ st₁ st₂ →
-          WN.step-arity-det (pres⇒step n st₁) (pres⇒step n st₂)
       ; no-new-branch/step = λ {i} st idle stᵢ stⱼ′ ceq →
           let tⱼ , stⱼ =
                 WN.no-new-branch/step (pres⇒step n st) idle

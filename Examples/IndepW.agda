@@ -7,6 +7,7 @@
 module Examples.IndepW where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
@@ -35,8 +36,8 @@ A2 = 4F
 B2 = 5F
 C2 = 6F
 
-item : Fin 1
-item = 0F
+item : ℕ
+item = 0
 
 private
   itm : Fin 7 → Fin 7 → _

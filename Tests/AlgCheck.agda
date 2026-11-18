@@ -7,6 +7,7 @@
 module Tests.AlgCheck where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin; zero)
 open import Data.Fin.Patterns
 open import Data.List using ([]; _∷_)
@@ -42,15 +43,14 @@ module Ex6 where
   C = 2F
   D = 3F
 
-  -- typed labels pin `nchoices`: an unsolved one blocks every decision
-  start step : Fin 1
-  start = 0F
-  step  = 0F
+  start step : ℕ
+  start = 0
+  step  = 0
 
   -- `B` to `C`: round the loop again, or halt
-  again halt : Fin 2
-  again = 0F
-  halt  = 1F
+  again halt : ℕ
+  again = 0
+  halt  = 1
 
   -- G=0  L=1  M=2  H=3   (4 = ended)
   --
@@ -127,9 +127,8 @@ module SkipVar where
   B = 1F
   C = 2F
 
-  -- typed labels pin `nchoices`: an unsolved one blocks every decision
-  tick : Fin 1
-  tick = 0F
+  tick : ℕ
+  tick = 0
 
   β : Action
   β = B ⟶ ⁅ C ⁆ # tick < s/unit >

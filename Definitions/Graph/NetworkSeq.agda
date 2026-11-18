@@ -274,42 +274,36 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
 
     -- ── `injR` and `seamTo` preserve `~` ──
 
-    mutual
-      ≲-injR : ∀ {b b′} → b T₂.~ b′ → injR {n₁} b T⨾.≲ injR b′
-      ≲-injR {live b} {b′} pb .T⨾._≲_.simulate st
-        with sstep-inv₂ n₁ n₂ {b = b} st
-      ... | _ , st₂ , refl
-        with T₂.~L pb st₂
-      ...   | _ , st₂′ , pc
-        with b′
-      ...     | live _ = _ , stepSeq₂ st₂′ , ~-injR pc
-      ...     | nend   = ⊥-elim (nstep-nend-⊥ n₂ st₂′)
-      ≲-injR {nend} pb .T⨾._≲_.simulate st =
-        ⊥-elim (nstep-nend-⊥ n⨾ st)
-
-      ~-injR : ∀ {b b′} → b T₂.~ b′ → injR {n₁} b T⨾.~ injR b′
-      ~-injR pb = ≲-injR pb , ≲-injR (T₂.~sym pb)
+    ~-injR : ∀ {b b′} → b T₂.~ b′ → injR {n₁} b T⨾.~ injR b′
+    ~-injR pb .T⨾._~_.sym = ~-injR (T₂.~sym pb)
+    ~-injR {live b} {b′} pb .T⨾._~_.step st
+      with sstep-inv₂ n₁ n₂ {b = b} st
+    ... | _ , st₂ , refl
+      with T₂.~L pb st₂
+    ...   | _ , st₂′ , pc
+      with b′
+    ...     | live _ = _ , stepSeq₂ st₂′ , ~-injR pc
+    ...     | nend   = ⊥-elim (nstep-nend-⊥ n₂ st₂′)
+    ~-injR {nend} pb .T⨾._~_.step st =
+      ⊥-elim (nstep-nend-⊥ n⨾ st)
 
     -- A live state moves (`mv₁`) and `nend` does not: never related.
-    mutual
-      ≲-seam : ∀ {a a′} → a T₁.~ a′ → seamTo n₁ n₂ a T⨾.≲ seamTo n₁ n₂ a′
-      ≲-seam {live a} {live a′} pa .T⨾._≲_.simulate st
-        with sstep-inv₁ n₁ n₂ {a = a} st
-      ... | _ , st₁ , refl
-        with T₁.~L pa st₁
-      ...   | _ , st₁′ , pt = _ , stepSeq₁ st₁′ , ~-seam pt
-      ≲-seam {live a} {nend} pa =
-        let _ , _ , st = mv₁ a
-            _ , st′ , _ = T₁.~L pa st
-        in ⊥-elim (nstep-nend-⊥ n₁ st′)
-      ≲-seam {nend} {live a′} pa =
-        let _ , _ , st = mv₁ a′
-            _ , st′ , _ = T₁.~R pa st
-        in ⊥-elim (nstep-nend-⊥ n₁ st′)
-      ≲-seam {nend} {nend} pa = T⨾.≲refl
-
-      ~-seam : ∀ {a a′} → a T₁.~ a′ → seamTo n₁ n₂ a T⨾.~ seamTo n₁ n₂ a′
-      ~-seam pa = ≲-seam pa , ≲-seam (T₁.~sym pa)
+    ~-seam : ∀ {a a′} → a T₁.~ a′ → seamTo n₁ n₂ a T⨾.~ seamTo n₁ n₂ a′
+    ~-seam {live a} {live a′} pa .T⨾._~_.sym = ~-seam (T₁.~sym pa)
+    ~-seam {live a} {live a′} pa .T⨾._~_.step st
+      with sstep-inv₁ n₁ n₂ {a = a} st
+    ... | _ , st₁ , refl
+      with T₁.~L pa st₁
+    ...   | _ , st₁′ , pt = _ , stepSeq₁ st₁′ , ~-seam pt
+    ~-seam {live a} {nend} pa =
+      let _ , _ , st = mv₁ a
+          _ , st′ , _ = T₁.~L pa st
+      in ⊥-elim (nstep-nend-⊥ n₁ st′)
+    ~-seam {nend} {live a′} pa =
+      let _ , _ , st = mv₁ a′
+          _ , st′ , _ = T₁.~R pa st
+      in ⊥-elim (nstep-nend-⊥ n₁ st′)
+    ~-seam {nend} {nend} pa = T⨾.~refl
 
     seqWB : WellBehaved (netTheory n⨾)
     seqWB .WellBehaved.recv-overlap {live (inj₂ a)} st st′ rQ Q∈
@@ -343,17 +337,6 @@ module Definitions.Graph.NetworkSeq (N : ℕ) where
     ... | _ , st₂ , _ | _ , st₂′ , _ =
       W₂.step-sort-det st₂ st₂′ eq eq′
     seqWB .WellBehaved.step-sort-det {nend} st st′ eq eq′ =
-      ⊥-elim (nstep-nend-⊥ n⨾ st)
-
-    seqWB .WellBehaved.step-arity-det {live (inj₂ a)} st st′ eq eq′
-      with sstep-inv₁ n₁ n₂ {a = a} st | sstep-inv₁ n₁ n₂ {a = a} st′
-    ... | _ , st₁ , _ | _ , st₁′ , _ =
-      W₁.step-arity-det st₁ st₁′ eq eq′
-    seqWB .WellBehaved.step-arity-det {live (inj₁ b)} st st′ eq eq′
-      with sstep-inv₂ n₁ n₂ {b = b} st | sstep-inv₂ n₁ n₂ {b = b} st′
-    ... | _ , st₂ , _ | _ , st₂′ , _ =
-      W₂.step-arity-det st₂ st₂′ eq eq′
-    seqWB .WellBehaved.step-arity-det {nend} st st′ eq eq′ =
       ⊥-elim (nstep-nend-⊥ n⨾ st)
 
     seqWB .WellBehaved.no-new-branch/step

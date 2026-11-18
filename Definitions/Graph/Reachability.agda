@@ -16,6 +16,8 @@ open import Data.Fin.Subset.Properties
 open import Data.List.Membership.Propositional using (find; lose)
 open import Data.List.Relation.Unary.Any using (Any; here; there)
 import Data.List.Relation.Unary.Any as Any
+open import Relation.Binary.Construct.Closure.ReflexiveTransitive
+  using (Star; ε; _◅_)
 open import Data.Product using (_×_; _,_; ∃-syntax; proj₁; proj₂)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.Vec using (lookup; tabulate)
@@ -42,7 +44,7 @@ module Definitions.Graph.Reachability (N : ℕ) where
 
   module _ (G : Graph) where
 
-    open BTheory (graphTheory G) using (_∈T_; in/α; in/later; tr/step)
+    open BTheory (graphTheory G) using (_∈T_; _-→*_; _-⟨_⟩->; in/α; in/later)
 
     -- Graph transition with `G` fixed (State G alone does not determine G).
     Step : State G → Action → State G → Set
@@ -250,11 +252,16 @@ module Definitions.Graph.Reachability (N : ℕ) where
       ∀ {P s} → P ∈T s
       → ∃[ t ] (∃[ n ] PathVia (λ _ → true) s t n
                 × Any (λ e → P ∈αˢ proj₁ e) (edges G t))
-    ∈T→reach {P} {s} (_ , _ , tr/step gr _ , here px) =
-      s , zero , path/nil , lose (step⇒listed gr) px
-    ∈T→reach {P} {s} (_ , t , tr/step gr tr , there mem)
-      with ∈T→reach (_ , t , tr , mem)
-    ... | t′ , n , path , active = t′ , suc n , path/cons tt gr path , active
+    ∈T→reach (_ , run , act) = go run act
+      where
+        go :
+          ∀ {P s u} → s -→* u → u -⟨ P ⟩->
+          → ∃[ t ] (∃[ n ] PathVia (λ _ → true) s t n
+                    × Any (λ e → P ∈αˢ proj₁ e) (edges G t))
+        go ε (_ , _ , gr , px) =
+          _ , zero , path/nil , lose (step⇒listed gr) px
+        go ((_ , gr) ◅ run) act with go run act
+        ... | t′ , n , path , active = t′ , suc n , path/cons tt gr path , active
 
     active? : ∀ P t → Dec (Any (λ e → P ∈αˢ proj₁ e) (edges G t))
     active? P t = Any.any? (λ e → P ∈αˢ? proj₁ e) (edges G t)

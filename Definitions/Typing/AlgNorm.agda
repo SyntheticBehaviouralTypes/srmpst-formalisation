@@ -1,12 +1,13 @@
 {-# OPTIONS --guardedness #-}
 
--- `⊢p → ⊢a` (`typing⇒alg`), by recursion on the process.
+-- `⊢ → ⊢a` (`typing⇒alg`), by recursion on the process.
 --
--- A `⊢p` derivation is first converted to a `WaitV` tree over a leaf family
--- carrying the facts its rule needs, and the facts are read off with
--- `waitFind`.  Reading them off `⊢p` directly is not structural: `t/skip`'s
--- leaves are `⊢p` derivations again.  Each family is `~`-closed and advances
--- along `¬P` steps.
+-- A derivation of the paper's judgement at the class of a state is first
+-- converted to a `WaitV` tree over a leaf family carrying the facts its
+-- rule needs, and the facts are read off with `waitFind`.  Reading them
+-- off the derivation directly is not structural: `skip`'s leaves are
+-- derivations again.  Each family is `~`-closed and advances along `¬P`
+-- steps.
 
 open import Data.Bool using (Bool; true; false; if_then_else_)
 
@@ -17,6 +18,12 @@ open import Data.Fin using (Fin; zero; suc)
 open import Data.Vec
   using (Vec; []; _∷_)
   renaming (lookup to lu)
+
+open import Data.Vec.Properties using (lookup-map)
+
+open import Data.Vec.Relation.Unary.Any using () renaming (here to hereᵛ; there to thereᵛ)
+
+import Data.Vec.Relation.Binary.Pointwise.Inductive as Pointwise
 
 open import Data.List using ([]; _∷_)
 open import Data.List.Relation.Unary.All using ([]; _∷_)
@@ -34,18 +41,19 @@ open import Data.List.Relation.Unary.Any using (here; there)
 
 open import Relation.Nullary using (¬_)
 
-open import Relation.Binary.PropositionalEquality using (refl)
+open import Relation.Binary.PropositionalEquality using (refl; sym; subst; cong)
 
 open import Relation.Unary using (_∈_; _⊆_)
 
-open import Data.Fin.Subset using () renaming (_∈_ to _∈ˢ_)
+open import Data.Fin.Subset using () renaming (_∈_ to _∈ˢ_; _∉_ to _∉ˢ_)
 
 open import Relation.Binary.Construct.Closure.ReflexiveTransitive
-  using (Star; ε; _◅_)
+  using (Star; ε; _◅_; _◅◅_)
 
-import Data.Vec.Relation.Binary.Pointwise.Inductive as Pointwise
+open import Data.Maybe using (Maybe; just)
 
 open import Definitions.Typing.Declarative
+open import Utils.Family using (_∋_↦_; here; there; ∋-functional)
 
 module Definitions.Typing.AlgNorm
   {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
@@ -53,7 +61,7 @@ module Definitions.Typing.AlgNorm
   open MPST wb
 
   open import Definitions.Typing.Alg wb
-  open import Definitions.Typing.Properties wb using (td/bisim)
+  open import Definitions.Typing.Properties wb using (td/≐; ≐ᵛ-refl)
   open import Definitions.Typing.MainLeaf wb using (waitFind)
 
   private
@@ -61,16 +69,22 @@ module Definitions.Typing.AlgNorm
       γ δ ξ : ℕ
 
   -- ══════════════════════════════════════════════════════════════════
-  --  The canonical set: `⊢p`-typeability
+  --  The canonical set: typeability at the class
   -- ══════════════════════════════════════════════════════════════════
 
-  Typ : Vec Sort γ → Vec Behav δ → NProc γ δ → Behavs
-  Typ Γ Δ PPr G = Γ & Δ ⊢p PPr ∶ G
+  Typ : Vec Sort γ → Vec Cls δ → PartSet → Proc γ δ → Behavs
+  Typ Γ Δ R Pr g = Γ & Δ ⊢[ R ] Pr ∶ [ g ]
 
   typ/closed :
-    ∀ {Γ : Vec Sort γ}{Δ : Vec Behav δ}{P}{Pr : Proc γ δ}
-    → Closed (Typ Γ Δ (P ◂ Pr))
-  typ/closed = td/bisim ~ᵛ-refl
+    ∀ {Γ : Vec Sort γ}{Δ : Vec Cls δ}{R}{Pr : Proc γ δ}
+    → Closed (Typ Γ Δ R Pr)
+  typ/closed g~h = td/≐ ≐ᵛ-refl g~h
+
+  -- Along a `¬R` run, then `~`.
+  typ/unskip :
+    ∀ {Γ : Vec Sort γ}{Δ : Vec Cls δ}{R}{Pr : Proc γ δ}{g z h}
+    → Typ Γ Δ R Pr g → g -[¬ R ]->* z → z ~ h → Typ Γ Δ R Pr h
+  typ/unskip td run z~h = td/≐ ≐ᵛ-refl z~h (forward td (run⇒ᶜ run))
 
   -- ══════════════════════════════════════════════════════════════════
   --  Following a `¬P` run with a `Wait`
@@ -109,13 +123,13 @@ module Definitions.Typing.AlgNorm
     → G -[¬ P ]->* s
     → WaitV P 𝒮 ∅S s
 
-  waitFollow c adv w ([] , tr/refl , []) = w
-  waitFollow c adv w (_ ∷ αs , tr/step gr tr , P∉α ∷ allP) =
-    waitFollow c adv (waitStep1 c adv w gr P∉α) (αs , tr , allP)
+  waitFollow c adv w ε                       = w
+  waitFollow c adv w ((_ , gr , P∉α) ◅ run) =
+    waitFollow c adv (waitStep1 c adv w gr P∉α) run
 
   idle⇒unskip : ∀ {P s t} → Star (_⇝[ P ]_) s t → s -[¬ P ]->* t
-  idle⇒unskip ε                   = skip/refl
-  idle⇒unskip ((na , _ , gr) ◅ run) = tr¬/step gr (na gr) (idle⇒unskip run)
+  idle⇒unskip ε                     = ε
+  idle⇒unskip ((na , _ , gr) ◅ run) = (_ , gr , ¬act⇒∉ na gr) ◅ idle⇒unskip run
 
   -- States a `¬P` run reaches from `𝒜`, up to `~` (`a/var`, `a/rec`).
   Unskipped : PartSet → Behavs → Behavs
@@ -126,16 +140,23 @@ module Definitions.Typing.AlgNorm
     a , a∈ , _ , tr , ~trans eq G~H
 
   -- ══════════════════════════════════════════════════════════════════
-  --  Visited vectors as sets (`Vof`, `Typing/Alg.agda`)
+  --  Visited vectors of classes as sets
   -- ══════════════════════════════════════════════════════════════════
 
-  vof/cons :
-    ∀ {ξ}{Ξ : Vec Behav ξ}{A s} → Vof (A ∷ Ξ) s → Vof Ξ s ⊎ (A ~ s)
-  vof/cons (zero  , eq) = inj₂ eq
-  vof/cons (suc X , eq) = inj₁ (X , eq)
+  Vofᶜ : Vec Cls ξ → Behavs
+  Vofᶜ Ξ s = ∃[ X ] rep (lu Ξ X) ~ s
 
-  vof/nil : ∀ {s} → Vof [] s → ⊥
-  vof/nil (() , _)
+  vofᶜ/cons :
+    ∀ {ξ}{Ξ : Vec Cls ξ}{A s} → Vofᶜ (A ∷ Ξ) s → Vofᶜ Ξ s ⊎ (rep A ~ s)
+  vofᶜ/cons (zero  , eq) = inj₂ eq
+  vofᶜ/cons (suc X , eq) = inj₁ (X , eq)
+
+  vofᶜ/nil : ∀ {s} → Vofᶜ [] s → ⊥
+  vofᶜ/nil (() , _)
+
+  ∈ᵛ⇒vofᶜ : ∀ {ξ}{Ξ : Vec Cls ξ}{G} → G ∈ᵛ Ξ → ∃[ X ] lu Ξ X ≐ G
+  ∈ᵛ⇒vofᶜ (hereᵛ x)  = zero , x
+  ∈ᵛ⇒vofᶜ (thereᵛ a) = let X , e = ∈ᵛ⇒vofᶜ a in suc X , e
 
   -- `∅`'s leaf family.  Families not mentioning `Γ`/`Δ` live outside the
   -- block below, where those would be unsolvable phantom parameters.
@@ -154,20 +175,17 @@ module Definitions.Typing.AlgNorm
   ---------------------------------------------------------------------
 
   endChase :
-    ∀ {P}{G}
-    → P ∈T G
+    ∀ {P}{G H}
+    → G -→* H → H -⟨ P ⟩->
     → WaitV P (EndL P) ∅S G
     → ⊥
 
-  endChase inT (wv/leaf x) = x inT
-  endChase _ (wv/cycle (_ , () , _) _)
-  endChase (_ , _ , tr/refl , ()) (wv/step _ _ _)
-  endChase {P = P} (_ , _ , tr/step {α = α} gr₁ _ , here p)
-           (wv/step na _ _) =
-    ∉αˢ→¬∈αˢ {P} {α} (na gr₁) p
-  endChase (_ , _ , tr/step gr₁ tr , there mem) top@(wv/step na _ _) =
-    endChase (_ , _ , tr , mem)
-      (waitStep1 endL/closed endL/adv top gr₁ (na gr₁))
+  endChase run act (wv/leaf x) = x (_ , run , act)
+  endChase _ _ (wv/cycle (_ , () , _) _)
+  endChase ε act (wv/step na _ _) = na act
+  endChase ((_ , gr₁) ◅ run) act top@(wv/step na _ _) =
+    endChase run act
+      (waitStep1 endL/closed endL/adv top gr₁ (¬act⇒∉ na gr₁))
 
   -- ══════════════════════════════════════════════════════════════════
   --  The leaf families
@@ -176,7 +194,7 @@ module Definitions.Typing.AlgNorm
   unskipped/adv : ∀ {P}{𝒜 : Behavs} → Advances P (Unskipped P 𝒜)
   unskipped/adv (a , a∈ , _ , tr , eq) grα P∉α =
     let _ , gr′ , eq′ = ~R eq grα
-    in a , a∈ , _ , skip/cat tr (skip/one gr′ P∉α) , eq′
+    in a , a∈ , _ , tr ◅◅ skip/one gr′ P∉α , eq′
 
   -- `rec`'s guardedness, a state-free fact kept out of `RecA`.
   RecG : ∀ {γ δ} → Proc γ (suc δ) → Behavs
@@ -200,7 +218,7 @@ module Definitions.Typing.AlgNorm
     ifE/adv : ∀ {P}{E} → Advances P (IfE E)
     ifE/adv etd _ _ = etd
 
-  module _ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Behav δ} where
+  module _ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Cls δ} where
 
     ---------------------------------------------------------------------
     -- send
@@ -208,26 +226,26 @@ module Definitions.Typing.AlgNorm
 
     -- Role `Q` of `P` sends.
     SendL :
-      ∀ {I} → PartSet → Part → PartSet → Fin (suc I) → Sort → Proc γ δ
+      PartSet → Part → PartSet → ℕ → Sort → Proc γ δ
       → Behavs
     SendL P Q Qs i S Pr u =
-      Q ∈ˢ P × Focus P Q u
-      × ∃[ u′ ] (u -<[ Q ↦ (! Qs) # i < S > ]>-> u′) × Typ Γ Δ (P ◂ Pr) u′
+      Q first-in (P , u)
+      × ∃[ u′ ] (u -<[ Q ↦ (! Qs) # i < S > ]>-> u′) × Typ Γ Δ P Pr u′
 
     sendL/closed :
-      ∀ {I P Q Qs}{i : Fin (suc I)}{S}{Pr} → Closed (SendL P Q Qs i S Pr)
-    sendL/closed G~H (Q∈ , foc , _ , (α , eq , gr) , td) =
-      Q∈ , focus/~ G~H foc , _ , (α , eq , ~L→ G~H gr)
+      ∀ {P Q Qs}{i : ℕ}{S}{Pr} → Closed (SendL P Q Qs i S Pr)
+    sendL/closed G~H (fi , _ , (α , eq , gr) , td) =
+      first-in/~ G~H fi , _ , (α , eq , ~L→ G~H gr)
       , typ/closed (~L→~ G~H gr) td
 
     sendL/adv :
-      ∀ {I P Q Qs}{i : Fin (suc I)}{S}{Pr} → Advances P (SendL P Q Qs i S Pr)
-    sendL/adv {P = P} (Q∈ , foc , _ , (α , eq , gr) , td) grα P∉α
+      ∀ {P Q Qs}{i : ℕ}{S}{Pr} → Advances P (SendL P Q Qs i S Pr)
+    sendL/adv {P = P} (fi@(Q∈ , _) , _ , (α , eq , gr) , td) grα P∉α
       with skip/advance {P = P} (skip/one {P = P} grα P∉α) gr
              (_ , Q∈ , _ , eq)
     ... | _ , gr′ , _ , tr , Z~ =
-      Q∈ , focus/skip foc (skip/one {P = P} grα P∉α) , _ , (α , eq , gr′)
-      , t/unskip tr Z~ td
+      first-in/skip fi (skip/one {P = P} grα P∉α) , _ , (α , eq , gr′)
+      , typ/unskip td tr Z~
 
     ---------------------------------------------------------------------
     -- recv
@@ -235,38 +253,38 @@ module Definitions.Typing.AlgNorm
 
     -- Role `R` of `Q` receives from `P`.
     RecvL :
-      ∀ {I} → Part → PartSet → Part → Vec (Proc (suc γ) δ) (suc I) → Behavs
-    RecvL {I} P Q R Br u =
-      R ∈ˢ Q × Focus Q R u
-      × (Σ[ j ∈ Fin (suc I) ] ∃[ U ] ∃[ t ]
-           Σ[ gr ∈ u -<[ R ↦ (？ P) # j < U > ]>-> t ]
-             Foreign Q (action-of gr))
-      × (∀ {j U t} → u -<[ R ↦ (？ P) # j < U > ]>-> t
-                   → Typ (U ∷ Γ) Δ (Q ◂ lu Br j) t)
+      ∀ {n} → Part → PartSet → Part → Vec (Maybe (Proc (suc γ) δ)) n → Behavs
+    RecvL P Q R Br u =
+      R first-in (Q , u)
+      × (P ∉ˢ Q × ∃[ ℓ ] ∃[ U ] ∃[ t ] u -<[ R ↦ (？ P) # ℓ < U > ]>-> t)
+      × (∀ {ℓ U t} → u -<[ R ↦ (？ P) # ℓ < U > ]>-> t
+                   → ∃[ Pr ] Br ∋ ℓ ↦ Pr × Typ (U ∷ Γ) Δ Q Pr t)
 
     recvL/closed :
-      ∀ {I P Q R}{Br : Vec (Proc (suc γ) δ) (suc I)} → Closed (RecvL P Q R Br)
-    recvL/closed G~H (R∈ , foc , (j , U , _ , (α , eq , gr) , fr) , k) =
-      R∈ , focus/~ G~H foc , (j , U , _ , (α , eq , ~L→ G~H gr) , fr) ,
+      ∀ {n P Q R}{Br : Vec (Maybe (Proc (suc γ) δ)) n} → Closed (RecvL P Q R Br)
+    recvL/closed G~H (fi , (P∉ , ℓ , U , _ , (α , eq , gr)) , k) =
+      first-in/~ G~H fi , (P∉ , ℓ , U , _ , (α , eq , ~L→ G~H gr)) ,
       λ { (α′ , eq′ , gr′) →
-          typ/closed (~R→~ G~H gr′) (k (α′ , eq′ , ~R→ G~H gr′)) }
+          let Pr , br , td = k (α′ , eq′ , ~R→ G~H gr′)
+          in Pr , br , typ/closed (~R→~ G~H gr′) td }
 
     -- A branch offered after a `¬Q` step was offered before it.
     recvL/adv :
-      ∀ {I P Q R}{Br : Vec (Proc (suc γ) δ) (suc I)}
+      ∀ {n P Q R}{Br : Vec (Maybe (Proc (suc γ) δ)) n}
       → Advances Q (RecvL P Q R Br)
-    recvL/adv {Q = Q} (R∈ , foc , (j , U , _ , (α , eq , gr) , fr) , k) grα Q∉α
+    recvL/adv {Q = Q} (fi@(R∈ , _) , (P∉ , ℓ , U , _ , (α , eq , gr)) , k) grα Q∉α
       with skip/advance {P = Q} (skip/one {P = Q} grα Q∉α) gr
              (_ , R∈ , _ , eq)
     ... | _ , gr′ , _ =
-      R∈ , focus/skip foc (skip/one {P = Q} grα Q∉α)
-      , (j , U , _ , (α , eq , gr′) , fr) ,
+      first-in/skip fi (skip/one {P = Q} grα Q∉α)
+      , (P∉ , ℓ , U , _ , (α , eq , gr′)) ,
       λ { (α″ , eq″ , gr″) →
           let tr  = skip/one {P = Q} grα Q∉α
               ceq = recv/same-comm tr R∈ gr (_ , _ , eq) gr″ (_ , _ , eq″)
               _ , gr₀ , _ , tr₀ , H~ =
                 branch/before tr R∈ (_ , _ , eq) gr gr″ ceq
-          in t/unskip tr₀ H~ (k (α″ , eq″ , gr₀)) }
+              Pr , br , td = k (α″ , eq″ , gr₀)
+          in Pr , br , typ/unskip td tr₀ H~ }
 
     ---------------------------------------------------------------------
     -- rec
@@ -274,212 +292,239 @@ module Definitions.Typing.AlgNorm
 
     -- `a/rec`'s anchor set: the body typed at its own anchor.
     RecA : ∀ {P} → Proc γ (suc δ) → Behavs
-    RecA {P = P} Pr W = Typ Γ (W ∷ Δ) (P ◂ Pr) W
+    RecA {P = P} Pr W = Γ & ([ W ] ∷ Δ) ⊢[ P ] Pr ∶ [ W ]
 
     recA/closed :
       ∀ {P}{Pr : Proc γ (suc δ)} → Closed (RecA {P = P} Pr)
     recA/closed W~W′ td =
-      td/bisim (W~W′ Pointwise.∷ ~ᵛ-refl) W~W′ td
+      td/≐ (W~W′ Pointwise.∷ ≐ᵛ-refl) W~W′ td
 
     ---------------------------------------------------------------------
     ---------------------------------------------------------------------
 
     -- The send's sort, found once before `sendWait` runs at it.
     SendE :
-      ∀ {I} → PartSet → Part → PartSet → Fin (suc I) → Exp γ → Proc γ δ
+      PartSet → Part → PartSet → ℕ → Exp γ → Proc γ δ
       → Behavs
     SendE P Q Qs i E Pr u =
       Q ∈ˢ P
       × Σ[ S ∈ Sort ]
           ∃[ u′ ] (Γ ⊢e E ∶ S) × (u -<[ Q ↦ (! Qs) # i < S > ]>-> u′)
-                × Typ Γ Δ (P ◂ Pr) u′
+                × Typ Γ Δ P Pr u′
 
     sendE/closed :
-      ∀ {I P Q Qs}{i : Fin (suc I)}{E}{Pr} → Closed (SendE P Q Qs i E Pr)
+      ∀ {P Q Qs}{i : ℕ}{E}{Pr} → Closed (SendE P Q Qs i E Pr)
     sendE/closed G~H (Q∈ , S , _ , etd , (α , eq , gr) , td) =
       Q∈ , S , _ , etd , (α , eq , ~L→ G~H gr) , typ/closed (~L→~ G~H gr) td
 
     sendE/adv :
-      ∀ {I P Q Qs}{i : Fin (suc I)}{E}{Pr} → Advances P (SendE P Q Qs i E Pr)
+      ∀ {P Q Qs}{i : ℕ}{E}{Pr} → Advances P (SendE P Q Qs i E Pr)
     sendE/adv {P = P} (Q∈ , S , _ , etd , (α , eq , gr) , td) grα P∉α
       with skip/advance {P = P} (skip/one {P = P} grα P∉α) gr
              (_ , Q∈ , _ , eq)
     ... | _ , gr′ , _ , tr , Z~ =
-      Q∈ , S , _ , etd , (α , eq , gr′) , t/unskip tr Z~ td
+      Q∈ , S , _ , etd , (α , eq , gr′) , typ/unskip td tr Z~
 
   -- ══════════════════════════════════════════════════════════════════
-  --  `⊢p` derivation ⟶ `Wait`, for every leaf family at once
+  --  Derivation ⟶ `Wait`, for every leaf family at once
   -- ══════════════════════════════════════════════════════════════════
   --
   -- Only `base` differs between families.  It is a module parameter, not
   -- a mutually recursive function, so the recursion stays structural.
 
-  Base : ∀ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Behav δ}{PPr G} → Γ & Δ ⊢p PPr ∶ G → Set
-  Base (t/skip _)       = ⊥
-  Base (t/unskip _ _ _) = ⊥
-  Base _                = ⊤
+  Base :
+    ∀ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Cls δ}{R}{Pr : Proc γ δ}{G}
+    → Γ & Δ ⊢[ R ] Pr ∶ G → Set
+  Base (skip _)      = ⊥
+  Base (forward _ _) = ⊥
+  Base _             = ⊤
 
   module Walk
-    {γ δ}{Γ : Vec Sort γ}{Δ : Vec Behav δ}{P}{Pr : Proc γ δ}
-    (L : Behavs)(c : Closed L)(adv : Advances P L)
-    (base : ∀ {G}(td : Γ & Δ ⊢p P ◂ Pr ∶ G) → Base td → L G)
+    {γ δ}{Γ : Vec Sort γ}{Δ : Vec Cls δ}{R}{Pr : Proc γ δ}
+    (L : Behavs)(c : Closed L)(adv : Advances R L)
+    (base : ∀ {G}(td : Γ & Δ ⊢[ R ] Pr ∶ G) → Base td → L (rep G))
     where
 
     mutual
 
-      walk : ∀ {G} → Γ & Δ ⊢p P ◂ Pr ∶ G → WaitV P L ∅S G
-      walk (t/unskip tr eq td) = wait/~ c eq (waitFollow c adv (walk td) tr)
-      walk (t/skip std)        = waitV/mono vof/nil (tree std)
-      walk td@(t/send _ _ _ _ _) = wv/leaf (base td tt)
-      walk td@(t/recv _ _ _ _ _) = wv/leaf (base td tt)
-      walk td@(t/if _ _ _)     = wv/leaf (base td tt)
-      walk td@(t/rec _ _)      = wv/leaf (base td tt)
-      walk td@(t/var _)        = wv/leaf (base td tt)
-      walk td@(t/end _)        = wv/leaf (base td tt)
+      walk : ∀ {G} → Γ & Δ ⊢[ R ] Pr ∶ G → WaitV R L ∅S (rep G)
+      walk (forward td run) =
+        let h , run′ , h~ = runᶜ⇒ run
+        in wait/~ c h~ (waitFollow c adv (walk td) run′)
+      walk (skip std)              = waitV/mono vofᶜ/nil (tree std)
+      walk td@(send _ _ _ _)       = wv/leaf (base td tt)
+      walk td@(recv _ _ _ _)       = wv/leaf (base td tt)
+      walk td@(if _ _ _)           = wv/leaf (base td tt)
+      walk td@(rec _ _)            = wv/leaf (base td tt)
+      walk td@(var _)              = wv/leaf (base td tt)
+      walk td@(end _)              = wv/leaf (base td tt)
 
       tree :
-        ∀ {ξ}{Ξ : Vec Behav ξ}{G}
-        → (Γ & Δ ⊢p_∶_) & Ξ ⊢skip P ◂ Pr ∶ G
-        → WaitV P L (Vof Ξ) G
-      tree (skip/main td)              = waitV/mono (λ ()) (walk td)
-      tree (skip/step gr na ktd)       =
-        wv/step na gr (λ gr′ → waitV/mono vof/cons (tree (ktd gr′)))
-      tree (skip/cycle {X = X} eq inT) = wv/cycle (_ , (X , ~refl) , eq) inT
+        ∀ {ξ}{Ξ : Vec Cls ξ}{G}
+        → Γ & Δ & Ξ ⊢[ R ] Pr ∶ G
+        → WaitV R L (Vofᶜ Ξ) (rep G)
+      tree (skip-main td) = waitV/mono (λ ()) (walk td)
+      tree (skip-step (_ , _ , st) ¬act k) =
+        let _ , gr , _ = stepᶜ⇒ st
+        in wv/step (λ act → ¬act (act⇒ᶜ act)) gr
+             (λ gr′ → waitV/mono vofᶜ/cons (tree (k (step⇒ᶜ gr′))))
+      tree (skip-cycle mem inT) =
+        let X , e = ∈ᵛ⇒vofᶜ mem
+        in wv/cycle (_ , (X , ~refl) , e) (∈Tᶜ⇒ inT)
 
-  module _ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Behav δ} where
+  module _ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Cls δ} where
 
     sendWait :
-      ∀ {I P Q Qs}{i : Fin (suc I)}{S E}{Pr : Proc γ δ}{G}
+      ∀ {P Q Qs}{i : ℕ}{S E}{Pr : Proc γ δ}{G}
       → Γ ⊢e E ∶ S
-      → Γ & Δ ⊢p P ◂ Q ⇒ Qs ! i < E >∙ Pr ∶ G
+      → Γ & Δ ⊢[ P ] Q ⇒ Qs ! i < E >∙ Pr ∶ [ G ]
       → WaitV P (SendL {Γ = Γ} {Δ = Δ} P Q Qs i S Pr) ∅S G
     sendWait etd = Walk.walk _ sendL/closed sendL/adv base
       where
         base :
-          ∀ {G}(td : Γ & Δ ⊢p _ ◂ _ ∶ G) → Base td → SendL _ _ _ _ _ _ G
-        base (t/send Q∈ foc gr etd′ td) _ with ⊢e-unique etd′ etd
-        ... | refl = Q∈ , foc , _ , gr , td
+          ∀ {G}(td : Γ & Δ ⊢[ _ ] _ ∶ G) → Base td → SendL _ _ _ _ _ _ (rep G)
+        base (send fi gr etd′ td) _ with ⊢e-unique etd′ etd
+        ... | refl =
+          let u″ , gr′ , u″~ = evᶜ⇒ gr
+          in first-inᶜ⇒ fi , u″ , gr′ , td/≐ ≐ᵛ-refl (~sym u″~) td
 
     recvWait :
-      ∀ {I P Q R}{Br : Vec (Proc (suc γ) δ) (suc I)}{G}
-      → Γ & Δ ⊢p Q ◂ R ⇐ P ？· Br ∶ G
+      ∀ {n P Q R}{Br : Vec (Maybe (Proc (suc γ) δ)) n}{G}
+      → Γ & Δ ⊢[ Q ] R ⇐ P ？· Br ∶ [ G ]
       → WaitV Q (RecvL {Γ = Γ} {Δ = Δ} P Q R Br) ∅S G
     recvWait {Br = Br} =
       Walk.walk _ (recvL/closed {Br = Br}) (recvL/adv {Br = Br})
-        λ { (t/recv R∈ foc gr fr conts) _ →
-              R∈ , foc , (_ , _ , _ , gr , fr) , conts }
+        λ { (recv fi P∉ (c , _ , ex) conts) _ →
+              let _ , gr , _ = evᶜ⇒ ex
+              in first-inᶜ⇒ fi , (P∉ , _ , _ , _ , gr)
+               , λ gr′ → conts (ev⇒ᶜ gr′) }
 
     varWait :
       ∀ {P}{X : Fin δ}{G}
-      → Γ & Δ ⊢p P ◂ v X ∶ G
-      → WaitV P (Unskipped P (lu Δ X ~_)) ∅S G
+      → Γ & Δ ⊢[ P ] v X ∶ [ G ]
+      → WaitV P (Unskipped P (rep (lu Δ X) ~_)) ∅S G
     varWait =
       Walk.walk _ unskipped/~ unskipped/adv
-        λ { (t/var eq) _ → _ , eq , _ , skip/refl , ~refl }
+        λ { (var eq) _ → _ , eq , _ , ε , ~refl }
 
     recWait :
       ∀ {P}{Pr : Proc γ (suc δ)}{G}
-      → Γ & Δ ⊢p P ◂ rec Pr ∶ G
+      → Γ & Δ ⊢[ P ] rec Pr ∶ [ G ]
       → WaitV P (Unskipped P (RecA {Γ = Γ} {Δ = Δ} {P = P} Pr)) ∅S G
     recWait {P = P} {Pr = Pr} =
       Walk.walk _ unskipped/~ unskipped/adv
-        λ { (t/rec _ td) _ → _ , td , _ , skip/refl , ~refl }
+        λ { (rec td _) _ → _ , td , _ , ε , ~refl }
 
     sendEWait :
-      ∀ {I P Q Qs}{i : Fin (suc I)}{E}{Pr : Proc γ δ}{G}
-      → Γ & Δ ⊢p P ◂ Q ⇒ Qs ! i < E >∙ Pr ∶ G
+      ∀ {P Q Qs}{i : ℕ}{E}{Pr : Proc γ δ}{G}
+      → Γ & Δ ⊢[ P ] Q ⇒ Qs ! i < E >∙ Pr ∶ [ G ]
       → WaitV P (SendE {Γ = Γ} {Δ = Δ} P Q Qs i E Pr) ∅S G
     sendEWait =
       Walk.walk _ sendE/closed sendE/adv
-        λ { (t/send Q∈ _ gr etd td) _ → Q∈ , _ , _ , etd , gr , td }
+        λ { (send (r∈ , _) gr etd td) _ →
+              let u″ , gr′ , u″~ = evᶜ⇒ gr
+              in r∈ , _ , u″ , etd , gr′ , td/≐ ≐ᵛ-refl (~sym u″~) td }
 
     recGWait :
       ∀ {P}{Pr : Proc γ (suc δ)}{G}
-      → Γ & Δ ⊢p P ◂ rec Pr ∶ G
+      → Γ & Δ ⊢[ P ] rec Pr ∶ [ G ]
       → WaitV P (RecG Pr) ∅S G
-    recGWait = Walk.walk _ recG/closed recG/adv λ { (t/rec guarded _) _ → guarded }
+    recGWait = Walk.walk _ recG/closed recG/adv λ { (rec _ guarded) _ → guarded }
 
     ifEWait :
       ∀ {P E}{A B : Proc γ δ}{G}
-      → Γ & Δ ⊢p P ◂ ifp E then A else B ∶ G
+      → Γ & Δ ⊢[ P ] ifp E then A else B ∶ [ G ]
       → WaitV P (IfE {Γ = Γ} E) ∅S G
-    ifEWait = Walk.walk _ ifE/closed ifE/adv λ { (t/if etd _ _) _ → etd }
+    ifEWait = Walk.walk _ ifE/closed ifE/adv λ { (if etd _ _) _ → etd }
 
     endWait :
       ∀ {P}{G}
-      → Γ & Δ ⊢p P ◂ ∅ ∶ G
+      → Γ & Δ ⊢[ P ] ∅ ∶ [ G ]
       → WaitV P (EndL P) ∅S G
-    endWait = Walk.walk _ endL/closed endL/adv λ { (t/end done) _ → done }
+    endWait = Walk.walk _ endL/closed endL/adv λ { (end out) _ → λ inT → out (∈T⇒ᶜ inT) }
 
     ---------------------------------------------------------------------
-    -- An `if` derivation gives each branch's, at the same state.
+    -- An `if` derivation gives each branch's, at the same class.
     ---------------------------------------------------------------------
 
     mutual
 
       ifBranch :
         ∀ (b : Bool){P E}{A B : Proc γ δ}{G}
-        → Γ & Δ ⊢p P ◂ ifp E then A else B ∶ G
-        → Γ & Δ ⊢p P ◂ (if b then A else B) ∶ G
+        → Γ & Δ ⊢[ P ] ifp E then A else B ∶ G
+        → Γ & Δ ⊢[ P ] (if b then A else B) ∶ G
 
-      ifBranch true  (t/if _ ttd _)    = ttd
-      ifBranch false (t/if _ _ ftd)    = ftd
-      ifBranch b (t/unskip tr eq td)   = t/unskip tr eq (ifBranch b td)
-      ifBranch b (t/skip std)          = t/skip (ifBranchTree b std)
+      ifBranch true  (if _ ttd _)      = ttd
+      ifBranch false (if _ _ ftd)      = ftd
+      ifBranch b (forward td run)      = forward (ifBranch b td) run
+      ifBranch b (skip std)            = skip (ifBranchTree b std)
 
       ifBranchTree :
-        ∀ (b : Bool){ξ}{Ξ : Vec Behav ξ}{P E}{A B : Proc γ δ}{G}
-        → (Γ & Δ ⊢p_∶_) & Ξ ⊢skip P ◂ ifp E then A else B ∶ G
-        → (Γ & Δ ⊢p_∶_) & Ξ ⊢skip P ◂ (if b then A else B) ∶ G
+        ∀ (b : Bool){ξ}{Ξ : Vec Cls ξ}{P E}{A B : Proc γ δ}{G}
+        → Γ & Δ & Ξ ⊢[ P ] ifp E then A else B ∶ G
+        → Γ & Δ & Ξ ⊢[ P ] (if b then A else B) ∶ G
 
-      ifBranchTree b (skip/main td) = skip/main (ifBranch b td)
-      ifBranchTree b (skip/step gr na ktd) =
-        skip/step gr na (λ gr′ → ifBranchTree b (ktd gr′))
-      ifBranchTree b (skip/cycle eq inT) = skip/cycle eq inT
+      ifBranchTree b (skip-main td) = skip-main (ifBranch b td)
+      ifBranchTree b (skip-step ex na k) =
+        skip-step ex na (λ st → ifBranchTree b (k st))
+      ifBranchTree b (skip-cycle mem inT) = skip-cycle mem inT
 
 
     endNotin :
       ∀ {P}{G}
-      → Γ & Δ ⊢p P ◂ ∅ ∶ G
+      → Γ & Δ ⊢[ P ] ∅ ∶ [ G ]
       → ¬ P ∈T G
 
-    endNotin td inT = endChase inT (endWait td)
+    endNotin td (_ , run , act) = endChase run act (endWait td)
 
   -- ══════════════════════════════════════════════════════════════════
-  --  `⊢p` ⟶ `⊢a`, at the largest set
+  --  `⊢` ⟶ `⊢a`, at the largest set
   -- ══════════════════════════════════════════════════════════════════
   --
   -- Stated at the largest set, `Typed`; `alg/mono` gives every smaller one.
-  -- Recursion on the process; `typBr` makes `lu Br j` structural.
+  -- Recursion on the process; `typBr` makes the branch structural.
 
   Typed : ∀ {γ δ} → Vec Sort γ → NProc γ δ → States δ
-  Typed Γ PPr (ws , G) = Γ & ws ⊢p PPr ∶ G
+  Typed Γ (P ◂ Pr) (ws , G) = Γ & (classes ws) ⊢[ P ] Pr ∶ [ G ]
 
   -- `a/rec`'s entry set: the body typed at its own anchor.
   Entry : ∀ {γ δ} → Vec Sort γ → PartSet → Proc γ (suc δ) → States δ
-  Entry Γ P Pr (ws , W) = Γ & (W ∷ ws) ⊢p P ◂ Pr ∶ W
+  Entry Γ P Pr (ws , W) = Γ & (classes (W ∷ ws)) ⊢[ P ] Pr ∶ [ W ]
 
-  recvAt :
-    ∀ {γ δ}{Γ : Vec Sort γ}{I P Q R}{Br : Vec (Proc (suc γ) δ) (suc I)}{j U}
-    → Post R ((？ P) # j < U >) (Front Q (Typed Γ (Q ◂ R ⇐ P ？· Br)))
-      ⊆ Typed (U ∷ Γ) (Q ◂ lu Br j)
+  -- A state after the receive of `ℓ`: the branch of `ℓ`, typed there.
+  recvBr :
+    ∀ {γ δ}{Γ : Vec Sort γ}{n P Q R}{Br : Vec (Maybe (Proc (suc γ) δ)) n}{ℓ U ws t}
+    → (ws , t) ∈ Post R ((？ P) # ℓ < U >) (Front Q (Typed Γ (Q ◂ R ⇐ P ？· Br)))
+    → ∃[ Pr ] Br ∋ ℓ ↦ Pr × (ws , t) ∈ Typed (U ∷ Γ) (Q ◂ Pr)
 
-  recvAt {P = P}{Q}{R}{Br}{j}{U}{ws , t}
+  recvBr {P = P}{Q}{R}{Br}
          (_ , ((_ , td , run) , _) , (α , eq , gr))
     with waitFind (recvWait td)
-  ... | _ , R∈ , _
+  ... | _ , (R∈ , _) , _
     with waitLeaf {Q} gr (_ , R∈ , _ , eq)
            (waitFollow (recvL/closed {Br = Br}) (recvL/adv {Br = Br})
               (recvWait td) (idle⇒unskip run))
-  ... | _ , _ , _ , k = k (α , eq , gr)
+  ... | _ , _ , k = k (α , eq , gr)
+
+  -- Every such state types the same branch.
+  recvAt :
+    ∀ {γ δ}{Γ : Vec Sort γ}{n P Q R}{Br : Vec (Maybe (Proc (suc γ) δ)) n}{ℓ U Pr}
+    → Br ∋ ℓ ↦ Pr
+    → Post R ((？ P) # ℓ < U >) (Front Q (Typed Γ (Q ◂ R ⇐ P ？· Br)))
+      ⊆ Typed (U ∷ Γ) (Q ◂ Pr)
+
+  recvAt {Γ = Γ}{Q = Q}{U = U} br {ws , t} x∈
+    with recvBr x∈
+  ... | _ , br′ , td =
+    subst (λ X → (ws , t) ∈ Typed (U ∷ Γ) (Q ◂ X)) (sym (∋-functional br br′)) td
 
   -- `bal`: `a/send` types the continuation after every step with `P`'s
-  -- event, `t/send` after one; `send-det` makes them the same.
+  -- event, `send` after one; `send-det` makes them the same.
   module _ (bal : Balanced B) where
     open Balanced bal using (send-det)
 
     sendAt :
-      ∀ {γ δ}{Γ : Vec Sort γ}{I P Q Qs}{i : Fin (suc I)}{S E}{Pr : Proc γ δ}
+      ∀ {γ δ}{Γ : Vec Sort γ}{P Q Qs}{i : ℕ}{S E}{Pr : Proc γ δ}
       → Γ ⊢e E ∶ S
       → Post Q ((! Qs) # i < S >)
           (Front P (Typed Γ (P ◂ Q ⇒ Qs ! i < E >∙ Pr)))
@@ -488,11 +533,11 @@ module Definitions.Typing.AlgNorm
     sendAt {P = P}{Q}{Qs}{i = i}{E = E}{Pr} etd {ws , t}
       (_ , ((_ , td , run) , _) , (α , eq , gr))
       with waitFind (sendWait etd td)
-    ... | _ , Q∈ , _
+    ... | _ , (Q∈ , _) , _
       with waitLeaf {P} gr (_ , Q∈ , _ , eq)
              (waitFollow sendL/closed sendL/adv (sendWait etd td)
                (idle⇒unskip run))
-    ... | _ , _ , _ , (α′ , eq′ , gr′) , td′
+    ... | _ , _ , (α′ , eq′ , gr′) , td′
       with send-det gr gr′ eq eq′
     ...   | refl = typ/closed (step-deterministic gr′ gr) td′
 
@@ -500,26 +545,26 @@ module Definitions.Typing.AlgNorm
 
       typing⇒alg :
         ∀ {γ δ}{Γ : Vec Sort γ}{P}(Pr : Proc γ δ){ws G}
-        → Γ & ws ⊢p P ◂ Pr ∶ G
+        → Γ & (classes ws) ⊢[ P ] Pr ∶ [ G ]
         → Γ ⊢a P ◂ Pr ∶ Typed Γ (P ◂ Pr)
 
       typing⇒alg (Q ⇒ Qs ! i < E >∙ Pr) td
         with waitFind (sendEWait td)
       ... | _ , Q∈ , _ , _ , etd , _ , cont =
         a/send Q∈ etd
-          (λ td′ → waitV/leaf-mono (λ { (_ , foc , _ , gr , _) → foc , _ , gr })
+          (λ td′ → waitV/leaf-mono (λ { (fi , _ , gr , _) → fi , _ , gr })
                      (sendWait etd td′))
           (alg/mono (sendAt etd) (typing⇒alg Pr cont))
 
       typing⇒alg (R ⇐ P ？· Br) td
         with waitFind (recvWait td)
-      ... | _ , R∈ , _ =
+      ... | _ , (R∈ , _) , _ =
         a/recv R∈
-          (λ td′ → waitV/leaf-mono (λ { (_ , foc , off , _) → foc , off })
+          (λ td′ → waitV/leaf-mono (λ { (fi , off , _) → fi , off })
                      (recvWait td′))
-          (λ { {j} (_ , x∈) →
-               alg/mono (recvAt {Br = Br})
-                 (typBr Br j (recvAt {Br = Br} x∈)) })
+          (λ { (_ , x∈) →
+               let Pr , br , w = recvBr {Br = Br} x∈
+               in Pr , br , alg/mono (recvAt {Br = Br} br) (typBr Br br w) })
 
       typing⇒alg (ifp E then A else B) td
         with waitFind (ifEWait td)
@@ -530,7 +575,12 @@ module Definitions.Typing.AlgNorm
 
       typing⇒alg ∅ td = a/end endNotin
 
-      typing⇒alg (v X) td = a/var varWait
+      typing⇒alg (v X) td =
+        a/var λ { {ws , _} td′ →
+          waitV/leaf-mono
+            (λ { (a , e , rest) →
+                 a , subst (_~ a) (cong rep (lookup-map X [_] ws)) e , rest })
+            (varWait td′) }
 
       typing⇒alg {Γ = Γ}{P} (rec Pr) td
         with waitFind (recGWait td) | waitFind (recWait td)
@@ -541,13 +591,13 @@ module Definitions.Typing.AlgNorm
           recWait
 
       typBr :
-        ∀ {γ δ n}{Γ : Vec Sort γ}{Q}
-          (Br : Vec (Proc (suc γ) δ) n)(j : Fin n){U ws t}
-        → (U ∷ Γ) & ws ⊢p Q ◂ lu Br j ∶ t
-        → (U ∷ Γ) ⊢a Q ◂ lu Br j ∶ Typed (U ∷ Γ) (Q ◂ lu Br j)
+        ∀ {γ δ n}{Γ : Vec Sort γ}{Q ℓ Pr}
+          (Br : Vec (Maybe (Proc (suc γ) δ)) n) → Br ∋ ℓ ↦ Pr → ∀ {U ws t}
+        → (U ∷ Γ) & (classes ws) ⊢[ Q ] Pr ∶ [ t ]
+        → (U ∷ Γ) ⊢a Q ◂ Pr ∶ Typed (U ∷ Γ) (Q ◂ Pr)
 
-      typBr (B ∷ Bs) zero    w = typing⇒alg B w
-      typBr (B ∷ Bs) (suc j) w = typBr Bs j w
+      typBr (just B ∷ Bs) here      w = typing⇒alg B w
+      typBr (_ ∷ Bs)      (there p) w = typBr Bs p w
 
     -- ════════════════════════════════════════════════════════════════
     --  The boundary `Safety/` uses
@@ -555,7 +605,7 @@ module Definitions.Typing.AlgNorm
 
     td⇒at :
       ∀ {γ δ}{Γ : Vec Sort γ}{P}{Pr : Proc γ δ}{ws G}
-      → Γ & ws ⊢p P ◂ Pr ∶ G
+      → Γ & (classes ws) ⊢[ P ] Pr ∶ [ G ]
       → Γ ⊢at P ◂ Pr ∶ (ws , G)
 
     td⇒at {Pr = Pr} td = _ , typing⇒alg Pr td , td

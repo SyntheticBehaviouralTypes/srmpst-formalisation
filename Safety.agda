@@ -28,7 +28,7 @@ module Safety
   {N : ℕ} {B : BTheory N} (wb : WellBehaved B) (sync : Synchronous B) where
 
 open BTheory B
-open import Definitions.Proc N using (Assignment; module Over; singletons; _◂_)
+open import Definitions.Proc N using (Assignment; module Over; singletons; _◂_; msg; τ)
 open import Definitions.View B using (view; _-<_>->ᵛ_)
 open import Definitions.View B public using (module Global)
 open import Definitions.View.Lemmas B wb sync using (singleton⇒; singleton⇐)
@@ -54,14 +54,14 @@ module _ {K : ℕ} (Ρ : Assignment K) where
     raise {wbL} _ t j = wbL j , AlgDeclarative.at⇒typing (wbL j) (t j)
 
   preservation :
-    ∀ {M M′ G α} → ⊢s[ Ρ ] M ∶ G → M [ just α ]⇒ M′
+    ∀ {M M′ G α} → ⊢s[ Ρ ] M ∶ G → M [ msg α ]⇒ M′
     → ∃[ G′ ] G -< α >->ᵍ G′ × ⊢s[ Ρ ] M′ ∶ G′
   preservation {M} {M′} ts st =
     let G′ , gv , t′ =
           Pres.Typed.Exists.preservation/comm wb sync Ρ (wbs M ts) (lower M ts) st
     in G′ , gv , raise M′ t′
 
-  preservation/τ : ∀ {M M′ G} → ⊢s[ Ρ ] M ∶ G → M [ nothing ]⇒ M′ → ⊢s[ Ρ ] M′ ∶ G
+  preservation/τ : ∀ {M M′ G} → ⊢s[ Ρ ] M ∶ G → M [ τ ]⇒ M′ → ⊢s[ Ρ ] M′ ∶ G
   preservation/τ {M} {M′} ts st =
     raise M′ (Pres.Typed.preservation/τ wb sync Ρ (wbs M ts) (lower M ts) st)
 
@@ -71,7 +71,7 @@ module _ {K : ℕ} (Ρ : Assignment K) where
   progress/eventual :
     ∀ {M G} → ⊢s[ Ρ ] M ∶ G
     → ∃[ M′ ] ((M τ⇒ M′ × finished M′)
-             ⊎ (∃[ M″ ] ∃[ α ] M τ⇒ M″ × M″ [ just α ]⇒ M′))
+             ⊎ (∃[ M″ ] ∃[ α ] M τ⇒ M″ × M″ [ msg α ]⇒ M′))
   progress/eventual {M} ts =
     Prog.progress/eventual wb sync Ρ (wbs M ts) (lower M ts)
 
@@ -125,10 +125,11 @@ roles/singletons P =
     (λ {R} R∈ → subst (λ Y → R ∈ lu roles Y) (x∈⁅y⁆⇒x≡y P R∈) (owner/∈ R))
   where open Assignment singletons
 
--- Per-role typings against `B` type the single-role session.
+-- Per-role typings against `B`, at the class of `G`, type the single-role
+-- session.
 singleton/⊢s :
   ∀ {M : Over.Session singletons} {G}
-  → (∀ P → MPST._&_⊢p_∶_ wb [] [] (⁅ P ⁆ ◂ lu M P) G)
+  → (∀ P → let open MPST wb in [] & [] ⊢[ ⁅ P ⁆ ] lu M P ∶ [ G ])
   → ⊢s[ singletons ] M ∶ G
 singleton/⊢s {M} {G} td P =
   subst (λ Ps → ⊢ᵛ[ Ps ] lu M P ∶ G)

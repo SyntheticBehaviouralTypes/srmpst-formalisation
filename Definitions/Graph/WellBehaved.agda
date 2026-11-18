@@ -112,25 +112,17 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
   sameOn/refl : ∀ {F} → (∀ c → F c c) → ∀ {n} (edge : Edge n) → SameOn F edge edge
   sameOn/refl r (α , _) Q = agreeOn/refl r (ev α Q)
 
-  -- Same sender: same arity.
-  ArityF : Choice → Choice → Set
-  ArityF c c′ = Choice.nchoices c ≡ Choice.nchoices c′
-
   -- Same sender and label: same sort.
   SortF : Choice → Choice → Set
   SortF c c′ = choiceKey c ≡ choiceKey c′ → Choice.sort c ≡ Choice.sort c′
-
-  arityF? : ∀ c c′ → Dec (ArityF c c′)
-  arityF? c c′ = Choice.nchoices c Nat.≟ Choice.nchoices c′
 
   sortF? : ∀ c c′ → Dec (SortF c c′)
   sortF? c c′ =
     (choiceKey c ≟ChoiceKey choiceKey c′) →?
       (Choice.sort c ≟Sort Choice.sort c′)
 
-  SameArity SameSort : Edge n → Edge n → Set
-  SameArity = SameOn ArityF
-  SameSort  = SameOn SortF
+  SameSort : Edge n → Edge n → Set
+  SameSort = SameOn SortF
 
   Available : ∀ {n} → Action → List (Edge n) → Set
   Available α = Any.Any (λ edge → proj₁ edge ≡ α)
@@ -304,9 +296,6 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
       recv-coherent :
         ∀ s → AllPairs (Both RecvCoherent) (edges G s)
 
-      same-arity :
-        ∀ s → AllPairs (Both SameArity) (edges G s)
-
       same-sort :
         ∀ s → AllPairs (Both SameSort) (edges G s)
 
@@ -330,12 +319,6 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
   recvConditions? G =
     Fin.all?
       (λ s → Pairs.allPairs? (both? recvCoherent?) (edges G s))
-
-  arityConditions? :
-    (G : Graph) → Dec (∀ s → AllPairs (Both SameArity) (edges G s))
-  arityConditions? G =
-    Fin.all?
-      (λ s → Pairs.allPairs? (both? (sameOn? arityF?)) (edges G s))
 
   sortConditions? :
     (G : Graph) → Dec (∀ s → AllPairs (Both SameSort) (edges G s))
@@ -367,21 +350,19 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     (G : Graph) → BisimDec G → Dec (LocalConditions G)
   localConditionsWith? G bisimT? =
     map′
-      (λ (deterministic′ , recv′ , arity′ , sort′ , no-branch′ , diamond′) →
+      (λ (deterministic′ , recv′ , sort′ , no-branch′ , diamond′) →
          record
            { deterministic = deterministic′
            ; recv-coherent = recv′
-           ; same-arity = arity′
            ; same-sort = sort′
            ; no-new-branch = no-branch′
            ; diamond = diamond′
            })
       (λ c →
-         deterministic c , recv-coherent c , same-arity c , same-sort c
+         deterministic c , recv-coherent c , same-sort c
          , no-new-branch c , diamond c)
       (deterministicConditions? G bisimT?
         ×? recvConditions? G
-        ×? arityConditions? G
         ×? sortConditions? G
         ×? noNewBranchConditions? G
         ×? diamondConditions? G bisimT?)
@@ -432,17 +413,6 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
       (step⇒listed gr) (step⇒listed gr′)
       Q rQ included
 
-  same-arity/sound :
-    ∀ {G s α α′ t t′}
-    → (conditions : LocalConditions G)
-    → _-<_>->_ {G} s α t
-    → _-<_>->_ {G} s α′ t′
-    → ∀ Q → AgreeOn ArityF (ev α Q) (ev α′ Q)
-  same-arity/sound {G = G} {s = s} conditions gr gr′ =
-    allPairs/both {R = SameArity} (sameOn/refl λ _ → refl)
-      (same-arity conditions s)
-      (step⇒listed gr) (step⇒listed gr′)
-
   same-sort/sound :
     ∀ {G s α α′ t t′}
     → (conditions : LocalConditions G)
@@ -455,8 +425,7 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
       (step⇒listed gr) (step⇒listed gr′)
 
   step-sort-det/sound :
-    ∀ {G s t t′ α α′ P Q I S T}
-      {i : Fin (suc I)}
+    ∀ {G s t t′ α α′ P Q i S T}
     → (conditions : LocalConditions G)
     → _-<_>->_ {G} s α t
     → _-<_>->_ {G} s α′ t′
@@ -465,19 +434,6 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
     → S ≡ T
   step-sort-det/sound {Q = Q} conditions gr gr′ eq eq′ =
     subst₂ (AgreeOn SortF) eq eq′ (same-sort/sound conditions gr gr′ Q) refl refl
-
-  step-arity-det/sound :
-    ∀ {G s t t′ α α′ P Q I J S T}
-      {i : Fin (suc I)}
-      {j : Fin (suc J)}
-    → (conditions : LocalConditions G)
-    → _-<_>->_ {G} s α t
-    → _-<_>->_ {G} s α′ t′
-    → ev α Q ≡ just ((？ P) # i < S >)
-    → ev α′ Q ≡ just ((？ P) # j < T >)
-    → I ≡ J
-  step-arity-det/sound {Q = Q} conditions gr gr′ eq eq′ =
-    subst₂ (AgreeOn ArityF) eq eq′ (same-arity/sound conditions gr gr′ Q) refl
 
   no-new-branch/sound :
     ∀ {G s t u v β γ γ′}
@@ -528,7 +484,6 @@ module Definitions.Graph.WellBehaved (N : ℕ) where
       { recv-overlap = λ gr gr′ → recv-coherent/sound conditions gr gr′
       ; step-deterministic = step-deterministic/sound correct conditions
       ; step-sort-det = step-sort-det/sound conditions
-      ; step-arity-det = step-arity-det/sound conditions
       ; no-new-branch/step = no-new-branch/sound conditions
       ; step-diamond = step-diamond/sound correct conditions
       }

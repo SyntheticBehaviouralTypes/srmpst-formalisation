@@ -14,6 +14,7 @@
 module Tests.LabelSortsForward where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
@@ -41,13 +42,13 @@ B = 1F
 C = 2F
 
 -- `A` to `B` (and `B` to `C`): the one label, at either sort
-value : Fin 1
-value = 0F
+value : ℕ
+value = 0
 
 -- `A` to `C`: which sort `B` gets
-asNat asBool : Fin 2
-asNat  = 0F
-asBool = 1F
+asNat asBool : ℕ
+asNat  = 0
+asBool = 1
 
 g : OpenGraph 0
 g =

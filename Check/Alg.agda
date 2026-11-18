@@ -38,7 +38,7 @@ open import Data.Empty using (⊥; ⊥-elim)
 open import Data.Unit using (tt)
 open import Data.Unit.Polymorphic using () renaming (⊤ to ⊤₁; tt to tt₁)
 open import Data.Bool using (Bool; true; false; T; _∧_)
-open import Data.Maybe using (just; nothing)
+open import Data.Maybe using (Maybe; just; nothing)
 
 open import Function using (_∘_)
 
@@ -65,6 +65,8 @@ open import Definitions.Expr using (Sort; s/bool; s/nat; s/unit; _⊢e_∶_; ⊢
 open import Check.Core using (checkExpression)
 
 import Definitions.Typing as Typing
+import Utils.Family as F
+open F using (_∋_↦_; _∋?_; ∋-functional; ∋-unique)
 
 module Check.Alg (N : ℕ) where
 
@@ -292,16 +294,14 @@ module Check.Alg (N : ℕ) where
            (λ all {e} mem → all (proj₁ e) (proj₂ e) (listed⇒step mem))
            (all-edges? (edges G u) λ {e} _ → B? (proj₁ e) (proj₂ e))
 
-    active⇒? : ∀ P s → Dec (Active P s)
-    active⇒? P s with active? G P s
+    -- s —P→
+    act⇒? : ∀ P s → Dec (s -⟨ P ⟩->)
+    act⇒? P s with active? G P s
     ... | yes any =
       let (α , u) , mem , px = find any
-      in yes (α , u , listed⇒step mem , px)
+      in yes (u , α , listed⇒step mem , px)
     ... | no ¬any =
       no λ { (_ , _ , gr , px) → ¬any (lose (step⇒listed gr) px) }
-
-    idle : ∀ {P s} → ¬ Active P s → P not-active-in s
-    idle {P} ¬act {α} gr = ¬∈αˢ→∉αˢ {P} {α} (λ px → ¬act (_ , _ , gr , px))
 
     -- ══════════════════════════════════════════════════════════════════
     --  Reachability, as rows of reachable states
@@ -317,9 +317,9 @@ module Check.Alg (N : ℕ) where
       → ∀ {s t k} → PathVia G ok′ s t k → Star (_⇝[ P ]_) s t
     path⇒walk ok≡ path/nil = ε
     path⇒walk {P} ok≡ (path/cons oks gr rest) =
-      (idle (λ { (_ , _ , gr′ , px) →
-                 toWitness (subst T (ok≡ _) oks)
-                   (lose (step⇒listed gr′) px) })
+      ( (λ { (_ , _ , gr′ , px) →
+               toWitness (subst T (ok≡ _) oks)
+                 (lose (step⇒listed gr′) px) })
       , _ , gr) ◅ path⇒walk ok≡ rest
 
     walk⇒path :
@@ -332,7 +332,7 @@ module Check.Alg (N : ℕ) where
          path/cons
            (subst T (sym (ok≡ _)) (fromWitness λ any →
               let (α , u) , mem , px = find {A = Edge n} any
-              in ∉αˢ→¬∈αˢ {P} {α} (na (listed⇒step mem)) px))
+              in na (_ , _ , listed⇒step mem , px)))
            gr p
 
     -- `¬P`-labelled runs: plain reachability in the graph without `P`'s edges.
@@ -355,16 +355,15 @@ module Check.Alg (N : ℕ) where
           (∈-filter⁺ (λ e → P ∉αˢ? proj₁ e) (step⇒listed gr) P∉α))
 
     path⇒run : ∀ {P s t k} → PathVia (G¬ P) (λ _ → true) s t k → s -[¬ P ]->* t
-    path⇒run path/nil = skip/refl
+    path⇒run path/nil = ε
     path⇒run (path/cons _ gr rest) =
-      let gr′ , P∉α = edge¬⇒ gr in tr¬/step gr′ P∉α (path⇒run rest)
+      let gr′ , P∉α = edge¬⇒ gr in (_ , gr′ , P∉α) ◅ path⇒run rest
 
     run⇒path :
-      ∀ {P s t αs} → s -[ αs ]-> t → All (P ∉αˢ_) αs
-      → ∃[ k ] PathVia (G¬ P) (λ _ → true) s t k
-    run⇒path tr/refl _ = _ , path/nil
-    run⇒path (tr/step gr tr) (P∉α ∷ all) =
-      let k , p = run⇒path tr all in suc k , path/cons tt (⇒edge¬ gr P∉α) p
+      ∀ {P s t} → s -[¬ P ]->* t → ∃[ k ] PathVia (G¬ P) (λ _ → true) s t k
+    run⇒path ε = _ , path/nil
+    run⇒path ((_ , gr , P∉α) ◅ run) =
+      let k , p = run⇒path run in suc k , path/cons tt (⇒edge¬ gr P∉α) p
 
     -- Reading a reachability row.
     row? :
@@ -386,7 +385,7 @@ module Check.Alg (N : ℕ) where
       field
         walk?   : ∀ s t → Dec (Star (_⇝[ P ]_) s t)
         unskip? : ∀ s t → Dec (s -[¬ P ]->* t)
-        act?    : ∀ s → Dec (Active P s)
+        act?    : ∀ s → Dec (s -⟨ P ⟩->)
         inT?    : ∀ s → Dec (P ∈T s)
         moves?  : ∀ s → Dec (Steps s)
         bisim?  : ∀ s t → Dec (s ~ t)
@@ -405,10 +404,9 @@ module Check.Alg (N : ℕ) where
     mkEnv P oks oks≡ idles idles≡ runs runs≡ m m≡ alls alls≡ = record
       { walk?   = λ s t → map′ (path⇒walk oks≡ ∘ proj₂) (walk⇒path oks≡)
                                 (row? G (lookup oks) idles idles≡ s t)
-      ; unskip? = λ s t → map′ (path⇒run ∘ proj₂)
-                                (λ { (_ , tr , all) → run⇒path tr all })
+      ; unskip? = λ s t → map′ (path⇒run ∘ proj₂) run⇒path
                                 (row? (G¬ P) (λ _ → true) runs runs≡ s t)
-      ; act?    = memoB (active⇒? P)
+      ; act?    = memoB (act⇒? P)
       -- `P ∈T s` iff `s` reaches a state where `P` acts: read off the rows.
       ; inT?    = memoB λ s →
           map′ (λ { (t , (_ , path) , act) → reach→∈T G path act })
@@ -556,7 +554,7 @@ module Check.Alg (N : ℕ) where
 
         -- A step the walk takes: out of a non-leaf, idle state.
         _↝_ : Behav → Behav → Set
-        s ↝ t = ¬ L s × P not-active-in s × ∃[ β ] s -< β >-> t
+        s ↝ t = ¬ L s × ¬ s -⟨ P ⟩-> × ∃[ β ] s -< β >-> t
 
         ∈T/back : ∀ {s u} → Star _↝_ s u → P ∈T u → P ∈T s
         ∈T/back ε inT = inT
@@ -609,7 +607,7 @@ module Check.Alg (N : ℕ) where
         -- Neither a leaf nor a cycle is available at `s`.
         stuck :
           ∀ {V s} → ¬ L s → ¬ (P ∈T s × Vis V s)
-          → WaitV P L (Vis V) s → ∃[ β ] ∃[ u ] s -< β >-> u × P not-active-in s
+          → WaitV P L (Vis V) s → ∃[ β ] ∃[ u ] s -< β >-> u × ¬ s -⟨ P ⟩->
             × (∀ {β u} → s -< β >-> u → WaitV P L (λ v → Vis V v ⊎ (s ~ v)) u)
         stuck ¬l ¬cyc (wv/leaf l) = ⊥-elim (¬l l)
         stuck {V} ¬l ¬cyc (wv/cycle (a , va , a~s) inT) =
@@ -623,9 +621,8 @@ module Check.Alg (N : ℕ) where
         ... | no ¬l with inT? s ×? vis? V s
         ...   | yes (inT , anc) = yes (wv/cycle (s , anc , ~refl) inT)
         ...   | no ¬cyc with act? s
-        ...     | yes (α , _ , gr , px) =
-          no λ w → let _ , _ , _ , na , _ = stuck {V} ¬l ¬cyc w
-                   in ∉αˢ→¬∈αˢ {P} {α} (na gr) px
+        ...     | yes act =
+          no λ w → let _ , _ , _ , na , _ = stuck {V} ¬l ¬cyc w in na act
         ...     | no ¬act with moves? s
         ...       | no ¬st =
           no λ w → let β , u , gr , _ = stuck {V} ¬l ¬cyc w in ¬st (β , u , gr)
@@ -636,10 +633,10 @@ module Check.Alg (N : ℕ) where
         ...         | no ¬vs
           with all-edges? (edges G s)
                  (λ mem → wait-go (mark V s) _
-                            (inv/step {V} inv (¬l , idle ¬act , _ , listed⇒step mem))
+                            (inv/step {V} inv (¬l , ¬act , _ , listed⇒step mem))
                             (rs (shrink V s ¬vs)))
         ...           | yes all =
-          yes (wv/step (idle ¬act) gr₀ λ gr →
+          yes (wv/step ¬act gr₀ λ gr →
                 waitV/mono (vis/mark→ V s) (all (step⇒listed gr)))
         ...           | no ¬all =
           no λ w → let _ , _ , _ , _ , k = stuck {V} ¬l ¬cyc w
@@ -690,16 +687,17 @@ module Check.Alg (N : ℕ) where
         map′ (λ (a , r) → r , a) (λ (r , a) → a , r)
           (act? u ×? FinP.any? (λ s → X? (ws , s) ×? walk? s u))
 
-      Focus? : ∀ X s → Dec (Focus P X s)
-      Focus? X s =
-        map′ (λ all tr gr own → all _ tr _ _ gr own)
-             (λ f u tr α t gr own → f tr gr own)
+      first-in? : ∀ X s → Dec (X first-in (P , s))
+      first-in? X s =
+        (X ∈ˢ? P) ×?
+        map′ (λ all run gr own → all _ run _ _ gr own)
+             (λ f u run α t gr own → f run gr own)
              (FinP.all? λ u → unskip? s u →?
                 all-out? u (λ α t → (P ∈αˢ? α) →? (X ∈α? α)))
 
       Dom? : ∀ R e → Decidable (Dom {δ = δ} P R e)
       Dom? R e (_ , s) =
-        Focus? R s ×?
+        first-in? R s ×?
         map′ (λ x →
                let (α , t) , mem , b = find (any⁻ bit (edges G s) x)
                in t , α , matchEv-sound R e α b , listed⇒step mem)
@@ -710,36 +708,28 @@ module Check.Alg (N : ℕ) where
           bit : Edge n → Bool
           bit (α , _) = matchEv R e α
 
-      -- `α` is a receive by `R` from `Q`, of arity `suc I`.
-      OffersAct : Part → Part → ℕ → Action → Set
-      OffersAct R Q I α =
-        Σ[ j ∈ Fin (suc I) ] ∃[ U ] ev α R ≡ just ((？ Q) # j < U >)
+      -- `α` is a receive by `R` from `Q`.
+      OffersAct : Part → Part → Action → Set
+      OffersAct R Q α = ∃[ ℓ ] ∃[ U ] ev α R ≡ just ((？ Q) # ℓ < U >)
 
-      -- … and a receive of `P`'s process: sent from outside `P`.
-      OffersActᴾ : Part → Part → ℕ → Action → Set
-      OffersActᴾ R Q I α = OffersAct R Q I α × Foreign P α
-
-      offersAct? : ∀ R Q I α → Dec (OffersAct R Q I α)
-      offersAct? R Q I α with ev α R
+      offersAct? : ∀ R Q α → Dec (OffersAct R Q α)
+      offersAct? R Q α with ev α R
       ... | nothing          = no λ { (_ , _ , ()) }
       ... | just ((! _) # _) = no λ { (_ , _ , ()) }
-      ... | just ((？ Q′) # (_<_> {I′} j U)) with Q′ ≟Fin Q | I′ Nat.≟ I
-      ...   | yes refl | yes refl = yes (j , U , refl)
-      ...   | no Q′≢Q  | _        = no λ { (_ , _ , refl) → Q′≢Q refl }
-      ...   | _        | no I′≢I  = no λ { (_ , _ , refl) → I′≢I refl }
+      ... | just ((？ Q′) # (ℓ < U >)) with Q′ ≟Fin Q
+      ...   | yes refl = yes (ℓ , U , refl)
+      ...   | no Q′≢Q  = no λ { (_ , _ , refl) → Q′≢Q refl }
 
       -- One scan of `s`'s edges, not one per label, sort and target.
-      Offers? : ∀ Q R I → Decidable (Offers {δ = δ} P Q R I)
-      Offers? Q R I (_ , s) =
-        Focus? R s ×?
-        map′ (λ (x : Any.Any (λ e → OffersActᴾ R Q I (proj₁ e)) (edges G s)) →
-               let (α , t) , mem , (j , U , eq) , fr = find x
-               in j , U , t , (α , eq , listed⇒step mem) , fr)
-             (λ { (j , U , t , (α , eq , gr) , fr) →
-                  lose (step⇒listed gr) ((j , U , eq) , fr) })
-             (Any.any?
-                (λ e → offersAct? R Q I (proj₁ e) ×? Foreign? P (proj₁ e))
-                (edges G s))
+      Offers? : ∀ Q R → Decidable (Offers {δ = δ} P Q R)
+      Offers? Q R (_ , s) =
+        first-in? R s ×? ¬? (Q ∈ˢ? P) ×?
+        map′ (λ (x : Any.Any (λ e → OffersAct R Q (proj₁ e)) (edges G s)) →
+               let (α , t) , mem , (ℓ , U , eq) = find x
+               in ℓ , U , t , (α , eq , listed⇒step mem))
+             (λ { (ℓ , U , t , (α , eq , gr)) →
+                  lose (step⇒listed gr) (ℓ , U , eq) })
+             (Any.any? (λ e → offersAct? R Q (proj₁ e)) (edges G s))
 
       Ended? : Decidable (Ended {δ = δ} P)
       Ended? (_ , s) = ¬? (inT? s)
@@ -797,7 +787,7 @@ module Check.Alg (N : ℕ) where
       module _ {Γ : Vec Sort γ}{𝒮 : States δ}(𝒮? : Decidable 𝒮) where
 
         send-case :
-          ∀ {Q Qs I}{i : Fin (suc I)}{E S}{Pr : Proc γ δ}
+          ∀ {Q Qs}{i : ℕ}{E S}{Pr : Proc γ δ}
           → Q ∈ˢ P
           → Γ ⊢e E ∶ S
           → (dom? : Decidable (Dom {δ = δ} P Q ((! Qs) # i < S >)))   -- a TABLE
@@ -838,7 +828,7 @@ module Check.Alg (N : ℕ) where
                           leaf {L = Dom P Q e}{ws}{s}
                             (ready→ {L? = dom?}{ws , s} (proj₁ (proj₂ x∈)))
                     in (ws , t) , u
-                     , ((s , x∈ , run) , (α , t , g , (_ , Q∈ , _ , eq)))
+                     , ((s , x∈ , run) , (t , α , g , (_ , Q∈ , _ , eq)))
                      , (α , eq , g)))
 
             max : ∀ {𝒰} → Γ ⊢a P ◂ Q ⇒ Qs ! i < E >∙ Pr ∶ 𝒰 → 𝒰 ∩ 𝒮 ⊆ 𝒯
@@ -848,70 +838,116 @@ module Check.Alg (N : ℕ) where
               x∈𝒮 , →ready {L? = dom?}{ws , s} (rdy {ws , s} x∈𝒰) ,
               λ { u t run (α , eq , g) →
                   into-hit r td
-                    ( (u , ((s , x∈𝒰 , run) , (α , t , g , (_ , Q∈ , _ , eq)))
+                    ( (u , ((s , x∈𝒰 , run) , (t , α , g , (_ , Q∈ , _ , eq)))
                          , (α , eq , g))
-                    , (u , ((s , x∈𝒮 , run) , (α , t , g , (_ , Q∈ , _ , eq)))
+                    , (u , ((s , x∈𝒮 , run) , (t , α , g , (_ , Q∈ , _ , eq)))
                          , (α , eq , g)) ) }
 
-        -- `res` is a TABLE of the branch probes, one per `(j , U)`.
+        -- The branch probes of a receive at `R` from `Q`, as a TABLE: one
+        -- per label the branches define and sort.  Entry `ℓ` of the
+        -- vector is label `lab ℓ`.
+        BrEntry : Part → Part → ℕ → Maybe (Proc (suc γ) δ) → Set₁
+        BrEntry R Q ℓ nothing  = ⊤₁
+        BrEntry R Q ℓ (just B) =
+          Sorted λ U → Probe (U ∷ Γ) P B (After R ((？ Q) # ℓ < U >) 𝒮)
+
+        data BrTable (R Q : Part)
+          : (ℕ → ℕ) → ∀ {m} → Vec (Maybe (Proc (suc γ) δ)) m → Set₁ where
+          t[]  : ∀ {lab} → BrTable R Q lab []
+          _t∷_ :
+            ∀ {lab m x}{xs : Vec (Maybe (Proc (suc γ) δ)) m}
+            → BrEntry R Q (lab zero) x → BrTable R Q (lab ∘ suc) xs
+            → BrTable R Q lab (x ∷ xs)
+
+        brAt :
+          ∀ {R Q lab m}{xs : Vec (Maybe (Proc (suc γ) δ)) m}{ℓ B}
+          → BrTable R Q lab xs → xs ∋ ℓ ↦ B
+          → Sorted λ U → Probe (U ∷ Γ) P B (After R ((？ Q) # lab ℓ < U >) 𝒮)
+        brAt (x t∷ _) F.here      = x
+        brAt (_ t∷ t) (F.there p) = brAt t p
+
+        -- Two branches of one label are the same branch.
+        brSame :
+          ∀ {R Q lab m}{xs : Vec (Maybe (Proc (suc γ) δ)) m}{ℓ B B′}
+            (t : BrTable R Q lab xs)(br : xs ∋ ℓ ↦ B)(br′ : xs ∋ ℓ ↦ B′) U
+          → hit (lookupSort (brAt t br′) U) ⊆ hit (lookupSort (brAt t br) U)
+        brSame t br br′ U h with ∋-functional br br′
+        ... | refl with ∋-unique br br′
+        ...   | refl = h
+
         recv-case :
-          ∀ {Q R I}{Br : Vec (Proc (suc γ) δ) (suc I)}
+          ∀ {Q R m}{Br : Vec (Maybe (Proc (suc γ) δ)) m}
           → R ∈ˢ P
-          → (offers? : Decidable (Offers {δ = δ} P Q R I))   -- a TABLE
-          → AllFin (suc I) (λ j → Sorted λ U →
-              Probe (U ∷ Γ) P (lookup Br j) (After R ((？ Q) # j < U >) 𝒮))
+          → (offers? : Decidable (Offers {δ = δ} P Q R))   -- a TABLE
+          → BrTable R Q (λ x → x) Br
           → Probe Γ P (R ⇐ Q ？· Br) 𝒮
-        recv-case {Q = Q}{R}{I}{Br} R∈ offers? tbl =
+        recv-case {Q = Q}{R}{Br = Br} R∈ offers? tbl =
           finish 𝒯 𝒯? proj₁ typed max
           where
-            e : Fin (suc I) → Sort → Event
-            e j U = (？ Q) # j < U >
+            e : ℕ → Sort → Event
+            e ℓ U = (？ Q) # ℓ < U >
 
-            res : ∀ j U → Probe (U ∷ Γ) P (lookup Br j) (After R (e j U) 𝒮)
-            res j U = lookupSort (lookupAll tbl j) U
+            res : ∀ {ℓ B} → Br ∋ ℓ ↦ B → ∀ U
+                → Probe (U ∷ Γ) P B (After R (e ℓ U) 𝒮)
+            res br U = lookupSort (brAt tbl br) U
+
+            -- An edge into `t` whose event at `R` is a receive from `Q` has
+            -- a branch for its label, typed at `t`.
+            EvOK : Vec Behav δ → Behav → Maybe Event → Set
+            EvOK ws t m =
+              ∀ ℓ U → m ≡ just (e ℓ U)
+              → ∃[ B ] Σ[ br ∈ Br ∋ ℓ ↦ B ] (ws , t) ∈ hit (res br U)
+
+            evOK? : ∀ ws t m → Dec (EvOK ws t m)
+            evOK? ws t nothing          = yes λ _ _ ()
+            evOK? ws t (just ((! _) # _)) = yes λ _ _ ()
+            evOK? ws t (just ((？ Q′) # (ℓ < U >))) with Q′ ≟Fin Q
+            ... | no Q′≢Q = yes λ { _ _ refl → ⊥-elim (Q′≢Q refl) }
+            ... | yes refl with Br ∋? ℓ
+            ...   | no ¬br = no λ ok → let B , br , _ = ok ℓ U refl in ¬br (B , br)
+            ...   | yes (B , br) with hit? (res br U) (ws , t)
+            ...     | yes h = yes λ { _ _ refl → B , br , h }
+            ...     | no ¬h =
+              no λ ok → let _ , br′ , h′ = ok ℓ U refl in ¬h (brSame tbl br br′ U h′)
 
             𝒯 : States _
             𝒯 (ws , s) =
               (ws , s) ∈ 𝒮 × (ws , s) ∈ Ready offers?
-              × (∀ j U u t → Star (_⇝[ P ]_) s u → u -<[ R ↦ e j U ]>-> t
-                           → (ws , t) ∈ hit (res j U))
+              × (∀ u → Star (_⇝[ P ]_) s u
+                 → ∀ α′ t → u -< α′ >-> t → EvOK ws t (ev α′ R))
 
             𝒯? : Decidable 𝒯
             -- Scans each reachable `u`'s edges, not every `(u , t)`.
             𝒯? (ws , s) =
               𝒮? (ws , s) ×? Ready? offers? (ws , s)
-              ×? map′ (λ { all j U u t run (α′ , eq , gr) →
-                           all u run α′ t gr j U
-                             (matchEv-refl R (e j U) α′ eq) })
-                      (λ all u run α′ t gr j U b →
-                         all j U u t run
-                           (α′ , matchEv-sound R (e j U) α′ b , gr))
-                   (FinP.all? λ u → walk? s u →?
-                      all-out? u (λ α′ t → FinP.all? λ j → all-sort? λ U →
-                        T? (matchEv R (e j U) α′)
-                          →? hit? (res j U) (ws , t)))
+              ×? FinP.all? (λ u → walk? s u →?
+                   all-out? u (λ α′ t → evOK? ws t (ev α′ R)))
 
             typed : Satisfiable 𝒯 → Γ ⊢a P ◂ R ⇐ Q ？· Br ∶ 𝒯
             typed _ =
               a/recv R∈
                 (λ {x} x∈ → ready→ {L? = offers?}{x} (proj₁ (proj₂ x∈)))
-                λ {j}{U} sat →
-                  from-hit (res j U)
-                    (λ { {ws , t} (u , ((s , s∈ , run) , _) , gr) →
-                         proj₂ (proj₂ s∈) j U u t run gr })
-                    sat
+                λ { {ℓ}{U} sat@(_ , (u₀ , ((_ , s∈₀ , run₀) , _) , (α₀ , eq₀ , g₀))) →
+                    let B , br , _ = proj₂ (proj₂ s∈₀) u₀ run₀ α₀ _ g₀ ℓ U eq₀
+                    in B , br ,
+                       from-hit (res br U)
+                         (λ { {ws , t} (u , ((s , s∈ , run) , _) , (α , eq , g)) →
+                              let _ , br′ , h = proj₂ (proj₂ s∈) u run α t g ℓ U eq
+                              in brSame tbl br br′ U h })
+                         sat }
 
             max : ∀ {𝒰} → Γ ⊢a P ◂ R ⇐ Q ？· Br ∶ 𝒰 → 𝒰 ∩ 𝒮 ⊆ 𝒯
             max (a/recv _ rdy conts) {ws , s} (x∈𝒰 , x∈𝒮) =
               x∈𝒮 , →ready {L? = offers?}{ws , s} (rdy {ws , s} x∈𝒰) ,
-              λ { j U u t run (α , eq , g) →
+              λ { u run α t g ℓ U eq →
                   let y∈𝒰 = u , ((s , x∈𝒰 , run)
-                                  , (α , t , g , (_ , R∈ , _ , eq)))
+                                  , (t , α , g , (_ , R∈ , _ , eq)))
                               , (α , eq , g)
                       y∈C = u , ((s , x∈𝒮 , run)
-                                  , (α , t , g , (_ , R∈ , _ , eq)))
+                                  , (t , α , g , (_ , R∈ , _ , eq)))
                               , (α , eq , g)
-                  in into-hit (res j U) (conts (_ , y∈𝒰)) (y∈𝒰 , y∈C) }
+                      B , br , td = conts (_ , y∈𝒰)
+                  in B , br , into-hit (res br U) td (y∈𝒰 , y∈C) }
 
         if-case :
           ∀ {E}{A B : Proc γ δ}
@@ -1010,10 +1046,8 @@ module Check.Alg (N : ℕ) where
           with R ∈ˢ? P
         ... | no R∉ = none λ { (a/recv R∈ _ _) _ → R∉ R∈ }
         ... | yes R∈ =
-          recv-case 𝒮? R∈ (memo (Offers? Q R _))
-            (tabulateAll λ j → tabulateSort λ U →
-              branch Br j (U ∷ Γ) (After R ((？ Q) # j < U >) 𝒮)
-                (memo (After? R ((？ Q) # j < U >) 𝒮?)))
+          recv-case 𝒮? R∈ (memo (Offers? Q R))
+            (brTable Γ R Q Br (λ x → x) 𝒮?)
 
         probe Γ (ifp E then A else B) 𝒮 𝒮?
           with checkExpression Γ E s/bool
@@ -1046,12 +1080,20 @@ module Check.Alg (N : ℕ) where
         rec-entry 𝒮? g past? r =
           rec-case 𝒮? g r (memo (Unskip? (memo (Entry? 𝒮? past? r))))
 
-        branch :
-          ∀ {γ δ m}(Br : Vec (Proc γ δ) m)(j : Fin m)
-            (Γ : Vec Sort γ)(𝒮 : States δ)
-          → Decidable 𝒮 → Probe Γ P (lookup Br j) 𝒮
-        branch (B ∷ Bs) zero    Γ = probe Γ B
-        branch (B ∷ Bs) (suc j)   = branch Bs j
+        -- Structural on the branches, so `probe` stays structural.
+        brTable :
+          ∀ {γ δ m}(Γ : Vec Sort γ)(R Q : Part)
+            (xs : Vec (Maybe (Proc (suc γ) δ)) m)(lab : ℕ → ℕ)
+            {𝒮 : States δ}(𝒮? : Decidable 𝒮)
+          → BrTable {Γ = Γ} 𝒮? R Q lab xs
+        brTable Γ R Q []             lab 𝒮? = t[]
+        brTable Γ R Q (nothing ∷ xs) lab 𝒮? =
+          tt₁ t∷ brTable Γ R Q xs (lab ∘ suc) 𝒮?
+        brTable Γ R Q (just B ∷ xs)  lab {𝒮} 𝒮? =
+          tabulateSort (λ U →
+            probe (U ∷ Γ) B (After R ((？ Q) # lab zero < U >) 𝒮)
+              (memo (After? R ((？ Q) # lab zero < U >) 𝒮?)))
+          t∷ brTable Γ R Q xs (lab ∘ suc) 𝒮?
 
     -- ══════════════════════════════════════════════════════════════════
     --  Typed at a state

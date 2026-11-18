@@ -109,14 +109,6 @@ module Definitions.Graph.Decision (N : ℕ) where
       ... | just ((？ _) # _)   | nothing            = tt
       ... | just ((？ _) # _)   | just ((! _) # _)   = tt
 
-  arity/complete :
-    ∀ {G}
-    → WellBehaved (graphTheory G)
-    → ∀ s → AllPairs (Both SameArity) (edges G s)
-  arity/complete {G} well-behaved s =
-    agreeOn/complete {G = G} s λ { (_ < _ >) (_ < _ >) gr gr′ eq eq′ →
-      WellBehaved.step-arity-det well-behaved gr gr′ eq eq′ }
-
   sort/complete :
     ∀ {G}
     → WellBehaved (graphTheory G)
@@ -192,7 +184,6 @@ module Definitions.Graph.Decision (N : ℕ) where
     record
       { deterministic = deterministic/complete {G = G} correct well-behaved
       ; recv-coherent = recv/complete {G = G} well-behaved
-      ; same-arity = arity/complete {G = G} well-behaved
       ; same-sort = sort/complete {G = G} well-behaved
       ; no-new-branch = noNewBranch/complete {G = G} well-behaved
       ; diamond = diamond/complete {G = G} correct well-behaved

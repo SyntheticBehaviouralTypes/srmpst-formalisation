@@ -9,6 +9,7 @@
 module Tests.Perf09_RevisitSpine where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
@@ -34,14 +35,14 @@ A = 0F
 B = 1F
 C = 2F
 
-ack result : Fin 1
-ack    = 0F
-result = 0F
+ack result : ℕ
+ack    = 0
+result = 0
 
 -- `A` to `B`: go round again, or be done
-again done : Fin 2
-again = 0F
-done  = 1F
+again done : ℕ
+again = 0
+done  = 1
 
 -- states: 0 = u, 1 = t, 2 = ℓ, plus the DSL's distinguished end
 -- (u → t → u, and u → ℓ)

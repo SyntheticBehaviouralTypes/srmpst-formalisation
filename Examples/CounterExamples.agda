@@ -7,6 +7,7 @@
 module Examples.CounterExamples where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using () renaming ([] to v[]; _∷_ to _v∷_)
@@ -35,13 +36,13 @@ B = 1F
 C = 2F
 
 -- `A`'s choice to `B`, forwarded by `B` to `C`
-accept reject : Fin 2
-accept = 0F
-reject = 1F
+accept reject : ℕ
+accept = 0
+reject = 1
 
 -- a message from `A` straight to `C`, which the protocol never sends
-direct : Fin 1
-direct = 0F
+direct : ℕ
+direct = 0
 
 -- s0 --A→B[0]--> s1 --B→C[0]--> ended
 -- s0 --A→B[1]--> s2 --B→C[1]--> ended    (`ended` is the DSL's unique end)

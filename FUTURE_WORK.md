@@ -12,7 +12,12 @@ exists; git history has it.*
 | [D](#d--what-was-tried-and-reverted) | the `Presentation` refactor | **reverted, do not rebuild** |
 | [E](#e--smaller-loose-ends) | smaller loose ends | recorded |
 
-**Where things stand.** The metatheory, the equivalence `⊢a ⟺ ⊢p` (`→` for
+*2026-11-18, branch `paper-rules`: the declarative judgment is now the
+ECOOP27 paper's, `Γ & Δ ⊢[ R ] P ∶ G` on bisimilarity classes
+(`docs/2026-11-18-paper-rules.md`). Below, `⊢p`, `⊢skip` and the `t/…`,
+`skip/…` constructors are its former names.*
+
+**Where things stand.** The metatheory, the equivalence `⊢a ⟺ ⊢` (`→` for
 every well-behaved theory, `←` for synchronous ones) and the decision
 procedure are complete and
 hole-free. What is left here is net-specific:

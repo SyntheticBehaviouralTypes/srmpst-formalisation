@@ -8,6 +8,7 @@
 module Examples.RecMW where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 import Data.Bool as Bool
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
@@ -39,14 +40,14 @@ W1 = 2F
 W2 = 3F
 
 -- `W` to `R`
-report : Fin 1
-report = 0F
+report : ℕ
+report = 0
 
 -- `M` to `W`: a datum, or stop; `R` to `M`: continue, or stop
-datum continue stop : Fin 2
-datum    = 0F
-continue = 0F
-stop     = 1F
+datum continue stop : ℕ
+datum    = 0
+continue = 0
+stop     = 1
 
 -- One round: `M→W1`, `M→W2`, `W1→R`, `W2→R`; `R` loops or stops.  `M→W2`
 -- and `W1→R` share no role, so `∙` lets them come in either order.

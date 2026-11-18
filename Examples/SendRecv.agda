@@ -6,6 +6,7 @@
 module Examples.SendRecv where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Fin.Subset using (⁅_⁆)
@@ -30,8 +31,8 @@ A = 0F
 B = 1F
 
 -- The one message: a flag.
-flag : Fin 1
-flag = 0F
+flag : ℕ
+flag = 0
 
 -- {A,B}: one process.
 Ρ/AB : Assignment 1

@@ -6,6 +6,7 @@
 module Examples.PingPong where
 
 open import Definitions.Expr.Syntax
+open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Fin.Patterns
 open import Data.Vec using ([]; _∷_)
@@ -29,9 +30,9 @@ A B : Fin 2
 A = 0F
 B = 1F
 
-ping pong : Fin 1
-ping = 0F
-pong = 0F
+ping pong : ℕ
+ping = 0
+pong = 0
 
 -- {A,B}: one process.
 Ρ/AB : Assignment 1
