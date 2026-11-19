@@ -20,7 +20,7 @@ open import Relation.Binary.PropositionalEquality using (_≡_)
 open import Relation.Binary.Construct.Closure.ReflexiveTransitive
   using (Star; ε; _◅_)
 
-open import Definitions.Behav using (BTheory)
+open import Definitions.Behav using (BTheory; WellBehaved; Synchronous)
 
 module Definitions.Classes {N : ℕ} (B : BTheory N) where
 
@@ -158,3 +158,49 @@ module Definitions.Classes {N : ℕ} (B : BTheory N) where
 
   ev⇒ᶜ : ∀ {G P e G′} → G -<[ P ↦ e ]>-> G′ → [ G ] C.-<[ P ↦ e ]>-> [ G′ ]
   ev⇒ᶜ (α , eq , gr) = α , eq , step⇒ᶜ gr
+
+  -- ══════════════════════════════════════════════════════════════════
+  --  B/∼ is well-behaved when B is
+  -- ══════════════════════════════════════════════════════════════════
+
+  -- The paper's lemma on classes.  Its condition 6, no new
+  -- communications, is `Synchronous`'s `no-new-comm/step` here, hence two
+  -- statements.
+
+  ≐⇒~ᶜ : ∀ {G H} → G ≐ H → G C.~ H
+  ≐⇒~ᶜ G≐H .C._~_.sym = ≐⇒~ᶜ (~sym G≐H)
+  ≐⇒~ᶜ G≐H .C._~_.step (_ , G″~ , gr) =
+    let H″ , gr′ , G″~H″ = ~L G≐H gr
+    in [ H″ ] , (H″ , ~refl , gr′) , ≐⇒~ᶜ (~trans (~sym G″~) G″~H″)
+
+  wellBehaved/∼ : WellBehaved B → WellBehaved B/∼
+  wellBehaved/∼ wb = record
+    { recv-overlap = λ { (_ , _ , gr₀) (_ , _ , gr₁) →
+        W.recv-overlap gr₀ gr₁ }
+    ; step-deterministic = λ { (_ , G₀~ , gr₀) (_ , G₁~ , gr₁) →
+        ≐⇒~ᶜ (~trans (~sym G₀~)
+          (~trans (W.step-deterministic gr₀ gr₁) G₁~)) }
+    ; step-sort-det = λ { (_ , _ , gr₀) (_ , _ , gr₁) →
+        W.step-sort-det gr₀ gr₁ }
+    ; no-new-branch/step = λ { (_ , H~ , gr) idle (_ , _ , gr₀) st eq →
+        let _ , gr₁ , _ = stepᶜ⇒~ H~ st
+            G′ , gr′ = W.no-new-branch/step gr idle gr₀ gr₁ eq
+        in [ G′ ] , (G′ , ~refl , gr′) }
+    ; step-diamond = λ { (_ , H₁~ , gr₁) (_ , H₂~ , gr₂) ind →
+        let X , Y , grX , grY , X~Y = W.step-diamond gr₁ gr₂ ind
+            X′ , grX′ , X~X′ = ~L H₁~ grX
+            Y′ , grY′ , Y~Y′ = ~L H₂~ grY
+        in [ X ] , [ Y ] , (X′ , ~sym X~X′ , grX′)
+         , (Y′ , ~sym Y~Y′ , grY′) , ≐⇒~ᶜ X~Y }
+    }
+    where module W = WellBehaved wb
+
+  synchronous/∼ : Synchronous B → Synchronous B/∼
+  synchronous/∼ sync = record
+    { balanced = λ { (_ , _ , gr) → S.balanced gr }
+    ; no-new-comm/step = λ { (_ , H~ , gr) idle st →
+        let _ , gr₀ , _ = stepᶜ⇒~ H~ st
+            G′ , gr′ = S.no-new-comm/step gr idle gr₀
+        in [ G′ ] , (G′ , ~refl , gr′) }
+    }
+    where module S = Synchronous sync
