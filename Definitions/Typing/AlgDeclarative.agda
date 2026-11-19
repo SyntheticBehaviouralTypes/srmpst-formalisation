@@ -105,6 +105,9 @@ module Definitions.Typing.AlgDeclarative
                in Pr , br , td/≐ ≐ᵛ-refl t′~ (alg⇒typing td x∈)) })
       (waitV/walk (rdy {ws , G} mem))
 
+  alg⇒typing (a/let etd td) mem =
+    let′ etd (alg⇒typing td mem)
+
   alg⇒typing (a/if etd ttd ftd) mem =
     if etd (alg⇒typing ttd mem) (alg⇒typing ftd mem)
 

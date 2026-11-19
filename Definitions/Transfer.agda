@@ -153,6 +153,7 @@ module Definitions.Transfer
             in Pr , br , typing⇒ td
       typing⇒ (M₁.skip std) = M₂.skip (skip/typing⇒ std)
       typing⇒ (M₁.forward td run) = M₂.forward (typing⇒ td) (skipᶜ⇒ run)
+      typing⇒ (M₁.let′ etd td)    = M₂.let′ etd (typing⇒ td)
       typing⇒ (M₁.if etd ttd ftd) = M₂.if etd (typing⇒ ttd) (typing⇒ ftd)
       typing⇒ (M₁.rec td mg)      = M₂.rec (typing⇒ td) mg
       typing⇒ {Δ = Δ} (M₁.var {X = X} eq) =

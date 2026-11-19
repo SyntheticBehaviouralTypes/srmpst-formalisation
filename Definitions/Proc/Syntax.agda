@@ -5,7 +5,8 @@
 --   rec X · P                    binds `X` (`Utils.Binder`), not `v 0F`;
 --   R ⇐ P ？· ⟪ l₁ ↦ P₁          one branch per accepted label, in any
 --            ∣ l₂ ⟨ x ⟩ ↦ P₂     order (`Utils.Branch`); `⟨ x ⟩` names
---            ⟫                   the received value (not `var 0F`).
+--            ⟫                   the received value (not `var 0F`);
+--   letp x ≔ E in′ P             `let x = E in P`: names `E`'s value `x`.
 --
 -- Open `Definitions.Proc` hiding `rec` and `_⇐_？·_` next to this.
 
@@ -49,6 +50,13 @@ module Definitions.Proc.Syntax (N : ℕ) where
 
   infixr 4 receiving
   syntax receiving l (λ x → P) = l ⟨ x ⟩ ↦ P
+
+  -- `letp x ≔ E in′ P`, as `let x = E in P`.
+  letting : ∀ {γ δ} → Exp γ → (Val γ → Proc (suc γ) δ) → Proc γ δ
+  letting {γ = γ} E body = Core.letp E in′ body (λ {m} {p} → var (bound γ p))
+
+  infixr 8 letting
+  syntax letting E (λ x → P) = letp x ≔ E in′ P
 
   infixr 8 _⇐_？·_
 

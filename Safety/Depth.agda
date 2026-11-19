@@ -4,8 +4,9 @@
 
 open import Data.Nat using (ℕ; _<_; _⊔_; s≤s; suc)
 open import Data.Nat.Properties using (≤-refl; m≤n⇒m≤n⊔o; m≤n⇒m≤o⊔n)
-open import Data.Fin using (zero)
-open import Relation.Binary.PropositionalEquality using (_≡_; refl)
+open import Data.Fin using (zero) renaming (suc to fsuc)
+open import Relation.Binary.PropositionalEquality using (_≡_; refl; cong; cong₂)
+open import Definitions.Expr using (Exp; Value; val; weaken/exp)
 
 module Safety.Depth (N : ℕ) where
 
@@ -20,6 +21,8 @@ module Safety.Depth (N : ℕ) where
     0
   τ-depth/proc (_ ⇐ _ ？· _) =
     0
+  τ-depth/proc (letp _ in′ Pr) =
+    suc (τ-depth/proc Pr)
   τ-depth/proc (ifp _ then Pr else Pr′) =
     suc (τ-depth/proc Pr ⊔ τ-depth/proc Pr′)
   τ-depth/proc (rec Pr) =
@@ -39,10 +42,37 @@ module Safety.Depth (N : ℕ) where
     refl
   τ-depth/message-subst mg/recv =
     refl
+  τ-depth/message-subst {X = X} {Pr′ = Pr′} (mg/let mg)
+    rewrite τ-depth/message-subst {X = X} {Pr′ = weaken/proc/exp Pr′ zero} mg =
+    refl
   τ-depth/message-subst {X = X} {Pr′ = Pr′} (mg/if mg₁ mg₂)
     rewrite τ-depth/message-subst {X = X} {Pr′ = Pr′} mg₁
           | τ-depth/message-subst {X = X} {Pr′ = Pr′} mg₂ =
     refl
+
+  -- Substituting a value does not change the depth.
+  τ-depth/subst-e :
+    ∀ {γ δ} {E : Exp γ} {y} (Pr : Proc (suc γ) δ)
+    → τ-depth/proc ([ E / y ]e Pr) ≡ τ-depth/proc Pr
+  τ-depth/subst-e (_ ⇒ _ ! _ < _ >∙ _) = refl
+  τ-depth/subst-e (_ ⇐ _ ？· _) = refl
+  τ-depth/subst-e {E = E} {y} (letp _ in′ Pr) =
+    cong suc (τ-depth/subst-e {E = weaken/exp E zero} {fsuc y} Pr)
+  τ-depth/subst-e {E = E} {y} (ifp _ then Pr else Pr′) =
+    cong suc
+      (cong₂ _⊔_ (τ-depth/subst-e {E = E} {y} Pr)
+                 (τ-depth/subst-e {E = E} {y} Pr′))
+  τ-depth/subst-e {E = E} {y} (rec Pr) =
+    cong suc (τ-depth/subst-e {E = E} {y} Pr)
+  τ-depth/subst-e (v _) = refl
+  τ-depth/subst-e ∅ = refl
+
+  τ-depth/let :
+    ∀ {E V} {Pr : Proc 1 0}
+    → τ-depth/proc ([ val V / zero ]e Pr) < τ-depth/proc (letp E in′ Pr)
+  τ-depth/let {V = V} {Pr}
+    rewrite τ-depth/subst-e {E = val V} {zero} Pr =
+    ≤-refl
 
   τ-depth/if-then :
     ∀ {γ δ E}

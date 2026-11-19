@@ -75,6 +75,8 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
     mg/send
   guarded/weaken-expr mg/recv =
     mg/recv
+  guarded/weaken-expr (mg/let mmg) =
+    mg/let (guarded/weaken-expr mmg)
   guarded/weaken-expr (mg/if mmg mmg₁) =
     mg/if
       (guarded/weaken-expr mmg)
@@ -89,6 +91,7 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
     → MessageGuarded ([ E / X ]e Pr)
   guarded/subst-expr mg/send = mg/send
   guarded/subst-expr mg/recv = mg/recv
+  guarded/subst-expr (mg/let mmg) = mg/let (guarded/subst-expr mmg)
   guarded/subst-expr (mg/if mmgl mmgr) =
     mg/if
       (guarded/subst-expr mmgl)
@@ -134,6 +137,10 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
       skip (skip/subst-expr etd std)
     typing/subst-expr etd (forward ptd run) =
       forward (typing/subst-expr etd ptd) run
+    typing/subst-expr {Γ = _ ∷ _} etd (let′ etd₁ ptd) =
+      let′
+        (exp-subst etd₁ etd)
+        (typing/subst-expr (expr-weaken-lemma {x = zero} etd) ptd)
     typing/subst-expr etd (if etd₁ ptd ptd₁) =
       if
         (exp-subst etd₁ etd)
@@ -193,6 +200,10 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
       skip (skip/weaken-expr std)
     typing/weaken-expr (forward ptd run) =
       forward (typing/weaken-expr ptd) run
+    typing/weaken-expr (let′ etd ptd) =
+      let′
+        (expr-weaken-lemma etd)
+        (typing/weaken-expr ptd)
     typing/weaken-expr (if etd ptd₁ ptd₂) =
       if
         (expr-weaken-lemma etd)
@@ -226,6 +237,8 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
     mg/send
   guarded/weaken-proc mg/recv =
     mg/recv
+  guarded/weaken-proc (mg/let mmg) =
+    mg/let (guarded/weaken-proc mmg)
   guarded/weaken-proc (mg/if mmg mmg₁) =
     mg/if
       (guarded/weaken-proc mmg)
@@ -265,6 +278,8 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
       skip (skip/weaken-proc std)
     typing/weaken-proc (forward ptd run) =
       forward (typing/weaken-proc ptd) run
+    typing/weaken-proc (let′ etd ptd) =
+      let′ etd (typing/weaken-proc ptd)
     typing/weaken-proc (if etd ptd ptd₁) =
       if etd
         (typing/weaken-proc ptd)
@@ -304,6 +319,8 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
     mg/send
   guarded/subst-proc mg/recv =
     mg/recv
+  guarded/subst-proc (mg/let mg) =
+    mg/let (guarded/subst-proc mg)
   guarded/subst-proc (mg/if mg₁ mg₂) =
     mg/if
       (guarded/subst-proc mg₁)
@@ -347,6 +364,8 @@ module Definitions.Typing.Substitution {N : ℕ}{B : BTheory N}(wb : WellBehaved
       skip (skip/subst-proc ptd′ std)
     typing/subst-proc ptd′ (forward ptd run) =
       forward (typing/subst-proc ptd′ ptd) run
+    typing/subst-proc ptd′ (let′ etd ptd) =
+      let′ etd (typing/subst-proc (typing/weaken-expr ptd′) ptd)
     typing/subst-proc ptd′ (if etd ptd ptd₁) =
       if etd
         (typing/subst-proc ptd′ ptd)

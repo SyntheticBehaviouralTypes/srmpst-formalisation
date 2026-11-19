@@ -147,6 +147,11 @@ module Safety.Progress
         { walk = walk ; gr = gr ; l = owner S ; S∈ = owner/∈ S
         ; snd = _ , _ , ev-sender {S} {Qs} {c} ; ¬int = ¬int })
 
+    let/progress :
+      ∀ k {E S Pr} → [] ⊢e E ∶ S → M [ k ]= letp E in′ Pr → Progress M
+    let/progress k etd lu≡ =
+      let _ , e⇓v = eval-exp etd in nothing , _ , P-Let k lu≡ e⇓v
+
     if/progress :
       ∀ k {E Pr Pr′}
       → [] ⊢e E ∶ s/bool → M [ k ]= ifp E then Pr else Pr′ → Progress M
@@ -180,7 +185,7 @@ module Safety.Progress
       module V = BTheory (Views.Local wb sync Ρ k)
       open MPST (wbL k) public using () renaming (~refl to ~reflᴸ)
       open import Definitions.Typing.Alg (wbL k) public
-        using ( _⊢at_∶_; a/send; a/recv; a/if; a/end; a/var; a/rec
+        using ( _⊢at_∶_; a/send; a/recv; a/let; a/if; a/end; a/var; a/rec
               ; waitLeaf; waitActive; at/send-inv; at/recv-inv )
       open WellBehaved (wbL k) public
         using () renaming ( recv-overlap to recv-overlapᴸ )
@@ -290,6 +295,7 @@ module Safety.Progress
           go lu≡ (_ , a/end done , mem) =
             ⊥-elim (done {[] , H} mem (V.in/α step own))
           go lu≡ (_ , a/var {X = ()} _ , _)
+          go lu≡ (_ , a/let etd _ , _) = inj₂ (let/progress k etd lu≡)
           go lu≡ (_ , a/if etd _ _ , _) = inj₂ (if/progress k etd lu≡)
           go lu≡ (_ , a/rec _ _ _ , _) = inj₂ (nothing , _ , P-Rec k lu≡)
           -- `k` sends: the shared role receives in `α`, so `α` is the same
@@ -395,6 +401,7 @@ module Safety.Progress
           go lu≡ (_ , a/end done , mem) =
             ⊥-elim (done {[] , H} mem (V.in/α step own))
           go lu≡ (_ , a/var {X = ()} _ , _)
+          go lu≡ (_ , a/let etd _ , _) = let/progress k etd lu≡
           go lu≡ (_ , a/if etd _ _ , _) = if/progress k etd lu≡
           go lu≡ (_ , a/rec _ _ _ , _) = nothing , _ , P-Rec k lu≡
           go lu≡ td@(_ , a/recv R∈ _ _ , _)
@@ -427,6 +434,7 @@ module Safety.Progress
         → done/proc Pr ⊎ (Progress M ⊎ Active)
       status lu≡ (_ , a/end _ , _) = inj₁ done-∅
       status lu≡ (_ , a/var {X = ()} _ , _)
+      status lu≡ (_ , a/let etd _ , _) = inj₂ (inj₁ (let/progress k etd lu≡))
       status lu≡ (_ , a/if etd _ _ , _) = inj₂ (inj₁ (if/progress k etd lu≡))
       status lu≡ (_ , a/rec _ _ _ , _) =
         inj₂ (inj₁ (nothing , _ , P-Rec k lu≡))

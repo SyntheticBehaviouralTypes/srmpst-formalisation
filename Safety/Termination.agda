@@ -52,6 +52,9 @@ module Safety.Termination
   τ-depth/decrease :
     ∀ {M M′ G} → ⊢ᴸ M ∶ G → M [ nothing ]⇒ M′
     → τ-depth/processes M′ < τ-depth/processes M
+  τ-depth/decrease {M} _ (P-Let {E = E} {V = V} {Pr = Pr} j lu≡ _) =
+    sum/map-update< (τ-depth/proc {γ = 0} {δ = 0}) M j
+      (τ-depth/lookup< lu≡ (τ-depth/let {E = E} {V = V} {Pr = Pr}))
   τ-depth/decrease {M} _
     (P-If1 {E = E} {Pr = Pr} {Pr′ = Pr′} j lu≡ _) =
     sum/map-update< (τ-depth/proc {γ = 0} {δ = 0}) M j
@@ -82,6 +85,8 @@ module Safety.Termination
   lookup-done {j = j} d lu≡ rewrite sym ([]=⇒lookup lu≡) = d j
 
   still-done : ∀ {M M′} → M [ nothing ]⇒ M′ → done M → done M′
+  still-done (P-Let j lu≡ _) d l with lookup-done d lu≡
+  ... | ()
   still-done {M} (P-If1 {Pr = Pr} j lu≡ _) d l
     with l ≟f j | lookup-done d lu≡
   ... | yes refl | done-if dPr _ rewrite lookup∘update l M Pr = dPr
@@ -99,6 +104,11 @@ module Safety.Termination
 
   still-ended :
     ∀ {M M′} (l : Fin K) → M [ nothing ]⇒ M′ → lu M l ≡ ∅ → lu M′ l ≡ ∅
+  still-ended {M} l (P-Let {V = V} {Pr = Pr} j lu≡ _) ended with l ≟f j
+  ... | no l≢j
+    rewrite lookup∘update′ l≢j M (Subst.[ val V / zero ]e Pr) = ended
+  ... | yes refl rewrite []=⇒lookup lu≡ with ended
+  ...   | ()
   still-ended {M} l (P-If1 {Pr = Pr} j lu≡ _) ended with l ≟f j
   ... | no l≢j rewrite lookup∘update′ l≢j M Pr = ended
   ... | yes refl rewrite []=⇒lookup lu≡ with ended

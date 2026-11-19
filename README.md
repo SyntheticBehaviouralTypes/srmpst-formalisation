@@ -84,19 +84,20 @@ Sessions are one process per block of an `Assignment` of roles to processes; a p
 
 ## Process Language
 
-The formalisation defines a process calculus with the following constructs (`γ` counts expression binders, `δ` recursion binders):
+The formalisation defines a process calculus with the constructs of the POPL 2026 paper — send, receive, `let`, conditional, recursion, variable, end — (`γ` counts expression binders, `δ` recursion binders):
 
 ```agda
 data Proc (γ δ : ℕ) : Set where
   _⇒_!_<_>∙_     : Part → PartSet → ℕ → Exp γ → Proc γ δ → Proc γ δ                  -- Role p sends ℓ to Qs
   _⇐_？·_         : Part → Part → {n : ℕ} → Vec (Maybe (Proc (suc γ) δ)) n → Proc γ δ  -- Role q receives from p
+  letp_in′_      : Exp γ → Proc (suc γ) δ → Proc γ δ                                  -- let x = e in P
   ifp_then_else_ : Exp γ → Proc γ δ → Proc γ δ → Proc γ δ                            -- Conditional
   rec            : Proc γ (suc δ) → Proc γ δ                                          -- Recursion
   v              : Fin δ → Proc γ δ                                                   -- Process variable
   ∅              : Proc γ δ                                                           -- Termination
 ```
 
-A process names the role that acts: `p ⇒ Qs ! ℓ < E >∙ Pr` is role `p` sending, `q ⇐ p ？· Br` role `q` receiving. A receive's branches are a family indexed by its labels `𝓛`: entry `ℓ` is `just P` exactly when `ℓ ∈ 𝓛` with branch `P` (`Br ∋ ℓ ↦ P`); the sort of a branch's variable comes from the matched step.
+A process names the role that acts: `p ⇒ Qs ! ℓ < E >∙ Pr` is role `p` sending, `q ⇐ p ？· Br` role `q` receiving. A receive's branches are a family indexed by its labels `𝓛`: entry `ℓ` is `just P` exactly when `ℓ ∈ 𝓛` with branch `P` (`Br ∋ ℓ ↦ P`); the sort of a branch's variable comes from the matched step. `letp E in′ P` is `let x = E in P` (`let` and `in` are Agda keywords): `P` binds `x`, of `E`'s sort; it takes a silent step (`P-Let`) to `P` with `E`'s value for `x`. With named binders (`Definitions/Proc/Syntax.agda`) it is written `letp x ≔ E in′ P`.
 
 `PartSet = Subset N` (`Data.Fin.Subset`): receiver sets have no order and no duplicates, so `⁅ B ⁆ ∪ ⁅ C ⁆` and `⁅ C ⁆ ∪ ⁅ B ⁆` are the same set.
 

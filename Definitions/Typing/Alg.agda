@@ -300,6 +300,12 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
                  × (U ∷ Γ) ⊢a Q ◂ Pr ∶ Post R e (Front Q 𝒮))
       → Γ ⊢a Q ◂ R ⇐ P ？· Br ∶ 𝒮
 
+    a/let :
+      ∀ {P E S Pr}{𝒮 : States δ}
+      → (etd : Γ ⊢e E ∶ S)
+      → (td  : (S ∷ Γ) ⊢a P ◂ Pr ∶ 𝒮)
+      → Γ ⊢a P ◂ letp E in′ Pr ∶ 𝒮
+
     a/if :
       ∀ {P E A B}{𝒮 : States δ}
       → (etd : Γ ⊢e E ∶ s/bool)
@@ -344,6 +350,9 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
                Pr , br , td = conts (x , mono {x} x∈)
            in Pr , br , alg/mono mono td })
 
+  alg/mono f (a/let etd td) =
+    a/let etd (alg/mono f td)
+
   alg/mono f (a/if etd ttd ftd) =
     a/if etd (alg/mono f ttd) (alg/mono f ftd)
 
@@ -367,6 +376,13 @@ module Definitions.Typing.Alg {N : ℕ}{B : BTheory N}(wb : WellBehaved B) where
 
   at/if-inv (𝒮 , a/if etd ttd ftd , x∈) =
     etd , (𝒮 , ttd , x∈) , (𝒮 , ftd , x∈)
+
+  at/let-inv :
+    ∀ {Γ : Vec Sort γ}{P E}{Pr : Proc (suc γ) δ}{x}
+    → Γ ⊢at P ◂ letp E in′ Pr ∶ x
+    → ∃[ S ] (Γ ⊢e E ∶ S) × ((S ∷ Γ) ⊢at P ◂ Pr ∶ x)
+
+  at/let-inv (𝒮 , a/let etd td , x∈) = _ , etd , (𝒮 , td , x∈)
 
   -- A send: the sort, the `Wait`, and the continuation after any idle walk
   -- followed by the send.

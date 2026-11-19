@@ -48,7 +48,7 @@ module Safety.Preservation
   open import Definitions.Actions N
   open import Definitions.Proc N
     using ( Proc; NProc; _◂_; unfold/proc; module Subst
-          ; _⇒_!_<_>∙_; _⇐_？·_; ifp_then_else_; rec; MessageGuarded )
+          ; _⇒_!_<_>∙_; _⇐_？·_; letp_in′_; ifp_then_else_; rec; MessageGuarded )
   open import Definitions.View B
   open import Definitions.View.Lemmas B wb sync
   open BTheory B
@@ -87,8 +87,8 @@ module Safety.Preservation
       open MPST (wbL j) using ()
         renaming (_-[¬_]->*_ to _-[¬_]->ᴸ*_; _~_ to _~ᴸ_; ~refl to ~reflᴸ)
       open import Definitions.Typing.Alg (wbL j)
-        using ( at/send-inv; at/recv-inv; at/if-inv; at/rec-guarded
-              ; waitLeaf; Wait; Dom )
+        using ( at/send-inv; at/recv-inv; at/let-inv; at/if-inv
+              ; at/rec-guarded; waitLeaf; Wait; Dom )
       open import Definitions.Typing.Substitution (wbL j)
         using (at/subst-expr; at/rec/unfold; at/unskip)
       open import Definitions.Behav using (module BTheory)
@@ -157,6 +157,16 @@ module Safety.Preservation
           (sym (∋-functional br br′))
           (unskip ε (local/~ H′~G′)
             (at/subst-expr (balL j) (te/val (value/sort V)) tdc))
+
+      -- `let x = E in Pr`, with `E`'s value for `x`.
+      let-body :
+        ∀ {E V Pr G}
+        → [] ⊢ᴸ[ j ] Ps ◂ letp E in′ Pr ∶ G
+        → E ⇓ V
+        → [] ⊢ᴸ[ j ] Ps ◂ Subst.[ val V / zero ]e Pr ∶ G
+      let-body {V = V} td e⇓v with at/let-inv td
+      ... | _ , etd , tdb with sort/value-typed (exp-pres etd e⇓v)
+      ...   | refl = at/subst-expr (balL j) (te/val (value/sort V)) tdb
 
       if-true :
         ∀ {E Pr Pr′ G}
@@ -233,6 +243,8 @@ module Safety.Preservation
 
     preservation/τ :
       ∀ {M M′ G} → ⊢ᴸ M ∶ G → M [ nothing ]⇒ M′ → ⊢ᴸ M′ ∶ G
+    preservation/τ {M} ts (P-Let j lu≡ e⇓v) =
+      ⊢ᴸ-update M ts (Per.let-body j (td/lookup ts lu≡) e⇓v)
     preservation/τ {M} ts (P-If1 j lu≡ _) =
       ⊢ᴸ-update M ts (Per.if-true j (td/lookup ts lu≡))
     preservation/τ {M} ts (P-If2 j lu≡ _) =

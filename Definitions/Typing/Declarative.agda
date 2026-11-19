@@ -173,6 +173,12 @@ module MPST {N : ℕ} {B : BTheory N} (wb : WellBehaved B) where
         → G -[¬ R ]->* G′
         → Γ & Δ ⊢[ R ] P ∶ G′
 
+      let′ :
+        ∀ {e t P G}
+        → Γ ⊢e e ∶ t
+        → Γ ▸ t & Δ ⊢[ R ] P ∶ G
+        → Γ & Δ ⊢[ R ] letp e in′ P ∶ G
+
       if :
         ∀ {e P₁ P₂ G}
         → Γ ⊢e e ∶ s/bool

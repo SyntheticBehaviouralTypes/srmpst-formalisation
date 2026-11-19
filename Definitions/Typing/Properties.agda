@@ -121,6 +121,9 @@ module Definitions.Typing.Properties {N : ℕ}{B : BTheory N}(wb : WellBehaved B
     ... | inj₁ G₀≐  = td/≐ Δ~ G₀≐ td
     ... | inj₂ run′ = forward (td/≐ Δ~ ≐-refl td) run′
 
+    td/≐ Δ~ G≐ (let′ etd td) =
+      let′ etd (td/≐ Δ~ G≐ td)
+
     td/≐ Δ~ G≐ (if etd ttd ftd) =
       if etd (td/≐ Δ~ G≐ ttd) (td/≐ Δ~ G≐ ftd)
 

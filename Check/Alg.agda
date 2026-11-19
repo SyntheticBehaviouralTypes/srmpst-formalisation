@@ -447,6 +447,8 @@ module Check.Alg (N : ℕ) where
     guarded? : (Pr : Proc γ δ) → Dec (MessageGuarded Pr)
     guarded? (_ ⇒ _ ! _ < _ >∙ _) = yes mg/send
     guarded? (_ ⇐ _ ？· _)        = yes mg/recv
+    guarded? (letp _ in′ A) =
+      map′ mg/let (λ { (mg/let a) → a }) (guarded? A)
     guarded? (ifp _ then A else B) =
       map′ (λ (a , b) → mg/if a b) (λ { (mg/if a b) → a , b })
            (guarded? A ×? guarded? B)
@@ -949,6 +951,25 @@ module Check.Alg (N : ℕ) where
                       B , br , td = conts (_ , y∈𝒰)
                   in B , br , into-hit (res br U) td (y∈𝒰 , y∈C) }
 
+        -- The body is probed at the same set, its variable of `E`'s sort.
+        let-case :
+          ∀ {E S}{A : Proc (suc γ) δ}
+          → Γ ⊢e E ∶ S
+          → Probe (S ∷ Γ) P A 𝒮
+          → Probe Γ P (letp E in′ A) 𝒮
+        let-case {E = E} {A = A} etd rA =
+          finish (hit rA) (hit? rA) (sub rA)
+            (λ sat → a/let etd (from-hit rA (λ x → x) sat))
+            max
+          where
+            sub : ∀ {Γ′ : Vec Sort (suc γ)}{Pr}(r : Probe Γ′ P Pr 𝒮) → hit r ⊆ 𝒮
+            sub (found T) = Found.sub T
+            sub (none _)  = λ ()
+
+            max : ∀ {𝒰} → Γ ⊢a P ◂ letp E in′ A ∶ 𝒰 → 𝒰 ∩ 𝒮 ⊆ hit rA
+            max (a/let etd′ td) x∈ with ⊢e-unique etd′ etd
+            ... | refl = into-hit rA td x∈
+
         if-case :
           ∀ {E}{A B : Proc γ δ}
           → Γ ⊢e E ∶ s/bool
@@ -1048,6 +1069,11 @@ module Check.Alg (N : ℕ) where
         ... | yes R∈ =
           recv-case 𝒮? R∈ (memo (Offers? Q R))
             (brTable Γ R Q Br (λ x → x) 𝒮?)
+
+        probe Γ (letp E in′ A) 𝒮 𝒮?
+          with any-sort? (checkExpression Γ E)
+        ... | no ¬e = none λ { (a/let etd _) _ → ¬e (_ , etd) }
+        ... | yes (S , etd) = let-case 𝒮? etd (probe (S ∷ Γ) A 𝒮 𝒮?)
 
         probe Γ (ifp E then A else B) 𝒮 𝒮?
           with checkExpression Γ E s/bool

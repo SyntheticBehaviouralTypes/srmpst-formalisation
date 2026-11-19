@@ -40,6 +40,8 @@ module Definitions.Proc (N : ℕ) where
     _⇐_？·_ :
       Part → Part → {n : ℕ}
       → Vec (Maybe (Proc (suc γ) δ)) n → Proc γ δ
+    -- `let x = E in P`; `P` binds `x` (`let`/`in` are Agda keywords).
+    letp_in′_ : Exp γ → Proc (suc γ) δ → Proc γ δ
     ifp_then_else_ : Exp γ → Proc γ δ → Proc γ δ → Proc γ δ
     rec : Proc γ (suc δ) → Proc γ δ
     v : Fin δ → Proc γ δ
@@ -47,6 +49,7 @@ module Definitions.Proc (N : ℕ) where
 
   infixr 8 _⇒_!_<_>∙_
   infixr 8 _⇐_？·_
+  infixr 8 letp_in′_
   infixr 8 ifp_then_else_
 
   -- A process typed at the set of roles it owns.
@@ -55,22 +58,29 @@ module Definitions.Proc (N : ℕ) where
 
   infix 5 _◂_
 
-  -- A `rec` body starts with a message on every branch of its `if`s.
-  data MessageGuarded {γ δ} : Proc γ δ → Set where
+  -- A `rec` body starts with a message on every branch of its `if`s,
+  -- after any `let`s.
+  data MessageGuarded : ∀ {γ δ} → Proc γ δ → Set where
     mg/send :
-      ∀ {Q} {Qs : PartSet}
+      ∀ {γ δ} {Q} {Qs : PartSet}
         {i  : ℕ}
         {E  : Exp γ}
         {Pr : Proc γ δ}
       → MessageGuarded (Q ⇒ Qs ! i < E >∙ Pr)
 
     mg/recv :
-      ∀ {R P n}
+      ∀ {γ δ R P n}
         {Br : Vec (Maybe (Proc (suc γ) δ)) n}
       → MessageGuarded (R ⇐ P ？· Br)
 
+    mg/let :
+      ∀ {γ δ} {E : Exp γ}
+        {Pr : Proc (suc γ) δ}
+      → MessageGuarded Pr
+      → MessageGuarded (letp E in′ Pr)
+
     mg/if :
-      ∀ {E : Exp γ}
+      ∀ {γ δ} {E : Exp γ}
         {Pr Pr' : Proc γ δ}
       → MessageGuarded Pr
       → MessageGuarded Pr'
@@ -91,6 +101,7 @@ module Definitions.Proc (N : ℕ) where
       weaken/proc (Q ⇒ Qs ! L < E >∙ Pr) X =
         Q ⇒ Qs ! L < E >∙ (weaken/proc Pr X)
       weaken/proc (R ⇐ P ？· Br) X = R ⇐ P ？· (weaken/proc/branch Br X)
+      weaken/proc (letp E in′ Pr) X = letp E in′ weaken/proc Pr X
       weaken/proc (ifp E then Pr else Pr′) X =
         ifp E then weaken/proc Pr X else weaken/proc Pr′ X
       weaken/proc (rec Pr) X = rec (weaken/proc Pr (suc X))
@@ -115,6 +126,8 @@ module Definitions.Proc (N : ℕ) where
         Q ⇒ Qs ! L < weaken/exp E x >∙ (weaken/proc/exp Pr x)
       weaken/proc/exp (R ⇐ P ？· Br) x =
         R ⇐ P ？· weaken/exp/branch Br (suc x)
+      weaken/proc/exp (letp E in′ Pr) x =
+        letp weaken/exp E x in′ weaken/proc/exp Pr (suc x)
       weaken/proc/exp (ifp E then Pr else Pr′) x =
         ifp weaken/exp E x
           then weaken/proc/exp Pr x
@@ -140,6 +153,8 @@ module Definitions.Proc (N : ℕ) where
       [ Pr / y ]pr (Q ⇒ Qs ! L < E >∙ Pr') =
         Q ⇒ Qs ! L < E >∙ ([ Pr / y ]pr Pr')
       [ Pr / y ]pr (R ⇐ P ？· Br) = R ⇐ P ？· ([ Pr / y ]prch Br)
+      [ Pr / y ]pr (letp E in′ Pr′) =
+        letp E in′ [ weaken/proc/exp Pr zero / y ]pr Pr′
       [ Pr / y ]pr (ifp E then Prₜ else Prₑ) =
         ifp E then [ Pr / y ]pr Prₜ else [ Pr / y ]pr Prₑ
       [ Pr / y ]pr rec Pr' = rec ([ weaken/proc Pr zero / suc y ]pr Pr')
@@ -166,6 +181,8 @@ module Definitions.Proc (N : ℕ) where
         Q ⇒ Qs ! L < [ E / y ]exp E′ >∙ [ E / y ]e Pr′
       [ E / y ]e (R ⇐ P ？· Br) =
         R ⇐ P ？· [ weaken/exp E zero / y ]ech Br
+      [ E / y ]e (letp E′ in′ Pr′) =
+        letp [ E / y ]exp E′ in′ [ weaken/exp E zero / suc y ]e Pr′
       [ E / y ]e (ifp E′ then Prₜ else Prₑ) =
         ifp [ E / y ]exp E′
           then [ E / y ]e Prₜ
@@ -322,6 +339,13 @@ module Definitions.Proc (N : ℕ) where
                        M [ k ]= Rk k ⇐ P ？· Br × Br ∋ ℓ ↦ Cont k)
         → M [ msg (P ⟶ Qs # ℓ < sort/value V >) ]⇒
             (M [ j ↦ Pr ∣ Qs ↦ (λ k → Subst.[ val V / zero ]e Cont k) ])
+
+      P-Let :
+        ∀ {E V Pr}
+        → (j : Fin K)
+        → M [ j ]= letp E in′ Pr
+        → E ⇓ V
+        → M [ τ ]⇒ (M [ j ]≔ Subst.[ val V / zero ]e Pr)
 
       P-If1 :
         ∀ {E Pr Pr′}

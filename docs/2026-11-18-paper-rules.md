@@ -106,6 +106,19 @@ check under a cap well below *available* memory (`AGDA_MEM_PERCENT`); the
   - labelled traces `G -[ αs ]-> G′` stay for the safety statements and
     the examples; `tr⇒run` turns an `R`-free trace into a run
 
+- [x] phase 7 — `let`, as in POPL 2026 (the process language is now send,
+  receive, `let`, `if`, `rec`, `X`, `end`, in both Agda and the ECOOP27
+  paper's Fig. 1)
+  - `Proc`: `letp E in′ P` (`P` binds the value); session rule `P-Let`;
+    `MessageGuarded` gets `mg/let` (and becomes an indexed family);
+    the four substitutions; surface syntax `letp x ≔ E in′ P`
+  - typing: the paper's ⊢-Let is `let′ : Γ ⊢e e ∶ t → Γ ▸ t & Δ ⊢[ R ] P ∶ G
+    → Γ & Δ ⊢[ R ] letp e in′ P ∶ G`; the algorithmic `a/let`; the cases in
+    `Properties`, `Transfer`, `Substitution`, `AlgNorm` (`letEWait`,
+    `letBody`), `AlgDeclarative`, `Check/Alg` (`let-case`), `Safety`
+    (`let-body`, `let/progress`, a τ-depth of one)
+  - paper: grammar, →P-Let and ⊢-Let added (`\letxxx`, as in POPL 2026)
+
 ## Where Agda still reads differently from the paper
 
 Summary: Figs. 2–4 match the paper rule for rule and premise for premise.
@@ -135,6 +148,7 @@ labelled steps `G -< p ⟶ Qs # c >-> G′` (`p ⇾ q # c` for one `q`).
 | `Δ, X : G`, `Ξ, G`, `Γ, x : t` | `Δ ▸ G`, `Ξ ▸ G`, `Γ ▸ t` | `_,_` is the pair; de Bruijn |
 | `Δ, X : G ⊢ X : G` | `var : X ∶ G ∈ Δ → …` (lookup up to `≐`) | de Bruijn; classes compared by `≐` |
 | `Γ ⊢ e : t`, `Bool` | `Γ ⊢e e ∶ t`, `s/bool` | existing names |
+| `let x = e in P`, ⊢-Let | `letp e in′ P` (named: `letp x ≔ e in′ P`), `let′` | `let`, `in` are Agda keywords |
 | `G —R→ G′`, `G —R→`, `G →`, `G →* G′` | `G -⟨ R ⟩-> G′`, `G -⟨ R ⟩->`, `G -→`, `G -→* G′` | `-[_]->` is the trace relation; `-->` starts a comment |
 | `G —R̄→ G′`, `G —R̄→* G′`, `G —⊆R→ G′` | `G -[¬ R ]-> G′`, `G -[¬ R ]->* G′`, `G -[⊆ R ]-> G′` | |
 | `α ⊆ R` | `Internal R α` | |

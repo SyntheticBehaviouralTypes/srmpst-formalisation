@@ -218,6 +218,16 @@ module Definitions.Typing.AlgNorm
     ifE/adv : ∀ {P}{E} → Advances P (IfE E)
     ifE/adv etd _ _ = etd
 
+    -- `let`'s expression typing, constant in the state.
+    LetE : Exp γ → Behavs
+    LetE E _ = ∃[ S ] Γ ⊢e E ∶ S
+
+    letE/closed : ∀ {E} → Closed (LetE E)
+    letE/closed _ etd = etd
+
+    letE/adv : ∀ {P}{E} → Advances P (LetE E)
+    letE/adv etd _ _ = etd
+
   module _ {γ δ}{Γ : Vec Sort γ}{Δ : Vec Cls δ} where
 
     ---------------------------------------------------------------------
@@ -354,6 +364,7 @@ module Definitions.Typing.AlgNorm
       walk (skip std)              = waitV/mono vofᶜ/nil (tree std)
       walk td@(send _ _ _ _)       = wv/leaf (base td tt)
       walk td@(recv _ _ _ _)       = wv/leaf (base td tt)
+      walk td@(let′ _ _)           = wv/leaf (base td tt)
       walk td@(if _ _ _)           = wv/leaf (base td tt)
       walk td@(rec _ _)            = wv/leaf (base td tt)
       walk td@(var _)              = wv/leaf (base td tt)
@@ -442,6 +453,40 @@ module Definitions.Typing.AlgNorm
       → Γ & Δ ⊢[ P ] ∅ ∶ [ G ]
       → WaitV P (EndL P) ∅S G
     endWait = Walk.walk _ endL/closed endL/adv λ { (end out) _ → λ inT → out (∈T⇒ᶜ inT) }
+
+    letEWait :
+      ∀ {P E}{A : Proc (suc γ) δ}{G}
+      → Γ & Δ ⊢[ P ] letp E in′ A ∶ [ G ]
+      → WaitV P (LetE {Γ = Γ} E) ∅S G
+    letEWait = Walk.walk _ letE/closed letE/adv λ { (let′ etd _) _ → _ , etd }
+
+    ---------------------------------------------------------------------
+    -- A `let` derivation gives its body's, at the same class.
+    ---------------------------------------------------------------------
+
+    mutual
+
+      letBody :
+        ∀ {S P E}{A : Proc (suc γ) δ}{G}
+        → Γ ⊢e E ∶ S
+        → Γ & Δ ⊢[ P ] letp E in′ A ∶ G
+        → (S ∷ Γ) & Δ ⊢[ P ] A ∶ G
+
+      letBody etd (let′ etd′ td) with ⊢e-unique etd′ etd
+      ... | refl = td
+      letBody etd (forward td run) = forward (letBody etd td) run
+      letBody etd (skip std)       = skip (letBodyTree etd std)
+
+      letBodyTree :
+        ∀ {S ξ}{Ξ : Vec Cls ξ}{P E}{A : Proc (suc γ) δ}{G}
+        → Γ ⊢e E ∶ S
+        → Γ & Δ & Ξ ⊢[ P ] letp E in′ A ∶ G
+        → (S ∷ Γ) & Δ & Ξ ⊢[ P ] A ∶ G
+
+      letBodyTree etd (skip-main td) = skip-main (letBody etd td)
+      letBodyTree etd (skip-step ex na k) =
+        skip-step ex na (λ st → letBodyTree etd (k st))
+      letBodyTree etd (skip-cycle mem inT) = skip-cycle mem inT
 
     ---------------------------------------------------------------------
     -- An `if` derivation gives each branch's, at the same class.
@@ -565,6 +610,11 @@ module Definitions.Typing.AlgNorm
           (λ { (_ , x∈) →
                let Pr , br , w = recvBr {Br = Br} x∈
                in Pr , br , alg/mono (recvAt {Br = Br} br) (typBr Br br w) })
+
+      typing⇒alg (letp E in′ A) td
+        with waitFind (letEWait td)
+      ... | _ , (S , etd) =
+        a/let etd (alg/mono (letBody etd) (typing⇒alg A (letBody etd td)))
 
       typing⇒alg (ifp E then A else B) td
         with waitFind (ifEWait td)
